@@ -157,7 +157,7 @@ function AssistantComposer({
       <label className="field">
         <ComposerPrimitive.Input
           className="assistant-ui-input"
-          rows={4}
+          rows={1}
           placeholder={placeholder}
           disabled={isRunning}
           submitMode="ctrlEnter"

@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 
@@ -42,12 +41,6 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
 
   return (
     <section className="card admin-stack" style={{ marginBottom: 18 }}>
-      <div className="super-admin-toolbar">
-        <Link href="/super-admin" className="button secondary">
-          Back to Customers
-        </Link>
-      </div>
-
       <div className="super-admin-layout">
         <SuperAdminCustomerSidebar
           customer={{

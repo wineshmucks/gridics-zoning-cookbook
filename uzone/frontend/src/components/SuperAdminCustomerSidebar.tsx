@@ -34,6 +34,9 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
   return (
     <aside className="super-admin-sidebar">
       <div className="admin-list super-admin-customer-card">
+        <Link href="/super-admin" className="button secondary super-admin-sidebar-back">
+          Back to Customers
+        </Link>
         <div className="admin-list-heading">{customer.name}</div>
         <div className="super-admin-meta">{customer.customerId || 'Organization ID unavailable'}</div>
         <div className="super-admin-meta">{customer.slug || 'no-slug'}</div>

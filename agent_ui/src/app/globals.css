@@ -8,6 +8,12 @@
     --scrollbar-width: 0.1rem;
   }
 
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
   body {
     @apply bg-background/80 text-secondary;
   }

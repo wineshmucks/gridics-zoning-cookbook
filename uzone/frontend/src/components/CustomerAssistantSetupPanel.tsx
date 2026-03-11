@@ -11,8 +11,7 @@ import {
   type CustomerZoningKnowledgeMutationState,
   type CustomerZoningKnowledgeStatus,
 } from '../app/admin/actions'
-
-const backendApiBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || 'http://localhost:8000'
+import { API_BASE } from '../lib/api'
 
 type SelectedCustomer = {
   id: string
@@ -68,7 +67,7 @@ export function CustomerAssistantSetupPanel({
     const loadStatus = async () => {
       try {
         const response = await fetch(
-          `${backendApiBase}/api/admin/clients/${customer.id}/zoning-knowledge`,
+          `${API_BASE}/api/admin/clients/${customer.id}/zoning-knowledge`,
           { cache: 'no-store' },
         )
         if (!response.ok) {
@@ -117,7 +116,7 @@ export function CustomerAssistantSetupPanel({
             the tenant-specific knowledge base.
           </div>
           <button className="button button-fit" type="submit" disabled={experiencePending}>
-            {experiencePending ? 'Saving…' : 'Save Setup'}
+            {experiencePending ? 'Saving…' : 'Save'}
           </button>
           {experienceState.error ? (
             <div className="status-banner status-banner-error">{experienceState.error}</div>

@@ -25,4 +25,22 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
         telemetry=False,
         auto_provision_dbs=False,
     )
-    return agent_os.get_app()
+    app = agent_os.get_app()
+
+    @app.middleware("http")
+    async def rewrite_agent_os_api_paths(request, call_next):
+        path = request.scope.get("path", "")
+        if path == "/api/config" or path.startswith("/api/config/"):
+            rewritten = path[4:]
+            request.scope["path"] = rewritten
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = rewritten.encode()
+        elif path.startswith("/api/agents"):
+            rewritten = path[4:]
+            request.scope["path"] = rewritten
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = rewritten.encode()
+
+        return await call_next(request)
+
+    return app

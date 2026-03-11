@@ -4,6 +4,7 @@ import asyncio
 import builtins
 import sys
 import types
+from types import SimpleNamespace
 
 from app.db.models import ZoningCodeDocument
 from app.services.zoning_knowledge_service import (
@@ -25,6 +26,7 @@ from app.services.zoning_knowledge_service import (
     chunk_normalized_section,
     extract_codehub_page_content,
     get_tenant_zoning_code_url,
+    query_customer_zoning_knowledge,
 )
 
 
@@ -40,6 +42,52 @@ def test_get_tenant_zoning_code_url_reads_settings_json() -> None:
     tenant = DummyTenant()
 
     assert get_tenant_zoning_code_url(tenant) == "https://example.com/code"
+
+
+def test_query_customer_zoning_knowledge_returns_lookup_timing(monkeypatch) -> None:
+    tenant = DummyTenant()
+
+    class FakeKnowledge:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def search(self, *, query: str, max_results: int, filters: dict[str, str]):
+            assert query == "height limits"
+            assert max_results == 3
+            assert filters == {"client_id": tenant.client_id}
+            return [
+                SimpleNamespace(
+                    content="Max 35 feet",
+                    name="Section 1",
+                    meta_data={"section": "1"},
+                )
+            ]
+
+    knowledge_module = types.ModuleType("agno.knowledge.knowledge")
+    knowledge_module.Knowledge = FakeKnowledge
+    monkeypatch.setitem(sys.modules, "agno.knowledge.knowledge", knowledge_module)
+    monkeypatch.setattr(
+        "app.services.zoning_knowledge_service._build_vector_db_with_engine",
+        lambda db: "vector-db",
+    )
+
+    timings = iter([10.0, 10.125])
+    monkeypatch.setattr(
+        "app.services.zoning_knowledge_service.time.perf_counter",
+        lambda: next(timings),
+    )
+
+    result = query_customer_zoning_knowledge(object(), tenant, query="height limits", limit=3)
+
+    assert result["query"] == "height limits"
+    assert result["lookup_ms"] == 125.0
+    assert result["results"] == [
+        {
+            "content": "Max 35 feet",
+            "name": "Section 1",
+            "meta_data": {"section": "1"},
+        }
+    ]
 
 
 def test_chunk_normalized_section_splits_large_sections() -> None:

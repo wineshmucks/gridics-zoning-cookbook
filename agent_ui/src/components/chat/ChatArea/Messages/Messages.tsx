@@ -253,9 +253,22 @@ const extractGridicsTrace = (value: unknown): GridicsTraceEntry[] => {
   return traceValue as GridicsTraceEntry[]
 }
 
+const formatToolDuration = (seconds: number | undefined): string | null => {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+    return null
+  }
+
+  if (seconds >= 1) {
+    return `${seconds.toFixed(seconds >= 10 ? 1 : 2)}s`
+  }
+
+  return `${Math.round(seconds * 1000)}ms`
+}
+
 const ToolComponent = memo(({ tools }: ToolCallProps) => {
   const [showDetails, setShowDetails] = useState(false)
   const toolResponseSource = tools.result ?? tools.content
+  const toolDuration = formatToolDuration(tools.metrics?.time)
   const requestDetails = useMemo(
     () => formatJsonBlock(tools.tool_args),
     [tools.tool_args]
@@ -275,6 +288,11 @@ const ToolComponent = memo(({ tools }: ToolCallProps) => {
     <div className="flex max-w-full flex-col gap-2 rounded-xl bg-accent px-3 py-2 text-xs">
       <div className="flex items-center gap-2">
         <p className="font-dmmono uppercase text-primary/80">{tools.tool_name}</p>
+        {toolDuration && (
+          <span className="rounded-full border border-primary/20 px-2 py-0.5 text-[10px] uppercase text-primary/60">
+            {toolDuration}
+          </span>
+        )}
         {canShowDetails && (
           <button
             type="button"
@@ -287,6 +305,12 @@ const ToolComponent = memo(({ tools }: ToolCallProps) => {
       </div>
       {showDetails && canShowDetails && (
         <div className="space-y-2">
+          {toolDuration && (
+            <div className="rounded-md bg-background p-2">
+              <p className="mb-1 text-[10px] uppercase text-primary/60">Duration</p>
+              <p className="text-[11px] text-primary/80">{toolDuration}</p>
+            </div>
+          )}
           <div className="rounded-md border border-primary/20 bg-background p-2">
             <p className="mb-2 text-[10px] uppercase text-primary/60">Gridics API Trace</p>
             {hasGridicsTrace ? (

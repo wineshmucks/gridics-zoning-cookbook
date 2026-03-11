@@ -44,26 +44,14 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
 
   return (
     <div className="panel-stack">
-      <div className="admin-header">
-        <div>
-          <div className="eyebrow">Assistant</div>
-          <h1 className="section-title" style={{ marginBottom: 8 }}>
-            {organization.name}
-          </h1>
-          <p className="admin-copy">
-            Chat with the customer-scoped zoning assistant using the current knowledge corpus.
-          </p>
-        </div>
-      </div>
-
       <AgentChatPanel
         agentId="customer-zoning-agent"
         backendBase={backendBase}
         customerName={organization.name}
         clientId={zoningKnowledgeStatus.client_id}
         surface="super-admin-customer-assistant"
-        title="Assistant"
-        description="Customer-scoped zoning chat"
+        title=""
+        description=""
         variant="chatgpt"
       />
     </div>

@@ -18,6 +18,23 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         description="Backend API for the UZone zoning verification platform.",
     )
+
+    @base_app.middleware("http")
+    async def rewrite_agent_os_api_paths(request, call_next):
+        path = request.scope.get("path", "")
+        if path == "/api/config" or path.startswith("/api/config/"):
+            rewritten = path[4:]
+            request.scope["path"] = rewritten
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = rewritten.encode()
+        elif path.startswith("/api/agents"):
+            rewritten = path[4:]
+            request.scope["path"] = rewritten
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = rewritten.encode()
+
+        return await call_next(request)
+
     base_app.add_middleware(
         CORSMiddleware,
         allow_origins=[origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()],

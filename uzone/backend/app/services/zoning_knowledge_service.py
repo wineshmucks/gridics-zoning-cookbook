@@ -1305,9 +1305,12 @@ def query_customer_zoning_knowledge(
         vector_db=vector_db,
         max_results=limit,
     )
+    lookup_started_at = time.perf_counter()
     documents = knowledge.search(query=query.strip(), max_results=limit, filters={"client_id": tenant_client.client_id})
+    lookup_ms = round((time.perf_counter() - lookup_started_at) * 1000, 1)
     return {
         "query": query.strip(),
+        "lookup_ms": lookup_ms,
         "results": [
             {
                 "content": item.content,

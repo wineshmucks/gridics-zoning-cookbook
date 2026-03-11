@@ -144,8 +144,32 @@ function buildEmptyCustomerZoningKnowledgeStatus(
   }
 }
 
-const backendApiBase =
-  process.env.UZONE_API_BASE || process.env.NEXT_PUBLIC_UZONE_API_BASE || 'http://localhost:8000'
+function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
+  return {
+    zoning_code_url: null,
+  }
+}
+
+function normalizeBackendOrigin(value: string | undefined): string {
+  if (value === undefined) {
+    return 'http://localhost:8000'
+  }
+
+  const trimmed = value.trim().replace(/\/+$/, '')
+  if (!trimmed || trimmed === '/api') {
+    return ''
+  }
+
+  return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed
+}
+
+const backendOrigin = normalizeBackendOrigin(
+  process.env.UZONE_API_BASE || process.env.NEXT_PUBLIC_UZONE_API_BASE,
+)
+
+function buildBackendApiUrl(path: string): string {
+  return `${backendOrigin}${path}`
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message && error.message !== 'Forbidden') {
@@ -201,7 +225,7 @@ async function getAdminEmailTemplateTarget() {
 }
 
 async function createTenantClientRecord(clientName: string, organizationId: string) {
-  const response = await fetch(`${backendApiBase}/api/admin/clients`, {
+  const response = await fetch(buildBackendApiUrl('/api/admin/clients'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -222,8 +246,22 @@ async function createTenantClientRecord(clientName: string, organizationId: stri
   }
 }
 
+async function ensureTenantClientRecord(organizationId: string) {
+  const client = await getClerkManagementClient()
+  const organization = await client.organizations.getOrganization({ organizationId })
+
+  try {
+    await createTenantClientRecord(organization.name, organization.id)
+  } catch (error) {
+    const message = getErrorMessage(error, '')
+    if (message !== 'Client ID already exists' && message !== 'Clerk organization is already linked to a tenant client') {
+      throw error
+    }
+  }
+}
+
 async function updateTenantClientStatus(organizationId: string, isActive: boolean) {
-  const response = await fetch(`${backendApiBase}/api/admin/clients/${organizationId}`, {
+  const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}`), {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -242,7 +280,7 @@ async function updateTenantClientStatus(organizationId: string, isActive: boolea
 }
 
 async function deleteTenantClientRecord(organizationId: string) {
-  const response = await fetch(`${backendApiBase}/api/admin/clients/${organizationId}`, {
+  const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}`), {
     method: 'DELETE',
   })
 
@@ -261,23 +299,22 @@ async function deleteTenantClientRecord(organizationId: string) {
 export async function fetchCustomerExperienceSettings(
   organizationId: string,
 ): Promise<CustomerExperienceSettings> {
-  const response = await fetch(
-    `${backendApiBase}/api/admin/clients/${organizationId}/experience-settings`,
-    {
-      cache: 'no-store',
-    },
-  )
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null)
-    throw new Error(
-      typeof payload?.detail === 'string'
-        ? payload.detail
-        : 'Unable to load customer assistant settings.',
+  try {
+    const response = await fetch(
+      buildBackendApiUrl(`/api/admin/clients/${organizationId}/experience-settings`),
+      {
+        cache: 'no-store',
+      },
     )
-  }
 
-  return (await response.json()) as CustomerExperienceSettings
+    if (!response.ok) {
+      return buildEmptyCustomerExperienceSettings()
+    }
+
+    return (await response.json()) as CustomerExperienceSettings
+  } catch {
+    return buildEmptyCustomerExperienceSettings()
+  }
 }
 
 export async function saveCustomerExperienceSettingsAction(
@@ -305,9 +342,8 @@ export async function saveCustomerExperienceSettingsAction(
   }
 
   try {
-    const response = await fetch(
-      `${backendApiBase}/api/admin/clients/${organizationId}/experience-settings`,
-      {
+    const saveSettings = async () =>
+      fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}/experience-settings`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -315,8 +351,14 @@ export async function saveCustomerExperienceSettingsAction(
         body: JSON.stringify({
           zoning_code_url: zoningCodeUrl || null,
         }),
-      },
-    )
+      })
+
+    let response = await saveSettings()
+
+    if (response.status === 404) {
+      await ensureTenantClientRecord(organizationId)
+      response = await saveSettings()
+    }
 
     if (!response.ok) {
       const payload = await response.json().catch(() => null)
@@ -348,7 +390,7 @@ export async function fetchCustomerZoningKnowledgeStatus(
   organizationId: string,
 ): Promise<CustomerZoningKnowledgeStatus> {
   try {
-    const response = await fetch(`${backendApiBase}/api/admin/clients/${organizationId}/zoning-knowledge`, {
+    const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}/zoning-knowledge`), {
       cache: 'no-store',
     })
 
@@ -367,7 +409,7 @@ async function mutateCustomerZoningKnowledge(
   mode: 'ingest' | 'reindex',
 ): Promise<void> {
   const response = await fetch(
-    `${backendApiBase}/api/admin/clients/${organizationId}/zoning-knowledge/ingest`,
+    buildBackendApiUrl(`/api/admin/clients/${organizationId}/zoning-knowledge/ingest`),
     {
       method: 'POST',
       headers: {
@@ -463,7 +505,7 @@ export async function queryCustomerZoningKnowledgeAction(
 
   try {
     const response = await fetch(
-      `${backendApiBase}/api/admin/clients/${organizationId}/zoning-knowledge/query`,
+      buildBackendApiUrl(`/api/admin/clients/${organizationId}/zoning-knowledge/query`),
       {
         method: 'POST',
         headers: {
@@ -770,7 +812,7 @@ export async function fetchAdminEmailTemplatesAction(): Promise<AdminEmailTempla
     params.set('client_id', target.clientId)
   }
 
-  const response = await fetch(`${backendApiBase}/api/admin/email-templates?${params.toString()}`, {
+  const response = await fetch(buildBackendApiUrl(`/api/admin/email-templates?${params.toString()}`), {
     cache: 'no-store',
   })
 
@@ -806,7 +848,9 @@ export async function saveAdminEmailTemplateOverrideAction(input: {
   }
 
   const response = await fetch(
-    `${backendApiBase}/api/admin/email-templates/${encodeURIComponent(input.code)}?${params.toString()}`,
+    buildBackendApiUrl(
+      `/api/admin/email-templates/${encodeURIComponent(input.code)}?${params.toString()}`,
+    ),
     {
       method: 'POST',
       headers: {
@@ -844,7 +888,9 @@ export async function resetAdminEmailTemplateOverrideAction(code: string): Promi
   }
 
   const response = await fetch(
-    `${backendApiBase}/api/admin/email-templates/${encodeURIComponent(code)}/override?${params.toString()}`,
+    buildBackendApiUrl(
+      `/api/admin/email-templates/${encodeURIComponent(code)}/override?${params.toString()}`,
+    ),
     {
       method: 'DELETE',
     },

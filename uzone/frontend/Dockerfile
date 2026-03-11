@@ -2,12 +2,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json tsconfig.json next-env.d.ts next.config.js /app/
+COPY package.json package-lock.json tsconfig.json next-env.d.ts next.config.js /app/
 COPY src /app/src
+COPY entrypoint.sh /app/entrypoint.sh
 
-RUN npm install
+RUN npm ci && chmod +x /app/entrypoint.sh
 
 EXPOSE 3001
 
-CMD ["npm", "run", "dev"]
-
+ENTRYPOINT ["/bin/sh", "/app/entrypoint.sh"]

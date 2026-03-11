@@ -13,6 +13,8 @@ import {
   type ThreadMessage,
 } from '@assistant-ui/react'
 import { useMemo, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type AgentRunResponse = {
   session_id?: string
@@ -75,13 +77,22 @@ function getLatestUserMessage(messages: readonly ThreadMessage[]): string {
     .join('\n\n')
 }
 
+function getMessageTextContent(parts: readonly { type: string; text?: string }[]): string {
+  return parts
+    .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 function AssistantMessage({ customerName }: { customerName: string }) {
   const role = useAuiState((state) => state.message.role)
+  const content = useAuiState((state) => state.message.content)
   const error = useAuiState((state) =>
     state.message.status?.type === 'incomplete' && state.message.status.reason === 'error'
       ? state.message.status.error
       : null,
   )
+  const textContent = getMessageTextContent(content)
 
   return (
     <MessagePrimitive.Root
@@ -93,7 +104,11 @@ function AssistantMessage({ customerName }: { customerName: string }) {
         {role === 'assistant' ? `${customerName} Assistant` : 'You'}
       </div>
       <div className="assistant-ui-message-content">
-        <MessagePrimitive.Content />
+        {role === 'assistant' ? (
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
+        ) : (
+          <div className="assistant-ui-user-content">{textContent}</div>
+        )}
       </div>
       <MessagePrimitive.Error>
         <div className="status-banner status-banner-error">
@@ -129,29 +144,33 @@ function AssistantToolbar({ onNewChat }: { onNewChat: () => void }) {
 function AssistantComposer({
   onNewChat,
   placeholder,
+  variant,
 }: {
   onNewChat: () => void
   placeholder: string
+  variant: 'default' | 'chatgpt'
 }) {
   const isRunning = useAuiState((state) => state.thread.isRunning)
 
   return (
-    <ComposerPrimitive.Root className="agent-chat-form assistant-ui-composer">
+    <ComposerPrimitive.Root className={`agent-chat-form assistant-ui-composer assistant-ui-composer-${variant}`}>
       <label className="field">
-        <span>Message</span>
         <ComposerPrimitive.Input
           className="assistant-ui-input"
           rows={4}
           placeholder={placeholder}
           disabled={isRunning}
-          submitMode="enter"
+          submitMode="ctrlEnter"
         />
       </label>
-      <div className="button-row">
-        <ComposerPrimitive.Send className="button" type="button">
-          {isRunning ? 'Sending…' : 'Send'}
-        </ComposerPrimitive.Send>
-        <AssistantToolbar onNewChat={onNewChat} />
+      <div className="assistant-ui-composer-footer">
+        <div className="assistant-ui-composer-hint">Press Ctrl+Enter to send. Enter adds a new line.</div>
+        <div className="button-row">
+          <ComposerPrimitive.Send className="button" type="button">
+            {isRunning ? 'Sending…' : 'Send'}
+          </ComposerPrimitive.Send>
+          <AssistantToolbar onNewChat={onNewChat} />
+        </div>
       </div>
     </ComposerPrimitive.Root>
   )
@@ -165,6 +184,7 @@ export function AgentChatPanel({
   surface,
   title,
   description,
+  variant = 'default',
 }: {
   agentId: string
   backendBase: string
@@ -173,6 +193,7 @@ export function AgentChatPanel({
   surface: string
   title: string
   description: string
+  variant?: 'default' | 'chatgpt'
 }) {
   const sessionIdRef = useRef<string | null>(null)
 
@@ -242,18 +263,29 @@ export function AgentChatPanel({
   const runtime = useLocalRuntime(adapter)
 
   return (
-    <div className="admin-list">
-      <div className="admin-list-heading">{title}</div>
-      <div style={{ color: 'var(--muted)', marginBottom: 12 }}>{description}</div>
+    <div className={variant === 'chatgpt' ? 'assistant-chat-card' : 'admin-list'}>
+      {variant === 'chatgpt' ? (
+        <div className="assistant-chat-card-header">
+          <div>
+            <div className="assistant-chat-card-title">{title}</div>
+            <div className="assistant-chat-card-copy">{description}</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="admin-list-heading">{title}</div>
+          <div style={{ color: 'var(--muted)', marginBottom: 12 }}>{description}</div>
+        </>
+      )}
 
       <AssistantRuntimeProvider runtime={runtime}>
-        <div className="agent-chat-shell assistant-ui-shell">
+        <div className={`agent-chat-shell assistant-ui-shell agent-chat-shell-${variant}`}>
           <ThreadPrimitive.Root className="assistant-ui-thread">
-            <ThreadPrimitive.Viewport className="agent-chat-log assistant-ui-viewport">
+            <ThreadPrimitive.Viewport className={`agent-chat-log assistant-ui-viewport agent-chat-log-${variant}`}>
               <ThreadPrimitive.Empty>
                 <div className="agent-chat-empty">
-                  Ask a zoning question about {customerName}. This panel sends the conversation to
-                  the Agno AgentOS endpoint for the bound customer.
+                  Ask a zoning question about {customerName}. The conversation stays scoped to this
+                  customer&apos;s zoning knowledge.
                 </div>
               </ThreadPrimitive.Empty>
               <ThreadPrimitive.Messages
@@ -269,6 +301,7 @@ export function AgentChatPanel({
               sessionIdRef.current = null
             }}
             placeholder="What does the zoning code say about ADUs, setbacks, parking, or lot coverage?"
+            variant={variant}
           />
         </div>
       </AssistantRuntimeProvider>

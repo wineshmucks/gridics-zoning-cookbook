@@ -1,9 +1,5 @@
 import { notFound } from 'next/navigation'
 
-import {
-  fetchCustomerExperienceSettings,
-  fetchCustomerZoningKnowledgeStatus,
-} from '../../../admin/actions'
 import { SuperAdminCustomerManageClient } from '../../../../components/SuperAdminCustomerManageClient'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
@@ -41,7 +37,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
     notFound()
   }
 
-  const [membershipResponse, invitationResponse, experienceSettings, zoningKnowledgeStatus] = await Promise.all([
+  const [membershipResponse, invitationResponse] = await Promise.all([
     client.organizations.getOrganizationMembershipList({
       organizationId,
       role: ['org:admin'],
@@ -51,8 +47,6 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
       organizationId,
       limit: 100,
     }),
-    fetchCustomerExperienceSettings(organizationId),
-    fetchCustomerZoningKnowledgeStatus(organizationId),
   ])
 
   const adminMembers = membershipResponse.data.map((membership) => ({
@@ -84,8 +78,6 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
       }}
       adminMembers={adminMembers}
       pendingInvites={pendingInvites}
-      experienceSettings={experienceSettings}
-      zoningKnowledgeStatus={zoningKnowledgeStatus}
     />
   )
 }

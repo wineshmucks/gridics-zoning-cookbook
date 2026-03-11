@@ -9,7 +9,7 @@ export default async function SuperAdminAssistantPage() {
   const permissions = await getPermissionContext(clerkEnabled)
   const tenant = await getTenantConfig()
   const backendBase =
-    process.env.UZONE_API_BASE || process.env.NEXT_PUBLIC_UZONE_API_BASE || 'http://localhost:8000'
+    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (

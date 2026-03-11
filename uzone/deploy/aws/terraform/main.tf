@@ -43,15 +43,15 @@ locals {
   backend_environment = [
     for name, value in merge(
       {
-        UZONE_DATABASE_URL     = "postgresql+psycopg://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/${var.db_name}"
-        UZONE_ALLOWED_ORIGINS  = var.app_allowed_origins
-        UZONE_RUN_MIGRATIONS   = "true"
-        UZONE_RUN_SEED_DATA    = "false"
-        UZONE_DEV_RELOAD       = "false"
-        UZONE_ARTIFACTS_DIR    = "/app/artifacts"
+        UZONE_DATABASE_URL    = "postgresql+psycopg://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/${var.db_name}"
+        UZONE_ALLOWED_ORIGINS = var.app_allowed_origins
+        UZONE_RUN_MIGRATIONS  = "true"
+        UZONE_RUN_SEED_DATA   = "false"
+        UZONE_DEV_RELOAD      = "false"
+        UZONE_ARTIFACTS_DIR   = "/app/artifacts"
       },
       var.backend_environment
-    ) : {
+      ) : {
       name  = name
       value = value
     }
@@ -67,12 +67,12 @@ locals {
   frontend_environment = [
     for name, value in merge(
       {
-        NODE_ENV                    = "production"
-        UZONE_API_BASE              = "http://${aws_lb.app.dns_name}/api"
-        NEXT_PUBLIC_UZONE_API_BASE  = "/api"
+        NODE_ENV                   = "production"
+        UZONE_API_BASE             = "http://${aws_lb.app.dns_name}/api"
+        NEXT_PUBLIC_UZONE_API_BASE = "/api"
       },
       var.frontend_environment
-    ) : {
+      ) : {
       name  = name
       value = value
     }
@@ -267,23 +267,23 @@ resource "aws_security_group" "postgres" {
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier             = "${local.name_prefix}-postgres"
-  engine                 = "postgres"
-  engine_version         = var.db_engine_version
-  instance_class         = var.db_instance_class
-  storage_type           = "gp2"
-  allocated_storage      = var.db_allocated_storage
-  max_allocated_storage  = var.db_max_allocated_storage
-  db_name                = var.db_name
-  username               = var.db_username
-  password               = var.db_password
-  db_subnet_group_name   = aws_db_subnet_group.postgres.name
-  vpc_security_group_ids = [aws_security_group.postgres.id]
-  publicly_accessible    = false
-  skip_final_snapshot    = var.db_skip_final_snapshot
-  deletion_protection    = var.db_deletion_protection
-  backup_retention_period = var.db_backup_retention_period
-  multi_az               = false
+  identifier                 = "${local.name_prefix}-postgres"
+  engine                     = "postgres"
+  engine_version             = var.db_engine_version
+  instance_class             = var.db_instance_class
+  storage_type               = "gp2"
+  allocated_storage          = var.db_allocated_storage
+  max_allocated_storage      = var.db_max_allocated_storage
+  db_name                    = var.db_name
+  username                   = var.db_username
+  password                   = var.db_password
+  db_subnet_group_name       = aws_db_subnet_group.postgres.name
+  vpc_security_group_ids     = [aws_security_group.postgres.id]
+  publicly_accessible        = false
+  skip_final_snapshot        = var.db_skip_final_snapshot
+  deletion_protection        = var.db_deletion_protection
+  backup_retention_period    = var.db_backup_retention_period
+  multi_az                   = false
   auto_minor_version_upgrade = true
 
   tags = merge(local.common_tags, {
@@ -594,13 +594,13 @@ resource "aws_ecs_task_definition" "frontend" {
 }
 
 resource "aws_ecs_service" "backend" {
-  name                               = "${local.name_prefix}-backend"
-  cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.backend.arn
-  desired_count                      = var.backend_desired_count
-  launch_type                        = "FARGATE"
-  health_check_grace_period_seconds  = 60
-  enable_execute_command             = true
+  name                              = "${local.name_prefix}-backend"
+  cluster                           = aws_ecs_cluster.main.id
+  task_definition                   = aws_ecs_task_definition.backend.arn
+  desired_count                     = var.backend_desired_count
+  launch_type                       = "FARGATE"
+  health_check_grace_period_seconds = 60
+  enable_execute_command            = true
 
   network_configuration {
     assign_public_ip = true
@@ -628,13 +628,13 @@ resource "aws_ecs_service" "backend" {
 }
 
 resource "aws_ecs_service" "frontend" {
-  name                               = "${local.name_prefix}-frontend"
-  cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.frontend.arn
-  desired_count                      = var.frontend_desired_count
-  launch_type                        = "FARGATE"
-  health_check_grace_period_seconds  = 60
-  enable_execute_command             = true
+  name                              = "${local.name_prefix}-frontend"
+  cluster                           = aws_ecs_cluster.main.id
+  task_definition                   = aws_ecs_task_definition.frontend.arn
+  desired_count                     = var.frontend_desired_count
+  launch_type                       = "FARGATE"
+  health_check_grace_period_seconds = 60
+  enable_execute_command            = true
 
   network_configuration {
     assign_public_ip = true

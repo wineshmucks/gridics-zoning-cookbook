@@ -1,0 +1,415 @@
+<!DOCTYPE html><html><head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Letter Templates</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+    <style>::-webkit-scrollbar { display: none;}</style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#377C36',
+                        secondary: '#F4F4F4',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-secondary font-sans">
+
+<header id="header" class="bg-white border-b border-gray-200">
+    <div class="max-w-[1440px] mx-auto px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-building text-white text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">City of Dream Town</h1>
+                <p class="text-xs text-gray-500">Admin Portal - Configuration</p>
+            </div>
+        </div>
+        <nav class="flex items-center gap-8">
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Dashboard</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Requests</a>
+            <a href="#" class="text-sm font-medium text-primary">Settings</a>
+            <div class="flex items-center gap-3 ml-4 pl-4 border-l border-gray-200">
+                <img src="https://storage.googleapis.com/uxpilot-auth.appspot.com/avatars/avatar-2.jpg" class="w-9 h-9 rounded-full object-cover" alt="Admin">
+                <div>
+                    <p class="text-sm font-medium text-gray-900">Admin User</p>
+                    <p class="text-xs text-gray-500">Gridics Admin</p>
+                </div>
+            </div>
+        </nav>
+    </div>
+</header>
+
+<div class="max-w-[1440px] mx-auto px-8 py-8">
+    <div class="flex gap-6">
+        <aside id="settings-sidebar" class="w-72 bg-white rounded-xl p-6 h-fit">
+            <h2 class="text-lg font-bold text-gray-900 mb-6">Configuration</h2>
+            <nav class="space-y-1">
+                <div class="mb-2">
+                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-900 hover:bg-secondary rounded-lg font-semibold transition">
+                        <i class="fa-solid fa-map-location-dot w-5"></i>
+                        <span>Jurisdictions</span>
+                    </a>
+                </div>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 pl-8 text-gray-600 hover:bg-secondary rounded-lg font-medium transition">
+                    <i class="fa-solid fa-file-lines w-5 text-sm"></i>
+                    <span>Form Settings</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 pl-8 text-gray-600 hover:bg-secondary rounded-lg font-medium transition">
+                    <i class="fa-solid fa-envelope w-5 text-sm"></i>
+                    <span>Email Templates</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 pl-8 text-gray-600 hover:bg-secondary rounded-lg font-medium transition">
+                    <i class="fa-solid fa-dollar-sign w-5 text-sm"></i>
+                    <span>Fee Structure</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 pl-8 bg-primary/10 text-primary rounded-lg font-medium">
+                    <i class="fa-solid fa-file-contract w-5 text-sm"></i>
+                    <span>Letter Templates</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 pl-8 text-gray-600 hover:bg-secondary rounded-lg font-medium transition">
+                    <i class="fa-solid fa-circle-info w-5 text-sm"></i>
+                    <span>Home Page Content</span>
+                </a>
+                <a href="#" class="flex items-center gap-3 px-4 py-3 pl-8 text-gray-600 hover:bg-secondary rounded-lg font-medium transition">
+                    <i class="fa-solid fa-user-shield w-5 text-sm"></i>
+                    <span>User Permissions</span>
+                </a>
+                <div class="mt-2 pt-2 border-t border-gray-200">
+                    <a href="#" class="flex items-center gap-3 px-4 py-3 text-gray-900 hover:bg-secondary rounded-lg font-semibold transition">
+                        <i class="fa-solid fa-cog w-5"></i>
+                        <span>Global Settings</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <main id="settings-main" class="flex-1">
+            <div class="bg-white rounded-xl p-8 mb-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900 mb-1">Letter Templates</h1>
+                        <p class="text-gray-600">Create and edit various letter templates for official communications</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button class="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition">
+                            <i class="fa-solid fa-plus mr-2"></i>New Template
+                        </button>
+                        <button class="px-5 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-green-700 transition">
+                            <i class="fa-solid fa-save mr-2"></i>Save Changes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="border-b border-gray-200 mb-6">
+                    <div class="flex gap-6">
+                        <button class="px-4 py-3 font-medium text-primary border-b-2 border-primary">Approval Letters</button>
+                        <button class="px-4 py-3 font-medium text-gray-600 hover:text-primary transition">Denial Letters</button>
+                        <button class="px-4 py-3 font-medium text-gray-600 hover:text-primary transition">Notification Letters</button>
+                        <button class="px-4 py-3 font-medium text-gray-600 hover:text-primary transition">Reminder Letters</button>
+                    </div>
+                </div>
+
+                <div id="approval-letters-section" class="space-y-6">
+    <div class="bg-secondary rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-check-circle text-green-500 text-xl"></i>
+                <h3 class="text-lg font-bold text-gray-900">Standard Letter</h3>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked="" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+                <button class="text-sm text-primary font-medium hover:underline">
+                    <i class="fa-solid fa-edit mr-1"></i>Edit
+                </button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Template Name</label>
+                <input type="text" value="Standard Letter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Letter Type</label>
+                <select class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <option>Standard Letter</option>
+                    <option>Conditional Letter</option>
+                    <option>Variance Letter</option>
+                </select>
+            </div>
+            <div class="col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Letter Content</label>
+                <textarea rows="20" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="Enter letter template content...">Dear {{applicant_name}},
+
+We are pleased to inform you that your Zoning Verification Letter request has been approved.
+
+Request Details:
+- Application ID: {{application_id}}
+- Property Address: {{property_address}}
+- Date Processed: {{process_date}}
+
+This letter serves as official verification that the above property is zoned as {{zoning_classification}} and is in compliance with current zoning regulations.
+
+Zoning Details:
+- Zoning District: {{zoning_classification}}
+- Maximum Buildable Height: {{max_height}}
+- Maximum Built Area Allowed: {{max_buildable_area}}
+- Minimum Lot Area: {{min_lot_area}}
+
+Setbacks:
+- Minimum Front Setback: {{primary_front_setback_min}}
+- Minimum Side Setback: {{primary_side_setback_min}}
+- Minimum Rear Setback: {{primary_rear_setback_min}}
+
+Future Land Use Designation: The current land use designation for the subject property is {{future_land_use}}.
+
+Zoning District: The current zoning classification for the subject property is {{Zoning_district}}. The property is not located within an overlay district.
+
+Adjacent Property Zoning Designations:
+- North: {{Zoning_district}}
+- South: {{Zoning_district}}
+- East: {{Zoning_district}}
+- West: {{Zoning_district}}
+ 
+Permitted Use: Pursuant to {{CodeHUB_section}} of the {{ordinance_title}}, list uses here are permitted/prohibited at the subject property. Refer to {{CodeHUB_section}} for applicable bulk regulations and specific-use standards.
+Conditional Use Statement is permitted by conditional use approval. {{CodeHUB_section}} currently regulate the conditional use process.
+
+Site Plan Information:
+- Site Plan No. xx-xxx-xx
+   - Resolution No. xx-xxx
+(Brief description of Project if available)
+- Community Appearance Board No. xx-xxx-xx 
+  - Resolution No. xx-xxx
+
+City Resolutions and Ordinances may be downloaded from the city's webpage {{web_url}}. A copy of the Site Plan is available and has been attached to this letter.
+
+If you have any questions, please contact us at {{contact_info}}.
+
+Sincerely,
+{{city_official_name}}
+{{city_official_title}}
+City of Dream Town</textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Available Variables</label>
+                <div class="flex flex-wrap gap-2">
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{applicant_name}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{application_id}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{property_address}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{zoning_classification}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{process_date}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{max_height}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{max_buildable_area}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{min_lot_area}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{primary_front_setback_min}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{primary_side_setback_min}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{primary_rear_setback_min}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{future_land_use}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{Zoning_district}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{CodeHUB_section}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{ordinance_title}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{web_url}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{contact_info}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{city_official_name}}</span>
+                    <span class="px-3 py-1 bg-primary/10 text-primary text-xs rounded-full">{{city_official_title}}</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 pt-6">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked="" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                    <span class="text-sm text-gray-700">Auto-generate PDF</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked="" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                    <span class="text-sm text-gray-700">Include City Letterhead</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-secondary rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-check-circle text-green-500 text-xl"></i>
+                <h3 class="text-lg font-bold text-gray-900">Conditional Letter</h3>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked="" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+                <button class="text-sm text-primary font-medium hover:underline">
+                    <i class="fa-solid fa-edit mr-1"></i>Edit
+                </button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Template Name</label>
+                <input type="text" value="Conditional Letter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Letter Type</label>
+                <select class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <option>Conditional Letter</option>
+                    <option>Standard Letter</option>
+                    <option>Variance Letter</option>
+                </select>
+            </div>
+            <div class="col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Letter Content</label>
+                <textarea rows="8" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">Dear {{applicant_name}},
+
+Your Zoning Verification Letter request has been conditionally approved, subject to the following requirements:
+
+Request Details:
+- Application ID: {{application_id}}
+- Property Address: {{property_address}}
+- Zoning Classification: {{zoning_classification}}
+
+Conditions for Final Approval:
+{{conditional_requirements}}
+
+Please address these conditions within {{response_deadline}} days. Once all conditions are met, we will issue the final verification letter.
+
+For questions or to submit required documentation, please contact us at {{contact_info}}.
+
+Sincerely,
+{{city_official_name}}
+{{city_official_title}}
+City of Dream Town</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-secondary rounded-lg p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-clock text-orange-500 text-xl"></i>
+                <h3 class="text-lg font-bold text-gray-900">Expedited Processing Letter</h3>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+                <button class="text-sm text-primary font-medium hover:underline">
+                    <i class="fa-solid fa-edit mr-1"></i>Edit
+                </button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Template Name</label>
+                <input type="text" value="Expedited Processing Letter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Letter Type</label>
+                <select class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <option>Standard Letter</option>
+                    <option>Conditional Letter</option>
+                    <option>Variance Letter</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <button class="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 font-medium hover:border-primary hover:text-primary transition">
+        <i class="fa-solid fa-plus mr-2"></i>Add New Letter Template
+    </button>
+</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-6">
+                <div id="template-preview-card" class="bg-white rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-gray-900">Template Preview</h2>
+                        <button class="text-sm text-primary font-medium hover:underline">
+                            <i class="fa-solid fa-external-link mr-1"></i>Full Preview
+                        </button>
+                    </div>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-white">
+                        <div class="text-center mb-4">
+                            <div class="w-16 h-16 bg-primary/10 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                                <i class="fa-solid fa-building text-primary text-2xl"></i>
+                            </div>
+                            <h3 class="font-bold text-gray-900">City of Dream Town</h3>
+                            <p class="text-sm text-gray-600">Zoning Department</p>
+                        </div>
+                        <div class="text-sm text-gray-800 space-y-2">
+                            <p><strong>Date:</strong> January 15, 2025</p>
+                            <p><strong>To:</strong> John Smith</p>
+                            <p><strong>Re:</strong> ZVL Application #ZVL-2025-001</p>
+                            <div class="mt-4">
+                                <p>Dear John Smith,</p>
+                                <p class="mt-2">We are pleased to inform you that your Zoning Verification Letter request has been approved...</p>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 italic text-center mt-4">Live preview with sample data</p>
+                    </div>
+                </div>
+
+                <div id="template-variables-card" class="bg-white rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-gray-900">Template Variables</h2>
+                        <button class="text-sm text-primary font-medium hover:underline">
+                            <i class="fa-solid fa-code mr-1"></i>View All
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-900 mb-2">Applicant Information</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">{{applicant_name}}</span>
+                                <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">{{applicant_email}}</span>
+                                <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">{{applicant_phone}}</span>
+                            </div>
+                        </div>
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-900 mb-2">Application Details</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="px-2 py-1 bg-green-50 text-green-700 text-xs rounded">{{application_id}}</span>
+                                <span class="px-2 py-1 bg-green-50 text-green-700 text-xs rounded">{{submission_date}}</span>
+                                <span class="px-2 py-1 bg-green-50 text-green-700 text-xs rounded">{{process_date}}</span>
+                            </div>
+                        </div>
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-900 mb-2">Property Information</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded">{{property_address}}</span>
+                                <span class="px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded">{{zoning_classification}}</span>
+                                <span class="px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded">{{parcel_id}}</span>
+                            </div>
+                        </div>
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-900 mb-2">System Variables</h4>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="px-2 py-1 bg-orange-50 text-orange-700 text-xs rounded">{{city_official_name}}</span>
+                                <span class="px-2 py-1 bg-orange-50 text-orange-700 text-xs rounded">{{contact_info}}</span>
+                                <span class="px-2 py-1 bg-orange-50 text-orange-700 text-xs rounded">{{current_date}}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+
+</body></html>

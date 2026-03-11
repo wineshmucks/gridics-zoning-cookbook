@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>::-webkit-scrollbar { display: none;}</style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#377C36',
+                        secondary: '#F4F4F4',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-secondary font-sans">
+
+<header id="header" class="bg-white border-b border-gray-200 shadow-sm">
+    <div class="max-w-[1440px] mx-auto px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-building text-white text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">City of Dream Town</h1>
+                <p class="text-xs text-gray-500">Planning & Zoning Admin Dashboard</p>
+            </div>
+        </div>
+        <nav class="flex items-center gap-8">
+            <div class="flex items-center gap-2 text-sm">
+                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-user text-white text-xs"></i>
+                </div>
+                <span class="font-medium text-gray-700">Sarah Johnson</span>
+                <span class="text-gray-500">|</span>
+                <span class="text-gray-500">Planning Staff</span>
+            </div>
+            <button class="px-4 py-2 text-gray-600 hover:text-gray-900 text-sm font-medium">
+                <i class="fa-solid fa-sign-out-alt mr-2"></i>Logout
+            </button>
+        </nav>
+    </div>
+</header>
+
+<div class="max-w-[1440px] mx-auto px-8 py-8">
+    <div class="mb-8">
+        <h2 class="text-3xl font-bold text-gray-900 mb-2">Zoning Verification Requests</h2>
+        <p class="text-gray-600">Manage and process zoning verification letter requests</p>
+    </div>
+
+    <div id="stats-section" class="grid grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">Pending Review</p>
+                    <p class="text-2xl font-bold text-gray-900">24</p>
+                </div>
+                <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-clock text-orange-600 text-xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">In Progress</p>
+                    <p class="text-2xl font-bold text-gray-900">12</p>
+                </div>
+                <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-pen text-blue-600 text-xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">Completed Today</p>
+                    <p class="text-2xl font-bold text-gray-900">8</p>
+                </div>
+                <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-check text-green-600 text-xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-500 mb-1">This Month</p>
+                    <p class="text-2xl font-bold text-gray-900">156</p>
+                </div>
+                <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <i class="fa-solid fa-chart-line text-primary text-xl"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="filter-section" class="bg-white rounded-xl p-6 border border-gray-200 mb-8">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-bold text-gray-900">Filters & Search</h3>
+            <button class="text-sm text-primary font-medium hover:text-green-700">
+                <i class="fa-solid fa-refresh mr-2"></i>Reset Filters
+            </button>
+        </div>
+        
+        <div class="grid grid-cols-4 gap-4 mb-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                    <option>All Statuses</option>
+                    <option>Pending Review</option>
+                    <option>In Progress</option>
+                    <option>Approved</option>
+                    <option>Completed</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Letter Type</label>
+                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                    <option>All Types</option>
+                    <option>Standard</option>
+                    <option>Comprehensive</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                    <option>All Priorities</option>
+                    <option>Standard</option>
+                    <option>Expedited</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                    <option>Last 7 days</option>
+                    <option>Last 30 days</option>
+                    <option>Last 90 days</option>
+                    <option>Custom range</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div class="flex-1">
+                <div class="relative">
+                    <input type="text" placeholder="Search by requester name, address, or parcel number..." 
+                           class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                </div>
+            </div>
+            <button class="px-6 py-2 bg-primary text-white font-medium rounded-lg hover:bg-green-700 transition">
+                <i class="fa-solid fa-search mr-2"></i>Search
+            </button>
+        </div>
+    </div>
+
+    <div id="requests-section" class="bg-white rounded-xl border border-gray-200">
+        <div class="p-6 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-gray-900">Request Queue</h3>
+                <div class="flex items-center gap-4">
+                    <span class="text-sm text-gray-500">Sort by:</span>
+                    <select class="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary focus:border-primary">
+                        <option>Date Submitted</option>
+                        <option>Priority</option>
+                        <option>Status</option>
+                        <option>Due Date</option>
+                    </select>
+                    <button class="p-2 text-gray-400 hover:text-gray-600">
+                        <i class="fa-solid fa-arrow-up-short-wide"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="requests-list" class="divide-y divide-gray-200">
+            <div class="p-6 hover:bg-gray-50 cursor-pointer transition">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-file-lines text-orange-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-1">ZVL-2024-0892</h4>
+                            <p class="text-sm text-gray-600 mb-2">Michael Thompson • Comprehensive Letter</p>
+                            <p class="text-sm text-gray-500">1247 Oak Street • APN: 123-456-789</p>
+                            <div class="flex items-center gap-4 mt-3">
+                                <span class="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                                    <i class="fa-solid fa-clock mr-1"></i>Pending Review
+                                </span>
+                                <span class="inline-flex items-center px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                                    <i class="fa-solid fa-bolt mr-1"></i>Expedited
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500 mb-1">Submitted</p>
+                        <p class="font-medium text-gray-900">Jan 15, 2024</p>
+                        <p class="text-xs text-red-600 font-medium mt-1">Due: Jan 16, 2024</p>
+                        <button class="mt-3 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                            Review
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 hover:bg-gray-50 cursor-pointer transition">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-pen text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-1">ZVL-2024-0891</h4>
+                            <p class="text-sm text-gray-600 mb-2">Jennifer Rodriguez • Standard Letter</p>
+                            <p class="text-sm text-gray-500">856 Pine Avenue • APN: 456-789-123</p>
+                            <div class="flex items-center gap-4 mt-3">
+                                <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                                    <i class="fa-solid fa-pen mr-1"></i>In Progress
+                                </span>
+                                <span class="text-xs text-gray-500">Assigned to: David Chen</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500 mb-1">Submitted</p>
+                        <p class="font-medium text-gray-900">Jan 14, 2024</p>
+                        <p class="text-xs text-gray-600 mt-1">Due: Jan 17, 2024</p>
+                        <button class="mt-3 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
+                            Continue
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 hover:bg-gray-50 cursor-pointer transition">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-file-lines text-orange-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-1">ZVL-2024-0890</h4>
+                            <p class="text-sm text-gray-600 mb-2">ABC Development Corp • Comprehensive Letter</p>
+                            <p class="text-sm text-gray-500">Multiple Parcels (3) • Downtown District</p>
+                            <div class="flex items-center gap-4 mt-3">
+                                <span class="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                                    <i class="fa-solid fa-clock mr-1"></i>Pending Review
+                                </span>
+                                <span class="text-xs text-gray-500">Multiple properties</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500 mb-1">Submitted</p>
+                        <p class="font-medium text-gray-900">Jan 14, 2024</p>
+                        <p class="text-xs text-gray-600 mt-1">Due: Jan 17, 2024</p>
+                        <button class="mt-3 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                            Review
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 hover:bg-gray-50 cursor-pointer transition">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-check text-green-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-1">ZVL-2024-0889</h4>
+                            <p class="text-sm text-gray-600 mb-2">Robert Kim • Standard Letter</p>
+                            <p class="text-sm text-gray-500">432 Elm Street • APN: 789-123-456</p>
+                            <div class="flex items-center gap-4 mt-3">
+                                <span class="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                                    <i class="fa-solid fa-check mr-1"></i>Approved
+                                </span>
+                                <span class="text-xs text-gray-500">Ready for delivery</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500 mb-1">Completed</p>
+                        <p class="font-medium text-gray-900">Jan 15, 2024</p>
+                        <p class="text-xs text-green-600 mt-1">On time</p>
+                        <button class="mt-3 px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition">
+                            View Letter
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 hover:bg-gray-50 cursor-pointer transition">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-pen text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-1">ZVL-2024-0888</h4>
+                            <p class="text-sm text-gray-600 mb-2">Lisa Chang • Comprehensive Letter</p>
+                            <p class="text-sm text-gray-500">789 Maple Drive • APN: 321-654-987</p>
+                            <div class="flex items-center gap-4 mt-3">
+                                <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                                    <i class="fa-solid fa-pen mr-1"></i>In Progress
+                                </span>
+                                <span class="text-xs text-gray-500">Assigned to: Sarah Johnson</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-500 mb-1">Submitted</p>
+                        <p class="font-medium text-gray-900">Jan 13, 2024</p>
+                        <p class="text-xs text-gray-600 mt-1">Due: Jan 16, 2024</p>
+                        <button class="mt-3 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
+                            Continue
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6 border-t border-gray-200 bg-gray-50">
+            <div class="flex items-center justify-between">
+                <p class="text-sm text-gray-600">Showing 1-5 of 44 requests</p>
+                <div class="flex items-center gap-2">
+                    <button class="px-3 py-1 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50" disabled>
+                        <i class="fa-solid fa-chevron-left mr-1"></i>Previous
+                    </button>
+                    <div class="flex items-center gap-1">
+                        <button class="w-8 h-8 bg-primary text-white text-sm rounded">1</button>
+                        <button class="w-8 h-8 text-gray-700 text-sm hover:bg-gray-200 rounded">2</button>
+                        <button class="w-8 h-8 text-gray-700 text-sm hover:bg-gray-200 rounded">3</button>
+                        <span class="text-gray-500 px-2">...</span>
+                        <button class="w-8 h-8 text-gray-700 text-sm hover:bg-gray-200 rounded">9</button>
+                    </div>
+                    <button class="px-3 py-1 text-sm text-gray-700 hover:text-gray-900">
+                        Next<i class="fa-solid fa-chevron-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+window.addEventListener('load', function() {
+    const requestItems = document.querySelectorAll('#requests-list > div');
+    requestItems.forEach(item => {
+        item.addEventListener('click', function() {
+            console.log('Request selected for review');
+        });
+    });
+});
+</script>
+
+</body>
+</html>

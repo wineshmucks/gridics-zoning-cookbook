@@ -1,0 +1,90 @@
+openapi: 3.0.1
+info:
+  version: 0.0.1
+  title: Market Availability API
+  description: |-
+    # Overview
+    
+     The Market Availability API is **bundled with each Zoning API product** and it allows users to check to see if a market is available before making a Zoning API request. Gridics makes the Market Availability API available ‘Free of Charge’ because we feel it is important to make parcel-specific zoning requests (which are billed per transaction) only in markets that are active on the Gridics system. Though this API is Free of Charge, it is more restrictive with Rate Limits.
+     
+     The Market Availability API is a REST API that responds in JSON format.
+    
+     <div class="alert alert-info border-0 rounded-sm alert-dismissible" role="alert">
+     <strong>Protocol: </strong>HTTPS v1.1<br>
+     <strong>Method: </strong>GET<br>
+     <strong>URL: </strong><a href="https://api.gridics.com/v1/markets" target="_blank">https://api.gridics.com/v1/markets</a><br>
+     <strong>Response Format: </strong>JSON
+     </div>
+
+     ## Environments
+    
+     The addressable API base URL/URI environments are:
+    
+     | Environment | Description |
+     | --- | --- |
+     | https://api.gridics.com/v1/markets| Sandbox and production environment |
+    
+    
+     ## Rate limits
+    
+     Rate limits protect the Gridics infrastructure from suspicious requests that exceed defined thresholds.
+    
+     DEMO APIs are limited to **10 calls per second** and **50 lifetime calls**.
+    
+     Production APIs are limited to **10 calls per second** and **500 calls per month**.
+    
+     Additional rate limits are available and they are granted according to your specific use case. If you would like to request additional limits, please <a href="https://developer.gridics.com/contact" target="_blank">Contact Us</a> with more details.
+    
+     ## Authentication
+     All Gridics APIs use API keys to authenticate requests. You can view and manage your API keys in the Developer Portal under the <a href="https://developer.gridics.com/user/apps" target="_blank">Apps</a> section.
+
+     Your API keys carry usage statistics, so be sure to keep them secure. Don't share your secret API keys in publicly accessible areas such as GitHub, client-side code, and so forth.
+    
+     Provide your API key as the ***x-api-key*** header.
+
+     You must make all API calls over <a href="https://en.wikipedia.org/wiki/HTTP_Secure" target="_blank">HTTPS</a>. Calls that you make over plain HTTP will fail. API requests without authentication will also fail.
+
+     ```shell
+     curl -X GET "https://api.gridics.com/v1/markets" \
+     -H "x-api-key: YOUR_API_KEY"
+     ```
+    
+     <div class="alert alert-info border-0 rounded-sm alert-dismissible" role="alert">
+    Please replace <strong>YOUR_API_KEY</strong>  with the API key found under the Credentials section of your App. 
+     </div>
+    
+     **Invalid API key response**
+     ```json
+    {
+      "status": "ERROR",
+      "messages": [
+        "Invalid ApiKey"
+      ]
+    }
+     ```
+
+     **Missing API key response**
+     ```json
+     {
+      "status": "ERROR",
+      "messages": [
+        "Failed to resolve API Key variable request.header.x-api-key"
+      ]
+    }
+     ```
+
+     **Wrong API key response**
+     ```json
+     {
+      "status": "ERROR",
+      "messages": [
+        "Invalid ApiKey for given resource"
+      ]
+    }
+     ```
+
+    # Request Parameters
+
+     (Coming Soon)
+
+     **Market Availability API is included with all Zoning API products**

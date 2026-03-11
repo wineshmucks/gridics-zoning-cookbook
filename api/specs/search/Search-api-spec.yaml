@@ -1,0 +1,117 @@
+openapi: 3.0.1
+info:
+  version: 0.0.1
+  title: Search API
+  description: |-
+    # Overview
+    
+     The Search API **is bundled with each Zoning API product tier** and is used to retrieve a list of parcels' GroupIDs, which can then be used to make individual requests to the Zoning API. Gridics makes the Search API available **‘Free of Charge’**. Though this API is Free of Charge, it is more restrictive with Rate Limits. 
+    
+     The Search API is a REST API that responds in JSON format.
+    
+     <div class="alert alert-info border-0 rounded-sm alert-dismissible" role="alert">
+     <strong>Protocol: </strong>HTTPS v1.1<br>
+     <strong>Method: </strong>GET<br>
+     <strong>URL: </strong><a href="https://api.gridics.com/v1/search" target="_blank">https://api.gridics.com/v1/search</a><br>
+     <strong>Response Format: </strong>JSON
+     </div>
+
+     ## Environments
+    
+     The addressable API base URL/URI environments are:
+    
+     | Environment | Description |
+     | --- | --- |
+     | https://api.gridics.com/v1/search| Sandbox and production environment |
+    
+    
+     ## Rate limits
+    
+     Rate limits protect the Gridics infrastructure from suspicious requests that exceed defined thresholds.
+    
+     DEMO APIs are limited to **10 calls per second** and **50 lifetime calls**.
+    
+     Production APIs are limited to **10 calls per second** and **500 calls per month**.
+    
+     Additional rate limits are available and they are granted according to your specific use case. If you would like to request additional limits, please <a href="https://developer.gridics.com/contact" target="_blank">Contact Us</a> with more details.
+    
+     ## Authentication
+     All Gridics APIs use API keys to authenticate requests. You can view and manage your API keys in the Developer Portal under the <a href="https://developer.gridics.com/user/apps" target="_blank">Apps</a> section.
+
+     Your API keys carry usage statistics, so be sure to keep them secure. Don't share your secret API keys in publicly accessible areas such as GitHub, client-side code, and so forth.
+    
+     Provide your API key as the ***x-api-key*** header.
+
+     You must make all API calls over <a href="https://en.wikipedia.org/wiki/HTTP_Secure" target="_blank">HTTPS</a>. Calls that you make over plain HTTP will fail. API requests without authentication will also fail.
+
+     ```shell
+     curl -X GET "https://api.gridics.com/prod/v1/search?searchPolygon=[[[-104.94047761618103,39.754602384794055],[-104.94054116830583,39.75826665739592],[-104.933995299445,39.75836436866328],[-104.93386819519539,39.754602384794055],[-104.94047761618103,39.754602384794055]]]&page=3" \
+     -H "x-api-key: YOUR_API_KEY"
+     ```
+    
+     <div class="alert alert-info border-0 rounded-sm alert-dismissible" role="alert">
+    Please replace <strong>YOUR_API_KEY</strong>  with the API key found under the Credentials section of your App. 
+     </div>
+    
+     **Invalid API key response**
+     ```json
+    {
+      "status": "ERROR",
+      "messages": [
+        "Invalid ApiKey"
+      ]
+    }
+     ```
+
+     **Missing API key response**
+     ```json
+     {
+      "status": "ERROR",
+      "messages": [
+        "Failed to resolve API Key variable request.header.x-api-key"
+      ]
+    }
+     ```
+
+     **Wrong API key response**
+     ```json
+     {
+      "status": "ERROR",
+      "messages": [
+        "Invalid ApiKey for given resource"
+      ]
+    }
+     ```
+
+    # Request Parameters
+
+     | Request Parameters | Details | Example |
+     | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+     | searchPolygon      | <span style="color:red;">*Required: </span><br>A string of points to make up a polygon. The first and the last point should match to complete the polygonal shape.<br>Coordinates must be in the <a href="https://en.wikipedia.org/wiki/GeoJSON" target="_blank">GeoJSON</a> format represented by [longitude, latitude]. **The searchPolygon** returns a maximum of 100 GroupIDs per page and supports pagination.<br> <a href="https://datatracker.ietf.org/doc/html/rfc7946" target="_blank">Additional GeoJSON info</a>| [[[-104.94041406405621,39.761881881962836],[-104.91270533761715,39.76183302884226],[-104.91270533761715,39.75470010125997],[-104.94054116830583,39.75470010125997],[-104.94041406405621,39.761881881962836]]]|
+     | page               | The **page** parameter can be used to specify which page of results to collect GroupIDs for.| 4                                |
+
+     The below example shows a truncated version of results demonstrating a polygon search that returned 276 parcels paginated into 3 pages.
+
+     ```json
+      {
+        "status": "OK",
+        "rows": 276,
+        "dataRows": 100,
+        "pages": 3,
+        "page": 1,
+        "data": [
+          "2176a1860c5a4bdea",
+          "26e96e1e08d6e0d59",
+          "2f21e644be735b7bc",
+          "25ef25100d5a44066",
+          "2a3e45908f70f4991",
+          "2eb0dc67bbdde2bd5",
+          ...
+          "2e96578026c62c69d",
+          "21fb2cd553125fc53",
+          "2bc92442628730c53"
+        ]
+      }
+     ```
+
+     **Search API is included with all Zoning API products**

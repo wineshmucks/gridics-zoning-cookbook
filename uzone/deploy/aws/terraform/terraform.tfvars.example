@@ -1,0 +1,28 @@
+aws_region          = "us-east-1"
+environment         = "prod"
+app_allowed_origins = "https://uzone.example.com"
+
+db_username = "uzone"
+db_password = "replace-me"
+
+backend_image_tag  = "latest"
+frontend_image_tag = "latest"
+
+backend_environment = {
+  UZONE_AUTH_PROVIDER            = "clerk"
+  UZONE_PAYMENT_PROVIDERS        = "manual"
+  UZONE_DEFAULT_PAYMENT_PROVIDER = "manual"
+  UZONE_EMAIL_PROVIDER           = "console"
+  UZONE_EMAIL_FROM               = "noreply@example.com"
+  UZONE_CLERK_JWKS_URL           = "https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json"
+  UZONE_CLERK_AUTHORIZED_PARTIES = "https://uzone.example.com"
+}
+
+frontend_environment = {
+  GRIDICS_CLERK_ORGANIZATION_SLUG   = "gridics"
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_live_or_pk_test_replace_me"
+  CLERK_SECRET_KEY                  = "sk_live_or_sk_test_replace_me"
+}
+
+backend_secret_arns  = {}
+frontend_secret_arns = {}

@@ -1,0 +1,224 @@
+"""Admin and configuration schemas."""
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class FeeScheduleCreate(BaseModel):
+    jurisdiction_id: str
+    name: str = Field(min_length=1, max_length=255)
+    status: str = Field(pattern="^(draft|active|retired)$")
+    effective_start_at: datetime | None = None
+    effective_end_at: datetime | None = None
+    created_by_user_id: str | None = None
+
+
+class FeeScheduleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    jurisdiction_id: str
+    name: str
+    status: str
+    effective_start_at: datetime | None
+    effective_end_at: datetime | None
+    created_by_user_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FeeScheduleItemCreate(BaseModel):
+    fee_schedule_id: str
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    fee_type: str = Field(min_length=1, max_length=50)
+    amount_cents: int = Field(ge=0)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    applies_to_letter_type: str | None = Field(default=None, max_length=50)
+    applies_to_processing_type: str | None = Field(default=None, max_length=50)
+    applies_to_delivery_method: str | None = Field(default=None, max_length=50)
+    tax_mode: str | None = Field(default=None, max_length=50)
+    is_active: bool = True
+    metadata_json: dict | None = None
+
+
+class FeeScheduleItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    fee_schedule_id: str
+    code: str
+    name: str
+    fee_type: str
+    amount_cents: int
+    currency: str
+    applies_to_letter_type: str | None
+    applies_to_processing_type: str | None
+    applies_to_delivery_method: str | None
+    tax_mode: str | None
+    is_active: bool
+    metadata_json: dict | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LetterTemplateCreate(BaseModel):
+    jurisdiction_id: str
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    letter_type: str = Field(pattern="^(standard|comprehensive)$")
+    status: str = Field(pattern="^(draft|active|archived)$")
+    template_body: str = Field(min_length=1)
+    merge_variables_json: list | dict | None = None
+    version: int = Field(default=1, ge=1)
+    created_by_user_id: str | None = None
+
+
+class LetterTemplateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    jurisdiction_id: str
+    code: str
+    name: str
+    letter_type: str
+    status: str
+    template_body: str
+    merge_variables_json: list | dict | None
+    version: int
+    created_by_user_id: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EmailTemplateClientContextRead(BaseModel):
+    id: str
+    client_id: str
+    clerk_organization_id: str | None
+    city_name: str
+    department_name: str
+
+
+class EmailTemplateOverrideUpsert(BaseModel):
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    category: str = Field(default="request_updates", min_length=1, max_length=100)
+    subject_template: str = Field(min_length=1)
+    body_template: str = Field(min_length=1)
+    status: str = Field(pattern="^(draft|active|inactive)$")
+
+
+class EmailTemplateEffectiveRead(BaseModel):
+    id: str
+    code: str
+    trigger_state: str
+    name: str
+    description: str | None
+    category: str
+    subject_template: str
+    body_template: str
+    status: str
+    version: int
+    owner_organization_id: str | None
+    default_template_id: str
+    override_template_id: str | None
+    is_override: bool
+    updated_at: datetime
+
+
+class EmailTemplatesResponse(BaseModel):
+    client: EmailTemplateClientContextRead
+    templates: list[EmailTemplateEffectiveRead]
+
+
+class TenantClientCreate(BaseModel):
+    client_id: str = Field(min_length=1, max_length=100)
+    clerk_organization_id: str = Field(min_length=1, max_length=255)
+    city_name: str = Field(min_length=1, max_length=255)
+    department_name: str = Field(min_length=1, max_length=255, default="Planning & Zoning Department")
+    jurisdiction_id: str | None = None
+    standard_letter_fee_cents: int = Field(default=0, ge=0)
+    comprehensive_letter_fee_cents: int = Field(default=0, ge=0)
+    expedited_fee_cents: int = Field(default=0, ge=0)
+    support_phone: str | None = Field(default=None, max_length=50)
+    support_email: str | None = Field(default=None, max_length=255)
+    contact_address: str | None = Field(default=None, max_length=255)
+    settings_json: dict | None = None
+
+
+class TenantClientRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    client_id: str
+    clerk_organization_id: str | None
+    jurisdiction_id: str | None
+    city_name: str
+    department_name: str
+    standard_letter_fee_cents: int
+    comprehensive_letter_fee_cents: int
+    expedited_fee_cents: int
+    support_phone: str | None
+    support_email: str | None
+    contact_address: str | None
+    is_active: bool
+    settings_json: dict | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TenantClientStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class TenantExperienceSettingsRead(BaseModel):
+    zoning_code_url: str | None
+
+
+class TenantExperienceSettingsUpdate(BaseModel):
+    zoning_code_url: str | None = Field(default=None, max_length=2000)
+
+
+class ZoningKnowledgeLatestRunRead(BaseModel):
+    id: str
+    mode: str
+    status: str
+    source_url: str
+    pages_crawled: int
+    documents_extracted: int
+    sections_extracted: int
+    chunks_upserted: int
+    error_message: str | None
+    started_at: datetime
+    completed_at: datetime | None
+
+
+class ZoningKnowledgeStatusRead(BaseModel):
+    client_id: str
+    zoning_code_url: str | None
+    documents: int
+    sections: int
+    chunks: int
+    latest_run: ZoningKnowledgeLatestRunRead | None
+
+
+class ZoningKnowledgeIngestRequest(BaseModel):
+    mode: str = Field(pattern="^(ingest|reindex)$")
+
+
+class ZoningKnowledgeQueryRequest(BaseModel):
+    query: str = Field(min_length=1)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class ZoningKnowledgeQueryResultRead(BaseModel):
+    content: str
+    name: str | None
+    meta_data: dict | None
+
+
+class ZoningKnowledgeQueryResponse(BaseModel):
+    query: str
+    results: list[ZoningKnowledgeQueryResultRead]

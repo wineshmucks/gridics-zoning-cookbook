@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     clerk_pem_public_key: str | None = None
     clerk_jwks_url: str = "https://api.clerk.com/v1/jwks"
     clerk_authorized_parties: str = "http://localhost:3001,http://127.0.0.1:3001"
+    gridics_clerk_organization_id: str | None = None
     payment_providers: str = "manual"
     default_payment_provider: str = "manual"
     stripe_secret_key: str | None = None

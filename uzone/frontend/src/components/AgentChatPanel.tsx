@@ -1,29 +1,22 @@
 'use client'
 
-import {
-  AssistantRuntimeProvider,
-  ComposerPrimitive,
-  MessagePrimitive,
-  ThreadPrimitive,
-  useAui,
-  useAuiState,
-  useLocalRuntime,
-  type ChatModelAdapter,
-  type ChatModelRunResult,
-  type ThreadAssistantMessagePart,
-  type ThreadMessage,
-} from '@assistant-ui/react'
-import { useMemo, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 type AgentRunResponse = {
   session_id?: string
+  run_id?: string
   content?: unknown
   messages?: Array<{
     role?: string
     content?: unknown
   }>
+}
+
+type CompletedRunFetchResult = {
+  payload: AgentRunResponse | null
+  debug: string | null
 }
 
 type StreamStepStatus = 'running' | 'complete' | 'error'
@@ -35,11 +28,21 @@ type StreamStep = {
   status: StreamStepStatus
 }
 
-type AssistantMetadata = {
-  custom?: {
-    runSteps?: StreamStep[]
-    runState?: string
-  }
+type StreamToolCall = {
+  id: string
+  label: string
+  detail?: string
+  status: StreamStepStatus
+}
+
+type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  steps?: StreamStep[]
+  toolCalls?: StreamToolCall[]
+  status?: 'streaming' | 'complete' | 'error'
+  error?: string | null
 }
 
 type SSEEvent = {
@@ -47,88 +50,107 @@ type SSEEvent = {
   data: Record<string, unknown>
 }
 
+function formatConversation(messages: ChatMessage[], customerName: string): string {
+  return messages
+    .map((message) => {
+      const speaker = message.role === "user" ? "You" : `${customerName} Assistant`
+      const sections = [`${speaker}\n${message.content || "(no visible message content)"}`]
+
+      if (message.toolCalls?.length) {
+        sections.push(
+          [
+            "Tool activity",
+            ...message.toolCalls.map((toolCall) =>
+              `- ${toolCall.label}${toolCall.detail ? `: ${toolCall.detail}` : ""} [${toolCall.status}]`,
+            ),
+          ].join("\n"),
+        )
+      }
+
+      if (message.steps?.length) {
+        sections.push(
+          [
+            "Run timeline",
+            ...message.steps.map((step) => `- ${step.label}${step.detail ? `: ${step.detail}` : ""} [${step.status}]`),
+          ].join("\n"),
+        )
+      }
+
+      return sections.join("\n\n")
+    })
+    .join("\n\n---\n\n")
+}
+
 function normalizeContent(value: unknown): string {
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     return value
   }
 
   if (Array.isArray(value)) {
     return value
       .map((item) => {
-        if (typeof item === 'string') {
+        if (typeof item === "string") {
           return item
         }
-        if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
+        if (item && typeof item === "object" && "text" in item && typeof item.text === "string") {
           return item.text
         }
-        return ''
+        return ""
       })
       .filter(Boolean)
-      .join('\n\n')
+      .join("\n\n")
   }
 
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     return JSON.stringify(value, null, 2)
   }
 
-  return ''
+  return ""
+}
+
+function sanitizeAssistantContent(text: string): string {
+  if (!text) {
+    return ""
+  }
+
+  let sanitized = text
+
+  sanitized = sanitized.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+  sanitized = sanitized.replace(/<function=[^>]+>[\s\S]*?<\/function>/gi, "")
+  sanitized = sanitized.replace(/<parameter=[^>]+>[\s\S]*?<\/parameter>/gi, "")
+  sanitized = sanitized.replace(/\banalyze_customer_zoning_request\(\.\.\.\) completed in [0-9.]+s\.?\s*/gi, "")
+  sanitized = sanitized.replace(/\bquery_customer_zoning_code\(\.\.\.\) completed in [0-9.]+s\.?\s*/gi, "")
+
+  return sanitized.trim()
 }
 
 function getAssistantContent(payload: AgentRunResponse): string {
-  const directContent = normalizeContent(payload.content)
+  const directContent = sanitizeAssistantContent(normalizeContent(payload.content))
   if (directContent) {
     return directContent
   }
 
   const assistantMessage = [...(payload.messages || [])]
     .reverse()
-    .find((message) => message.role === 'assistant' || message.role === 'model')
+    .find((message) => message.role === "assistant" || message.role === "model")
 
-  return normalizeContent(assistantMessage?.content)
-}
-
-function getLatestUserMessage(messages: readonly ThreadMessage[]): string {
-  const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')
-  if (!latestUserMessage) {
-    return ''
-  }
-
-  return latestUserMessage.content
-    .map((part) => (part.type === 'text' ? part.text : ''))
-    .filter(Boolean)
-    .join('\n\n')
-}
-
-function getMessageTextContent(parts: readonly { type: string; text?: string }[]): string {
-  return parts
-    .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-    .filter(Boolean)
-    .join('\n\n')
-}
-
-function buildContent(text: string): ThreadAssistantMessagePart[] {
-  return [
-    {
-      type: 'text',
-      text,
-    },
-  ] satisfies ThreadAssistantMessagePart[]
+  return sanitizeAssistantContent(normalizeContent(assistantMessage?.content))
 }
 
 function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string } {
-  const blocks = chunk.split('\n\n')
-  const remainder = blocks.pop() ?? ''
+  const blocks = chunk.split("\n\n")
+  const remainder = blocks.pop() ?? ""
   const events: SSEEvent[] = []
 
   for (const block of blocks) {
-    const lines = block.split('\n')
-    let event = 'message'
+    const lines = block.split("\n")
+    let event = "message"
     const dataLines: string[] = []
 
     for (const line of lines) {
-      if (line.startsWith('event:')) {
+      if (line.startsWith("event:")) {
         event = line.slice(6).trim()
-      } else if (line.startsWith('data:')) {
+      } else if (line.startsWith("data:")) {
         dataLines.push(line.slice(5).trim())
       }
     }
@@ -140,10 +162,10 @@ function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string 
     try {
       events.push({
         event,
-        data: JSON.parse(dataLines.join('\n')) as Record<string, unknown>,
+        data: JSON.parse(dataLines.join("\n")) as Record<string, unknown>,
       })
     } catch {
-      // Ignore malformed SSE payloads rather than breaking the full run.
+      // Ignore malformed chunks rather than fail the whole run.
     }
   }
 
@@ -152,18 +174,45 @@ function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string 
 
 function toStepLabel(toolName?: string): string {
   if (!toolName) {
-    return 'Working'
+    return "Working"
   }
 
-  if (toolName === 'query_customer_zoning_code') {
-    return 'Lookup knowledge'
+  if (toolName === "query_customer_zoning_code") {
+    return "Lookup knowledge"
   }
 
   return toolName
-    .split('_')
+    .split("_")
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
+    .join(" ")
+}
+
+function truncateMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value
+  }
+
+  const start = value.slice(0, Math.max(0, Math.floor((maxLength - 1) / 2))).trimEnd()
+  const end = value.slice(-Math.max(0, Math.floor((maxLength - 2) / 2))).trimStart()
+  return `${start}…${end}`
+}
+
+function humanizeAddress(value: string): string {
+  return truncateMiddle(
+    value
+      .replace(/\s+/g, " ")
+      .replace(/\bne\b/gi, "NE")
+      .replace(/\bnw\b/gi, "NW")
+      .replace(/\bse\b/gi, "SE")
+      .replace(/\bsw\b/gi, "SW")
+      .trim(),
+    42,
+  )
+}
+
+function summarizeQuery(value: string): string {
+  return truncateMiddle(value.replace(/\s+/g, " ").trim(), 64)
 }
 
 function toStepDetail(tool: Record<string, unknown> | undefined): string | undefined {
@@ -171,18 +220,40 @@ function toStepDetail(tool: Record<string, unknown> | undefined): string | undef
     return undefined
   }
 
+  const toolName = typeof tool.tool_name === "string" ? tool.tool_name : ""
   const args = tool.tool_args
-  if (!args || typeof args !== 'object') {
+  if (!args || typeof args !== "object") {
     return undefined
   }
 
   const toolArgs = args as Record<string, unknown>
-  const query = typeof toolArgs.query === 'string' ? toolArgs.query.trim() : ''
-  if (query) {
-    return query
+  const address = typeof toolArgs.address === "string" ? toolArgs.address.trim() : ""
+  const query = typeof toolArgs.query === "string" ? toolArgs.query.trim() : ""
+  const standardizedAddress =
+    typeof toolArgs.standardized_address === "string" ? toolArgs.standardized_address.trim() : ""
+  const zoneName = typeof toolArgs.zone_combination_name === "string" ? toolArgs.zone_combination_name.trim() : ""
+  const typology = typeof toolArgs.typology === "string" ? toolArgs.typology.trim() : ""
+
+  if (toolName === "analyze_customer_zoning_request" && address) {
+    return `Resolving parcel for ${humanizeAddress(address)}`
   }
 
-  const limit = typeof toolArgs.limit === 'number' ? toolArgs.limit : null
+  if (toolName === "query_customer_zoning_code" && standardizedAddress) {
+    return `Searching code for ${humanizeAddress(standardizedAddress)}`
+  }
+
+  if (toolName === "query_customer_zoning_code" && zoneName) {
+    return typology ? `Searching ${zoneName} typology ${typology} standards` : `Searching ${zoneName} standards`
+  }
+
+  if (query) {
+    if (toolName === "query_customer_zoning_code") {
+      return `Searching knowledge: ${summarizeQuery(query)}`
+    }
+    return summarizeQuery(query)
+  }
+
+  const limit = typeof toolArgs.limit === "number" ? toolArgs.limit : null
   if (limit) {
     return `Searching top ${limit} matches`
   }
@@ -191,14 +262,33 @@ function toStepDetail(tool: Record<string, unknown> | undefined): string | undef
 }
 
 function summarizeToolResult(raw: unknown): string | undefined {
-  if (typeof raw !== 'string') {
+  if (typeof raw !== "string") {
     return undefined
   }
 
   try {
-    const parsed = JSON.parse(raw) as { results?: unknown[] }
+    const parsed = JSON.parse(raw) as {
+      results?: unknown[]
+      question_type?: string
+      address_resolution?: { standardized_address?: string; lookup_ready?: boolean }
+      gridics?: { zone_combination_name?: string; typology?: string }
+    }
+    if (parsed.question_type === "specific_address") {
+      const address = parsed.address_resolution?.standardized_address
+      const zone = parsed.gridics?.zone_combination_name
+      if (address && zone) {
+        return `${humanizeAddress(address)} matched ${zone}`
+      }
+      if (address) {
+        return `${humanizeAddress(address)} resolved`
+      }
+    }
+
     if (Array.isArray(parsed.results)) {
-      return parsed.results.length === 1 ? '1 zoning source matched' : `${parsed.results.length} zoning sources matched`
+      if (parsed.results.length === 0) {
+        return "No matching zoning sources found"
+      }
+      return parsed.results.length === 1 ? "1 zoning source matched" : `${parsed.results.length} zoning sources matched`
     }
   } catch {
     return undefined
@@ -221,153 +311,167 @@ function upsertStep(steps: StreamStep[], next: StreamStep): StreamStep[] {
   return updated
 }
 
-function buildMetadata(steps: StreamStep[], runState: string): ChatModelRunResult['metadata'] {
-  return {
-    custom: {
-      runSteps: steps,
-      runState,
-    },
+function buildEmptyAssistantResponse(debug: string | null) {
+  return debug
+    ? `The assistant completed the run but did not return displayable text.\n\nDebug: ${debug}`
+    : "The assistant returned an empty response."
+}
+
+function appendDebugStep(steps: StreamStep[], debug: string | null) {
+  if (!debug) {
+    return steps
+  }
+
+  return upsertStep(steps, {
+    id: "debug-run-fetch",
+    label: "Debug",
+    detail: debug,
+    status: "error",
+  })
+}
+
+function upsertToolCall(toolCalls: StreamToolCall[], next: StreamToolCall): StreamToolCall[] {
+  const index = toolCalls.findIndex((toolCall) => toolCall.id === next.id)
+  if (index === -1) {
+    return [...toolCalls, next]
+  }
+
+  const updated = [...toolCalls]
+  updated[index] = {
+    ...updated[index],
+    ...next,
+  }
+  return updated
+}
+
+async function fetchCompletedRun(
+  backendBase: string,
+  agentId: string,
+  runId: string,
+  sessionId: string | null,
+): Promise<CompletedRunFetchResult> {
+  if (!sessionId) {
+    return {
+      payload: null,
+      debug: "Completed run lookup was skipped because no session_id was available.",
+    }
+  }
+
+  try {
+    const response = await fetch(
+      `${backendBase}/agents/${agentId}/runs/${runId}?session_id=${encodeURIComponent(sessionId)}`,
+      {
+        cache: "no-store",
+      },
+    )
+    if (!response.ok) {
+      const body = await response.text().catch(() => "")
+      return {
+        payload: null,
+        debug: `Completed run lookup failed with HTTP ${response.status}${body ? `: ${body}` : ""}`,
+      }
+    }
+    return {
+      payload: (await response.json()) as AgentRunResponse,
+      debug: null,
+    }
+  } catch (error) {
+    return {
+      payload: null,
+      debug: error instanceof Error ? error.message : "Completed run lookup failed.",
+    }
   }
 }
 
-function buildStreamUpdate(
-  content: string,
-  steps: StreamStep[],
-  runState: string,
-  status?: ChatModelRunResult['status'],
-): ChatModelRunResult {
-  return {
-    content: buildContent(content || (runState === 'error' ? 'The assistant run failed before returning any content.' : '')),
-    metadata: buildMetadata(steps, runState),
-    ...(status ? { status } : {}),
-  }
-}
-
-function RunSteps() {
-  const metadata = useAuiState((state) => state.message.metadata as AssistantMetadata)
-  const status = useAuiState((state) => state.message.status)
-  const steps = metadata?.custom?.runSteps ?? []
-
-  if (!steps.length) {
+function RunSteps({ steps, status }: { steps?: StreamStep[]; status?: ChatMessage["status"] }) {
+  if (!steps?.length) {
     return null
   }
 
+  const [isOpen, setIsOpen] = useState(false)
+
   return (
     <div className="assistant-run-steps">
-      <div className="assistant-run-steps-label">
-        {status?.type === 'complete' ? 'Run trace' : 'Live steps'}
-      </div>
-      <div className="assistant-run-step-list">
-        {steps.map((step) => (
-          <div key={step.id} className={`assistant-run-step assistant-run-step-${step.status}`}>
-            <span className="assistant-run-step-dot" aria-hidden="true" />
-            <div className="assistant-run-step-copy">
-              <strong>{step.label}</strong>
-              {step.detail ? <span>{step.detail}</span> : null}
+      <button
+        className="assistant-run-toggle"
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
+      >
+        <span className="assistant-run-steps-label">{status === "complete" ? "Run timeline" : "In progress"}</span>
+        <span className="assistant-run-toggle-copy">
+          {steps.length} step{steps.length === 1 ? "" : "s"}
+        </span>
+        <span className="assistant-run-toggle-chevron" aria-hidden="true">
+          {isOpen ? "−" : "+"}
+        </span>
+      </button>
+      {isOpen ? (
+        <div className="assistant-run-step-list">
+          {steps.map((step) => (
+            <div key={step.id} className={`assistant-run-step assistant-run-step-${step.status}`}>
+              <span className="assistant-run-step-dot" aria-hidden="true" />
+              <div className="assistant-run-step-copy">
+                <strong>{step.label}</strong>
+                {step.detail ? <span>{step.detail}</span> : null}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
 
-function AssistantMessage({ customerName }: { customerName: string }) {
-  const role = useAuiState((state) => state.message.role)
-  const content = useAuiState((state) => state.message.content)
-  const status = useAuiState((state) => state.message.status)
-  const error = useAuiState((state) =>
-    state.message.status?.type === 'incomplete' && state.message.status.reason === 'error'
-      ? state.message.status.error
-      : null,
-  )
-  const textContent = getMessageTextContent(content)
-  const isStreaming = role === 'assistant' && status?.type !== 'complete'
+function ToolCallList({ toolCalls }: { toolCalls?: StreamToolCall[] }) {
+  if (!toolCalls?.length) {
+    return null
+  }
+
+  const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <MessagePrimitive.Root
-      className={`agent-chat-message ${
-        role === 'assistant' ? 'agent-chat-message-assistant' : 'agent-chat-message-user'
-      }`}
-    >
-      <div className="agent-chat-message-header">
-        <div className="agent-chat-message-role">
-          {role === 'assistant' ? `${customerName} Assistant` : 'You'}
-        </div>
-        {isStreaming ? <div className="agent-chat-message-status">Streaming</div> : null}
-      </div>
-      <div className="assistant-ui-message-content">
-        {role === 'assistant' ? (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
-        ) : (
-          <div className="assistant-ui-user-content">{textContent}</div>
-        )}
-      </div>
-      {role === 'assistant' ? <RunSteps /> : null}
-      <MessagePrimitive.Error>
-        <div className="status-banner status-banner-error">
-          {typeof error === 'string' ? error : 'Unable to reach the assistant.'}
-        </div>
-      </MessagePrimitive.Error>
-    </MessagePrimitive.Root>
-  )
-}
-
-function AssistantToolbar({ onNewChat }: { onNewChat: () => void }) {
-  const aui = useAui()
-  const isRunning = useAuiState((state) => state.thread.isRunning)
-
-  return isRunning ? (
-    <ComposerPrimitive.Cancel className="button secondary" type="button">
-      Stop
-    </ComposerPrimitive.Cancel>
-  ) : (
-    <button
-      className="button secondary"
-      type="button"
-      onClick={() => {
-        onNewChat()
-        aui.thread().reset()
-      }}
-    >
-      New Chat
-    </button>
-  )
-}
-
-function AssistantComposer({
-  placeholder,
-  variant,
-}: {
-  placeholder: string
-  variant: 'default' | 'chatgpt'
-}) {
-  const isRunning = useAuiState((state) => state.thread.isRunning)
-
-  return (
-    <ComposerPrimitive.Root className={`agent-chat-form assistant-ui-composer assistant-ui-composer-${variant}`}>
-      <div className="assistant-ui-composer-row">
-        <label className="field assistant-ui-input-wrap">
-          <ComposerPrimitive.Input
-            className="assistant-ui-input"
-            rows={1}
-            placeholder={placeholder}
-            disabled={isRunning}
-            submitMode="ctrlEnter"
-          />
-          <ComposerPrimitive.Send
-            className="assistant-ui-send-button"
-            type="button"
-            aria-label={isRunning ? 'Sending' : 'Send message'}
+    <div className="assistant-run-steps assistant-tool-calls">
+      <button
+        className="assistant-run-toggle"
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
+      >
+        <span className="assistant-run-steps-label">Tool activity</span>
+        <span className="assistant-run-toggle-copy">
+          {toolCalls.length} tool{toolCalls.length === 1 ? "" : "s"}
+        </span>
+        <span className="assistant-run-toggle-chevron" aria-hidden="true">
+          {isOpen ? "−" : "+"}
+        </span>
+      </button>
+      <div className="assistant-tool-chip-row">
+        {toolCalls.map((toolCall) => (
+          <div
+            key={`${toolCall.id}-chip`}
+            className={`assistant-tool-chip assistant-tool-chip-${toolCall.status}`}
+            title={toolCall.detail || toolCall.label}
           >
-            {isRunning ? '...' : '->'}
-          </ComposerPrimitive.Send>
-        </label>
+            <span className="assistant-tool-chip-dot" aria-hidden="true" />
+            <span>{toolCall.label}</span>
+          </div>
+        ))}
       </div>
-      <div className="assistant-ui-composer-footer">
-        <div className="assistant-ui-composer-hint">Ctrl+Enter to send. Enter for a new line.</div>
-      </div>
-    </ComposerPrimitive.Root>
+      {isOpen ? (
+        <div className="assistant-run-step-list">
+          {toolCalls.map((toolCall) => (
+            <div key={toolCall.id} className={`assistant-run-step assistant-run-step-${toolCall.status}`}>
+              <span className="assistant-run-step-dot" aria-hidden="true" />
+              <div className="assistant-run-step-copy">
+                <strong>{toolCall.label}</strong>
+                {toolCall.detail ? <span>{toolCall.detail}</span> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -379,7 +483,7 @@ export function AgentChatPanel({
   surface,
   title,
   description,
-  variant = 'default',
+  variant = "default",
 }: {
   agentId: string
   backendBase: string
@@ -388,302 +492,535 @@ export function AgentChatPanel({
   surface: string
   title: string
   description: string
-  variant?: 'default' | 'chatgpt'
+  variant?: "default" | "chatgpt"
 }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState("")
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [composerError, setComposerError] = useState<string | null>(null)
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle")
+  const viewportRef = useRef<HTMLDivElement | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const runIdRef = useRef<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const adapter = useMemo<ChatModelAdapter>(
-    () => ({
-      run: async function* ({ messages, abortSignal }) {
-        const trimmed = getLatestUserMessage(messages).trim()
-        if (!trimmed) {
-          yield {
-            content: buildContent('Please enter a message before sending.'),
-            status: {
-              type: 'complete',
-              reason: 'stop',
-            },
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) {
+      return
+    }
+    viewport.scrollTop = viewport.scrollHeight
+  }, [messages])
+
+  const updateAssistantMessage = (messageId: string, updater: (message: ChatMessage) => ChatMessage): void => {
+    setMessages((prevMessages) =>
+      prevMessages.map((message) => (message.id === messageId ? updater(message) : message)),
+    )
+  }
+
+  const sendMessage = async () => {
+    const trimmed = input.trim()
+    if (!trimmed || isStreaming) {
+      return
+    }
+
+    const userMessageId = `user-${Date.now()}`
+    const assistantMessageId = `assistant-${Date.now() + 1}`
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    setComposerError(null)
+    setInput("")
+    setIsStreaming(true)
+
+    const initialSteps: StreamStep[] = [
+      {
+        id: "run-started",
+        label: "Preparing answer",
+        detail: "Opening an agent run for this tenant-scoped conversation",
+        status: "running",
+      },
+    ]
+
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        id: userMessageId,
+        role: "user",
+        content: trimmed,
+        status: "complete",
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        steps: initialSteps,
+        status: "streaming",
+      },
+    ])
+
+    const body = new FormData()
+    body.set("message", trimmed)
+    body.set("stream", "true")
+    if (sessionIdRef.current) {
+      body.set("session_id", sessionIdRef.current)
+    }
+    body.set(
+      "dependencies",
+      JSON.stringify({
+        client_id: clientId,
+        customer_name: customerName,
+      }),
+    )
+    body.set(
+      "metadata",
+      JSON.stringify({
+        surface,
+        client_id: clientId,
+      }),
+    )
+
+    let textContent = ""
+    let runSteps = initialSteps
+    let toolCalls: StreamToolCall[] = []
+    let provisionalContent = ""
+    let lastVisibleContent = ""
+    let sawToolCall = false
+    let answerPhaseStarted = false
+    let modelRequestCount = 0
+
+    const handleStreamUpdate = (next: Partial<ChatMessage>) => {
+      updateAssistantMessage(assistantMessageId, (message) => ({
+        ...message,
+        ...next,
+      }))
+    }
+
+    const processEvent = async (event: SSEEvent): Promise<boolean> => {
+      const payload = event.data
+      const maybeSessionId = typeof payload.session_id === "string" ? payload.session_id : null
+      const maybeRunId = typeof payload.run_id === "string" ? payload.run_id : null
+      if (maybeSessionId) {
+        sessionIdRef.current = maybeSessionId
+      }
+      if (maybeRunId) {
+        runIdRef.current = maybeRunId
+      }
+
+      if (event.event === "RunStarted") {
+        const model = typeof payload.model === "string" ? payload.model : "configured model"
+        runSteps = upsertStep(runSteps, {
+          id: "run-started",
+          label: "Preparing answer",
+          detail: `Connected to ${model}`,
+          status: "complete",
+        })
+        runSteps = upsertStep(runSteps, {
+          id: "model-request",
+          label: "Drafting response",
+          detail: "The assistant is planning the answer",
+          status: "running",
+        })
+        handleStreamUpdate({ steps: runSteps })
+        return false
+      }
+
+      if (event.event === "ModelRequestStarted") {
+        modelRequestCount += 1
+        if (sawToolCall || modelRequestCount > 1) {
+          answerPhaseStarted = true
+        }
+        runSteps = upsertStep(runSteps, {
+          id: "model-request",
+          label: answerPhaseStarted ? "Writing final answer" : "Drafting response",
+          detail: answerPhaseStarted ? "Using tool results to write the answer" : "The assistant is planning the answer",
+          status: "running",
+        })
+        handleStreamUpdate({ steps: runSteps, toolCalls })
+        return false
+      }
+
+      if (event.event === "ModelRequestCompleted") {
+        runSteps = upsertStep(runSteps, {
+          id: "model-request",
+          label: answerPhaseStarted ? "Writing final answer" : "Drafting response",
+          detail: answerPhaseStarted ? "Final answer draft completed" : "Planning completed",
+          status: "complete",
+        })
+        handleStreamUpdate({ steps: runSteps, toolCalls })
+        return false
+      }
+
+      if (event.event === "ToolCallStarted") {
+        const tool = payload.tool && typeof payload.tool === "object" ? (payload.tool as Record<string, unknown>) : undefined
+        const toolId =
+          typeof tool?.tool_call_id === "string"
+            ? tool.tool_call_id
+            : `tool-${typeof tool?.tool_name === "string" ? tool.tool_name : runSteps.length}`
+        sawToolCall = true
+        provisionalContent = ""
+        runSteps = upsertStep(runSteps, {
+          id: toolId,
+          label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          detail: toStepDetail(tool),
+          status: "running",
+        })
+        toolCalls = upsertToolCall(toolCalls, {
+          id: toolId,
+          label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          detail: toStepDetail(tool),
+          status: "running",
+        })
+        handleStreamUpdate({ steps: runSteps, toolCalls })
+        return false
+      }
+
+      if (event.event === "ToolCallCompleted") {
+        const tool = payload.tool && typeof payload.tool === "object" ? (payload.tool as Record<string, unknown>) : undefined
+        const toolId =
+          typeof tool?.tool_call_id === "string"
+            ? tool.tool_call_id
+            : `tool-${typeof tool?.tool_name === "string" ? tool.tool_name : runSteps.length}`
+        runSteps = upsertStep(runSteps, {
+          id: toolId,
+          label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          detail: summarizeToolResult(tool?.result) || toStepDetail(tool),
+          status: "complete",
+        })
+        toolCalls = upsertToolCall(toolCalls, {
+          id: toolId,
+          label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          detail: summarizeToolResult(tool?.result) || toStepDetail(tool),
+          status: "complete",
+        })
+        handleStreamUpdate({ steps: runSteps, toolCalls })
+        return false
+      }
+
+      if (event.event === "ToolCallError") {
+        const tool = payload.tool && typeof payload.tool === "object" ? (payload.tool as Record<string, unknown>) : undefined
+        const toolId =
+          typeof tool?.tool_call_id === "string"
+            ? tool.tool_call_id
+            : `tool-${typeof tool?.tool_name === "string" ? tool.tool_name : runSteps.length}`
+        runSteps = upsertStep(runSteps, {
+          id: toolId,
+          label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          detail: typeof payload.error === "string" ? payload.error : "Tool execution failed",
+          status: "error",
+        })
+        toolCalls = upsertToolCall(toolCalls, {
+          id: toolId,
+          label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          detail: typeof payload.error === "string" ? payload.error : "Tool execution failed",
+          status: "error",
+        })
+        handleStreamUpdate({ steps: runSteps, toolCalls, status: "error" })
+        return false
+      }
+
+      if (event.event === "RunContent") {
+        const incomingContent = sanitizeAssistantContent(normalizeContent(payload.content))
+        if (incomingContent) {
+          if (sawToolCall || answerPhaseStarted) {
+            textContent = incomingContent.startsWith(textContent) ? incomingContent : `${textContent}${incomingContent}`
+            lastVisibleContent = textContent
+            handleStreamUpdate({ content: textContent, steps: runSteps, toolCalls, status: "streaming" })
+          } else {
+            provisionalContent = incomingContent.startsWith(provisionalContent)
+              ? incomingContent
+              : `${provisionalContent}${incomingContent}`
+            lastVisibleContent = provisionalContent
+            handleStreamUpdate({ steps: runSteps, toolCalls, status: "streaming" })
           }
-          return
+        }
+        return false
+      }
+
+      if (event.event === "RunContentCompleted") {
+        handleStreamUpdate({ steps: runSteps, toolCalls, status: "streaming" })
+        return false
+      }
+
+      if (event.event === "RunCompleted") {
+        let debugDetail: string | null = null
+        let finalContent = sanitizeAssistantContent(normalizeContent(payload.content))
+
+        if (!finalContent && runIdRef.current) {
+          const completedRun = await fetchCompletedRun(backendBase, agentId, runIdRef.current, sessionIdRef.current)
+          debugDetail = completedRun.debug
+          const fetchedContent = getAssistantContent(completedRun.payload || {})
+          if (fetchedContent) {
+            finalContent = fetchedContent
+          }
         }
 
-        const body = new FormData()
-        body.set('message', trimmed)
-        body.set('stream', 'true')
-        if (sessionIdRef.current) {
-          body.set('session_id', sessionIdRef.current)
+        if (finalContent && finalContent.length >= textContent.length) {
+          textContent = finalContent
         }
-        body.set(
-          'dependencies',
-          JSON.stringify({
-            client_id: clientId,
-            customer_name: customerName,
+        if (textContent) {
+          lastVisibleContent = textContent
+        }
+
+        runSteps = upsertStep(runSteps, {
+          id: "model-request",
+          label: "Drafting response",
+          detail: "Answer completed",
+          status: "complete",
+        })
+        runSteps = appendDebugStep(runSteps, debugDetail)
+        handleStreamUpdate({
+          content: finalContent || textContent || provisionalContent || lastVisibleContent || buildEmptyAssistantResponse(debugDetail),
+          steps: runSteps,
+          toolCalls,
+          status: "complete",
+        })
+        return true
+      }
+
+      if (event.event === "RunError") {
+        const errorMessage =
+          typeof payload.content === "string" && payload.content ? payload.content : "Unable to reach the assistant."
+        runSteps = upsertStep(runSteps, {
+          id: "model-request",
+          label: "Drafting response",
+          detail: errorMessage,
+          status: "error",
+        })
+        handleStreamUpdate({
+          content: textContent || lastVisibleContent || "The assistant run failed before returning any content.",
+          steps: runSteps,
+          toolCalls,
+          status: "error",
+          error: errorMessage,
+        })
+        return true
+      }
+
+      return false
+    }
+
+    try {
+      const response = await fetch(`${backendBase}/agents/${agentId}/runs`, {
+        method: "POST",
+        body,
+        signal: controller.signal,
+        headers: {
+          Accept: "text/event-stream",
+        },
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null
+        throw new Error(payload?.detail || "Unable to reach the assistant.")
+      }
+
+      if (!response.body) {
+        const payload = (await response.json().catch(() => null)) as AgentRunResponse | null
+        sessionIdRef.current = payload?.session_id ?? null
+        handleStreamUpdate({
+          content: getAssistantContent(payload || {}) || "The assistant returned an empty response.",
+          status: "complete",
+          steps: upsertStep(runSteps, {
+            id: "model-request",
+            label: "Drafting response",
+            detail: "Answer completed",
+            status: "complete",
           }),
-        )
-        body.set(
-          'metadata',
-          JSON.stringify({
-            surface,
-            client_id: clientId,
-          }),
-        )
+          toolCalls,
+        })
+        return
+      }
 
-        let response: Response
-        try {
-          response = await fetch(`${backendBase}/agents/${agentId}/runs`, {
-            method: 'POST',
-            body,
-            signal: abortSignal,
-            headers: {
-              Accept: 'text/event-stream',
-            },
-          })
-        } catch (error) {
-          throw error
-        }
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let finished = false
 
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { detail?: string } | null
-          throw new Error(payload?.detail || 'Unable to reach the assistant.')
-        }
-
-        if (!response.body) {
-          const payload = (await response.json().catch(() => null)) as AgentRunResponse | null
-          sessionIdRef.current = payload?.session_id ?? null
-          yield {
-            content: buildContent(getAssistantContent(payload || {}) || 'The assistant returned an empty response.'),
-            status: {
-              type: 'complete',
-              reason: 'stop',
-            },
-          }
-          return
-        }
-
-        let cancelled = false
-        const cancelRemoteRun = () => {
-          cancelled = true
-          if (!runIdRef.current) {
-            return
+      try {
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) {
+            break
           }
 
-          void fetch(`${backendBase}/agents/${agentId}/runs/${runIdRef.current}/cancel`, {
-            method: 'POST',
-            keepalive: true,
-          }).catch(() => null)
-        }
+          buffer += decoder.decode(value, { stream: true })
+          const parsed = parseSSEEvents(buffer)
+          buffer = parsed.remainder
 
-        abortSignal.addEventListener('abort', cancelRemoteRun, { once: true })
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        let textContent = ''
-        let runSteps: StreamStep[] = [
-          {
-            id: 'run-started',
-            label: 'Preparing answer',
-            detail: 'Opening an agent run for this tenant-scoped conversation',
-            status: 'running',
-          },
-        ]
-
-        yield buildStreamUpdate(textContent, runSteps, 'starting')
-
-        try {
-          while (true) {
-            const { value, done } = await reader.read()
-            if (done) {
+          for (const event of parsed.events) {
+            finished = await processEvent(event)
+            if (finished) {
               break
             }
+          }
 
-            buffer += decoder.decode(value, { stream: true })
-            const parsed = parseSSEEvents(buffer)
-            buffer = parsed.remainder
+          if (finished) {
+            break
+          }
+        }
 
-            for (const event of parsed.events) {
-              const payload = event.data
-              const maybeSessionId = typeof payload.session_id === 'string' ? payload.session_id : null
-              const maybeRunId = typeof payload.run_id === 'string' ? payload.run_id : null
-              if (maybeSessionId) {
-                sessionIdRef.current = maybeSessionId
-              }
-              if (maybeRunId) {
-                runIdRef.current = maybeRunId
-              }
-
-              if (event.event === 'RunStarted') {
-                const model = typeof payload.model === 'string' ? payload.model : 'configured model'
-                runSteps = upsertStep(runSteps, {
-                  id: 'run-started',
-                  label: 'Preparing answer',
-                  detail: `Connected to ${model}`,
-                  status: 'complete',
-                })
-                runSteps = upsertStep(runSteps, {
-                  id: 'model-request',
-                  label: 'Drafting response',
-                  detail: 'The assistant is planning the answer',
-                  status: 'running',
-                })
-                yield buildStreamUpdate(textContent, runSteps, 'running')
-                continue
-              }
-
-              if (event.event === 'ToolCallStarted') {
-                const tool =
-                  payload.tool && typeof payload.tool === 'object' ? (payload.tool as Record<string, unknown>) : undefined
-                const toolId =
-                  typeof tool?.tool_call_id === 'string'
-                    ? tool.tool_call_id
-                    : `tool-${typeof tool?.tool_name === 'string' ? tool.tool_name : runSteps.length}`
-                runSteps = upsertStep(runSteps, {
-                  id: toolId,
-                  label: toStepLabel(typeof tool?.tool_name === 'string' ? tool.tool_name : undefined),
-                  detail: toStepDetail(tool),
-                  status: 'running',
-                })
-                yield buildStreamUpdate(textContent, runSteps, 'running')
-                continue
-              }
-
-              if (event.event === 'ToolCallCompleted') {
-                const tool =
-                  payload.tool && typeof payload.tool === 'object' ? (payload.tool as Record<string, unknown>) : undefined
-                const toolId =
-                  typeof tool?.tool_call_id === 'string'
-                    ? tool.tool_call_id
-                    : `tool-${typeof tool?.tool_name === 'string' ? tool.tool_name : runSteps.length}`
-                runSteps = upsertStep(runSteps, {
-                  id: toolId,
-                  label: toStepLabel(typeof tool?.tool_name === 'string' ? tool.tool_name : undefined),
-                  detail: summarizeToolResult(tool?.result) || toStepDetail(tool),
-                  status: 'complete',
-                })
-                yield buildStreamUpdate(textContent, runSteps, 'running')
-                continue
-              }
-
-              if (event.event === 'ToolCallError') {
-                const tool =
-                  payload.tool && typeof payload.tool === 'object' ? (payload.tool as Record<string, unknown>) : undefined
-                const toolId =
-                  typeof tool?.tool_call_id === 'string'
-                    ? tool.tool_call_id
-                    : `tool-${typeof tool?.tool_name === 'string' ? tool.tool_name : runSteps.length}`
-                runSteps = upsertStep(runSteps, {
-                  id: toolId,
-                  label: toStepLabel(typeof tool?.tool_name === 'string' ? tool.tool_name : undefined),
-                  detail: typeof payload.error === 'string' ? payload.error : 'Tool execution failed',
-                  status: 'error',
-                })
-                yield buildStreamUpdate(textContent, runSteps, 'error')
-                continue
-              }
-
-              if (event.event === 'RunContent') {
-                textContent += normalizeContent(payload.content)
-                yield buildStreamUpdate(textContent, runSteps, 'running')
-                continue
-              }
-
-              if (event.event === 'RunCompleted') {
-                const finalContent = normalizeContent(payload.content)
-                if (finalContent && finalContent.length >= textContent.length) {
-                  textContent = finalContent
-                }
-                runSteps = upsertStep(runSteps, {
-                  id: 'model-request',
-                  label: 'Drafting response',
-                  detail: 'Answer completed',
-                  status: 'complete',
-                })
-                yield buildStreamUpdate(textContent || 'The assistant returned an empty response.', runSteps, 'complete', {
-                  type: 'complete',
-                  reason: 'stop',
-                })
-                runIdRef.current = null
-                return
-              }
-
-              if (event.event === 'RunError') {
-                runSteps = upsertStep(runSteps, {
-                  id: 'model-request',
-                  label: 'Drafting response',
-                  detail: typeof payload.content === 'string' ? payload.content : 'The run failed unexpectedly',
-                  status: 'error',
-                })
-                yield buildStreamUpdate(textContent, runSteps, 'error', {
-                  type: 'incomplete',
-                  reason: 'error',
-                  error:
-                    typeof payload.content === 'string' && payload.content
-                      ? payload.content
-                      : 'Unable to reach the assistant.',
-                })
-                runIdRef.current = null
-                return
-              }
+        if (!finished) {
+          buffer += decoder.decode()
+          const parsed = parseSSEEvents(buffer ? `${buffer}\n\n` : "")
+          for (const event of parsed.events) {
+            finished = await processEvent(event)
+            if (finished) {
+              break
             }
           }
-
-          if (cancelled) {
-            return
-          }
-
-          yield buildStreamUpdate(textContent || 'The assistant returned an empty response.', runSteps, 'complete', {
-            type: 'complete',
-            reason: 'stop',
-          })
-        } finally {
-          abortSignal.removeEventListener('abort', cancelRemoteRun)
-          runIdRef.current = null
-          reader.releaseLock()
         }
-      },
-    }),
-    [agentId, backendBase, clientId, customerName, surface],
-  )
+      } finally {
+        reader.releaseLock()
+      }
 
-  const runtime = useLocalRuntime(adapter)
+      if (!finished && !controller.signal.aborted) {
+        handleStreamUpdate({
+          content: textContent || provisionalContent || lastVisibleContent || buildEmptyAssistantResponse(null),
+          status: "complete",
+          steps: runSteps,
+          toolCalls,
+        })
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unable to reach the assistant."
+      setComposerError(errorMessage)
+      updateAssistantMessage(assistantMessageId, (message) => ({
+        ...message,
+        content: message.content || "The assistant run failed before returning any content.",
+        status: "error",
+        error: errorMessage,
+      }))
+    } finally {
+      setIsStreaming(false)
+      abortControllerRef.current = null
+      runIdRef.current = null
+    }
+  }
+
+  const handleNewChat = () => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+    sessionIdRef.current = null
+    runIdRef.current = null
+    setMessages([])
+    setInput("")
+    setComposerError(null)
+    setIsStreaming(false)
+  }
+
+  const handleCopyConversation = async () => {
+    if (!messages.length) {
+      setCopyState("error")
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(formatConversation(messages, customerName))
+      setCopyState("copied")
+    } catch {
+      setCopyState("error")
+    }
+
+    window.setTimeout(() => {
+      setCopyState("idle")
+    }, 2000)
+  }
 
   return (
-    <div className={variant === 'chatgpt' ? 'assistant-chat-card' : 'admin-list'}>
-      {variant === 'chatgpt' ? null : (
+    <div className={variant === "chatgpt" ? "assistant-chat-card" : "admin-list"}>
+      {variant === "chatgpt" ? null : (
         <>
           <div className="admin-list-heading">{title}</div>
-          <div style={{ color: 'var(--muted)', marginBottom: 12 }}>{description}</div>
+          <div style={{ color: "var(--muted)", marginBottom: 12 }}>{description}</div>
         </>
       )}
 
-      <AssistantRuntimeProvider runtime={runtime}>
-        <div className={`agent-chat-shell assistant-ui-shell agent-chat-shell-${variant}`}>
-          <ThreadPrimitive.Root className="assistant-ui-thread">
-            <ThreadPrimitive.Viewport className={`agent-chat-log assistant-ui-viewport agent-chat-log-${variant}`}>
-              <ThreadPrimitive.Empty>
-                <div className="agent-chat-empty">
-                  <div className="agent-chat-empty-title">Ask anything about {customerName} zoning</div>
-                  <p>
-                    Answers stream in as they are generated, and the assistant now exposes its live
-                    knowledge lookup steps while it works.
-                  </p>
+      <div className={`agent-chat-shell agent-chat-shell-${variant}`}>
+        <div ref={viewportRef} className={`agent-chat-log agent-chat-log-${variant}`}>
+          {messages.length === 0 ? (
+            <div className="agent-chat-empty">
+              <div className="agent-chat-empty-title">Ask anything about {customerName} zoning</div>
+              <p>Answers stream in as they are generated, and the assistant exposes its live lookup steps while it works.</p>
+            </div>
+          ) : (
+            messages.map((message) => (
+              <div
+                key={message.id}
+                className={`agent-chat-message agent-chat-message-${message.role}`}
+                data-message-id={message.id}
+              >
+                <div className="agent-chat-message-header">
+                  <div className="agent-chat-message-role">
+                    {message.role === "user" ? "You" : `${customerName} Assistant`}
+                  </div>
+                  {message.role === "assistant" && message.status === "streaming" ? (
+                    <div className="agent-chat-message-status">Streaming</div>
+                  ) : null}
                 </div>
-              </ThreadPrimitive.Empty>
-              <ThreadPrimitive.Messages
-                components={{
-                  Message: () => <AssistantMessage customerName={customerName} />,
+                <div className="assistant-ui-message-content">
+                  {message.role === "user" ? (
+                    <div className="assistant-ui-user-content">{message.content}</div>
+                  ) : message.content ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                  ) : message.status === "streaming" ? (
+                    <div className="assistant-answer-placeholder">Preparing final answer...</div>
+                  ) : (
+                    <div className="assistant-answer-placeholder">No answer text was returned.</div>
+                  )}
+                </div>
+                {message.role === "assistant" ? <ToolCallList toolCalls={message.toolCalls} /> : null}
+                {message.role === "assistant" ? <RunSteps steps={message.steps} status={message.status} /> : null}
+                {message.role === "assistant" && message.error ? (
+                  <div className="status-banner status-banner-error">{message.error}</div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className={`agent-chat-form assistant-ui-composer assistant-ui-composer-${variant}`}>
+          <div className="assistant-ui-composer-row">
+            <label className="field assistant-ui-input-wrap">
+              <textarea
+                name="input"
+                className="assistant-ui-input"
+                rows={1}
+                placeholder="Ask about setbacks, ADUs, parking, overlays, lot coverage, or permitted uses..."
+                value={input}
+                disabled={isStreaming}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault()
+                    void sendMessage()
+                  }
                 }}
               />
-            </ThreadPrimitive.Viewport>
-          </ThreadPrimitive.Root>
-
-          <AssistantComposer
-            placeholder="Ask about setbacks, ADUs, parking, overlays, lot coverage, or permitted uses..."
-            variant={variant}
-          />
+              <button
+                className="assistant-ui-send-button"
+                type="button"
+                aria-label={isStreaming ? "Sending message" : "Send message"}
+                onClick={() => {
+                  void sendMessage()
+                }}
+                disabled={isStreaming || !input.trim()}
+              >
+                {isStreaming ? "..." : "->"}
+              </button>
+            </label>
+          </div>
+          <div className="assistant-ui-composer-footer">
+            <div className="assistant-ui-composer-hint">Ctrl+Enter to send. Enter for a new line.</div>
+            <button className="button secondary" type="button" onClick={() => void handleCopyConversation()}>
+              {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy Failed" : "Copy Conversation"}
+            </button>
+            <button className="button secondary" type="button" onClick={handleNewChat} disabled={isStreaming && !messages.length}>
+              {isStreaming ? "Stop & Reset" : "New Chat"}
+            </button>
+          </div>
+          {composerError ? <div className="status-banner status-banner-error">{composerError}</div> : null}
         </div>
-      </AssistantRuntimeProvider>
+      </div>
     </div>
   )
 }

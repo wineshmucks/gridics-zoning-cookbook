@@ -1,21 +1,13 @@
 import { redirect } from 'next/navigation'
 
 import { AdminDashboardClient } from '../../components/AdminDashboardClient'
+import { getCurrentOrgId } from '../../lib/org-context'
 import { getPermissionContext } from '../../lib/permissions'
 
-type PageProps = {
-  searchParams?: Promise<{
-    clientid?: string | string[]
-  }>
-}
-
-export default async function AdminPage({ searchParams }: PageProps) {
+export default async function AdminPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const resolvedSearchParams = searchParams ? await searchParams : {}
   const permissions = await getPermissionContext(clerkEnabled)
-  const requestedClientId = Array.isArray(resolvedSearchParams.clientid)
-    ? resolvedSearchParams.clientid[0] || null
-    : resolvedSearchParams.clientid || null
+  const requestedOrgId = await getCurrentOrgId()
 
   if (!permissions.canAccessAdminScreens) {
     return (
@@ -29,13 +21,10 @@ export default async function AdminPage({ searchParams }: PageProps) {
     )
   }
 
-  const selectedClientId =
-    permissions.selectedAdminMembership?.clientId || permissions.selectedAdminMembership?.organizationId || null
+  const selectedOrganizationId = permissions.selectedAdminMembership?.organizationId || null
 
-  if (selectedClientId && requestedClientId !== selectedClientId) {
-    const params = new URLSearchParams()
-    params.set('clientid', selectedClientId)
-    redirect(`/admin?${params.toString()}`)
+  if (selectedOrganizationId && requestedOrgId !== selectedOrganizationId) {
+    redirect(`/${encodeURIComponent(selectedOrganizationId)}/admin`)
   }
 
   return <AdminDashboardClient clerkEnabled={clerkEnabled} />

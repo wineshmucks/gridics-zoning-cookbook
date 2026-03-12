@@ -5,12 +5,14 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { startTransition, useState } from 'react'
 
 import type { ClientMembership } from '../lib/permissions'
+import { replaceOrgIdInPathname } from '../lib/org-url'
 import { BuildingLogo } from './BuildingLogo'
 
 type Props = {
   clerkEnabled: boolean
   cityName: string
   departmentName: string
+  currentCustomerName: string | null
   adminMemberships: ClientMembership[]
   selectedAdminOrganizationId: string | null
 }
@@ -19,6 +21,7 @@ export function HeaderBrand({
   clerkEnabled,
   cityName,
   departmentName,
+  currentCustomerName,
   adminMemberships,
   selectedAdminOrganizationId,
 }: Props) {
@@ -30,6 +33,7 @@ export function HeaderBrand({
     <ClerkHeaderBrand
       cityName={cityName}
       departmentName={departmentName}
+      currentCustomerName={currentCustomerName}
       adminMemberships={adminMemberships}
       selectedAdminOrganizationId={selectedAdminOrganizationId}
     />
@@ -59,6 +63,7 @@ function StaticHeaderBrand({
 function ClerkHeaderBrand({
   cityName,
   departmentName,
+  currentCustomerName,
   adminMemberships,
   selectedAdminOrganizationId,
 }: Omit<Props, 'clerkEnabled'>) {
@@ -75,11 +80,12 @@ function ClerkHeaderBrand({
   const selectedMembership =
     adminMemberships.find((membership) => membership.organizationId === selectedAdminOrganizationId) ||
     null
+  const resolvedCustomerName = currentCustomerName || selectedMembership?.organizationName || cityName
   const title = isSuperAdminRoute
     ? 'Super Admin'
     : isAdminRoute
-      ? selectedMembership?.organizationName || cityName
-      : cityName
+      ? selectedMembership?.organizationName || resolvedCustomerName
+      : resolvedCustomerName
 
   async function switchOrganization(nextOrganizationId: string) {
     if (!nextOrganizationId || nextOrganizationId === selectedAdminOrganizationId) {
@@ -97,10 +103,12 @@ function ClerkHeaderBrand({
     try {
       await setActive({ organization: nextOrganizationId })
       const params = new URLSearchParams(searchParams.toString())
-      params.set('clientid', membership.clientId || membership.organizationId)
+      params.delete('clientid')
+      const nextPathname = replaceOrgIdInPathname(pathname, membership.organizationId)
+      const nextSearch = params.toString()
 
       startTransition(() => {
-        router.replace(`${pathname}?${params.toString()}`)
+        router.replace(nextSearch ? `${nextPathname}?${nextSearch}` : nextPathname)
         router.refresh()
       })
     } finally {

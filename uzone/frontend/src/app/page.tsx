@@ -1,10 +1,13 @@
 import Link from 'next/link'
 
 import { BuildingLogo } from '../components/BuildingLogo'
+import { getCurrentOrgId } from '../lib/org-context'
+import { appendOrgIdToHref } from '../lib/org-url'
 import { getTenantConfig } from '../lib/tenant'
 
 export default async function HomePage() {
   const tenant = await getTenantConfig()
+  const orgId = await getCurrentOrgId()
   const standardPrice = `$${(tenant.standard_letter_fee_cents / 100).toFixed(2)}`
   const comprehensivePrice = `$${(tenant.comprehensive_letter_fee_cents / 100).toFixed(2)}`
   const expeditedPrice = `+$${(tenant.expedited_fee_cents / 100).toFixed(2)}`
@@ -22,10 +25,10 @@ export default async function HomePage() {
               in less than 3 business days.
             </p>
             <div className="button-row">
-              <Link className="button button-hero-light" href="/request/new">
+              <Link className="button button-hero-light" href={appendOrgIdToHref('/request/new', orgId)}>
                 Request a Letter
               </Link>
-              <Link className="button button-hero-outline" href="/assistant">
+              <Link className="button button-hero-outline" href={appendOrgIdToHref('/assistant', orgId)}>
                 Ask the Zoning Assistant
               </Link>
               <a className="button button-hero-outline" href="#info-section">
@@ -128,7 +131,10 @@ export default async function HomePage() {
                 <li>Official city seal and signature</li>
                 <li>3 business day processing</li>
               </ul>
-              <Link className="button button-block" href="/request/new?letter_type=standard">
+              <Link
+                className="button button-block"
+                href={appendOrgIdToHref('/request/new?letter_type=standard', orgId)}
+              >
                 Select Standard Letter
               </Link>
             </div>
@@ -163,7 +169,10 @@ export default async function HomePage() {
                   Review Zoning Code
                 </a>
               ) : null}
-              <Link className="button button-block" href="/request/new?letter_type=comprehensive">
+              <Link
+                className="button button-block"
+                href={appendOrgIdToHref('/request/new?letter_type=comprehensive', orgId)}
+              >
                 Select Comprehensive Letter
               </Link>
             </div>
@@ -227,7 +236,7 @@ export default async function HomePage() {
           <div className="cta-band">
             <h3>Ready to Get Started?</h3>
             <p>Request your zoning verification letter today</p>
-            <Link className="button button-hero-light" href="/request/new">
+            <Link className="button button-hero-light" href={appendOrgIdToHref('/request/new', orgId)}>
               Start Your Request
             </Link>
           </div>
@@ -376,13 +385,13 @@ export default async function HomePage() {
               <h4>Quick Links</h4>
               <ul className="footer-list">
                 <li>
-                  <Link href="/request/new">Request Letter</Link>
+                  <Link href={appendOrgIdToHref('/request/new', orgId)}>Request Letter</Link>
                 </li>
                 <li>
-                  <Link href="/request/new">Property Search</Link>
+                  <Link href={appendOrgIdToHref('/request/new', orgId)}>Property Search</Link>
                 </li>
                 <li>
-                  <Link href="/account/requests">Track Request</Link>
+                  <Link href={appendOrgIdToHref('/account/requests', orgId)}>Track Request</Link>
                 </li>
                 <li>
                   <a href="#faq-section">FAQs</a>

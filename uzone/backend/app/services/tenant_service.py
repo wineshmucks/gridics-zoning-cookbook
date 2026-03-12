@@ -6,7 +6,7 @@ import time
 from dataclasses import asdict, dataclass
 from threading import Lock
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -44,11 +44,13 @@ def normalize_hostname(host: str | None) -> str | None:
     return host.split(":", 1)[0].strip().lower() or None
 
 
-def _cache_key(*, host: str | None, client_id: str | None) -> str:
+def _cache_key(*, host: str | None, client_id: str | None, organization_id: str | None = None) -> str:
     if client_id:
         return f"client:{client_id.lower()}"
+    if organization_id:
+        return f"org:{organization_id.lower()}"
     if host:
-      return f"host:{host.lower()}"
+        return f"host:{host.lower()}"
     return "default"
 
 
@@ -131,10 +133,12 @@ def resolve_tenant_public_config(
     *,
     host: str | None = None,
     client_id: str | None = None,
+    organization_id: str | None = None,
 ) -> TenantPublicConfig | None:
     normalized_host = normalize_hostname(host)
     normalized_client_id = client_id.strip().lower() if client_id else None
-    key = _cache_key(host=normalized_host, client_id=normalized_client_id)
+    normalized_organization_id = organization_id.strip() if organization_id else None
+    key = _cache_key(host=normalized_host, client_id=normalized_client_id, organization_id=normalized_organization_id)
     cached = _get_cached(key)
     if cached is not _CACHE_MISS:
         return cached
@@ -144,6 +148,15 @@ def resolve_tenant_public_config(
         client = db.scalar(
             select(TenantClient).where(
                 TenantClient.client_id == normalized_client_id,
+                TenantClient.is_active.is_(True),
+            )
+        )
+    elif normalized_organization_id:
+        normalized_organization_id_lower = normalized_organization_id.lower()
+        client = db.scalar(
+            select(TenantClient).where(
+                (func.lower(TenantClient.clerk_organization_id) == normalized_organization_id_lower)
+                | (TenantClient.client_id == normalized_organization_id_lower),
                 TenantClient.is_active.is_(True),
             )
         )

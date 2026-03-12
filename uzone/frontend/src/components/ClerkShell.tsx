@@ -12,9 +12,17 @@ type AuthControlsProps = {
   clerkEnabled: boolean
   canAccessAdminScreens: boolean
   isSuperAdmin: boolean
+  currentOrgId: string | null
 }
 
-function AuthControls({ clerkEnabled, canAccessAdminScreens, isSuperAdmin }: AuthControlsProps) {
+function AuthControls({
+  clerkEnabled,
+  canAccessAdminScreens,
+  isSuperAdmin,
+  currentOrgId,
+}: AuthControlsProps) {
+  const adminHref = currentOrgId ? `/${encodeURIComponent(currentOrgId)}/admin` : '/admin'
+
   if (!clerkEnabled) {
     return (
       <a className="button button-signin" href="/account/requests">
@@ -39,7 +47,7 @@ function AuthControls({ clerkEnabled, canAccessAdminScreens, isSuperAdmin }: Aut
           <UserButton.MenuItems>
             {canAccessAdminScreens ? (
               <UserButton.Link
-                href="/admin"
+                href={adminHref}
                 label="Admin"
                 labelIcon={<span aria-hidden="true">A</span>}
               />

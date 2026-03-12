@@ -384,11 +384,11 @@ async function fetchCompletedRun(
 }
 
 function RunSteps({ steps, status }: { steps?: StreamStep[]; status?: ChatMessage["status"] }) {
+  const [isOpen, setIsOpen] = useState(false)
+
   if (!steps?.length) {
     return null
   }
-
-  const [isOpen, setIsOpen] = useState(false)
 
   return (
     <div className="assistant-run-steps">
@@ -424,11 +424,11 @@ function RunSteps({ steps, status }: { steps?: StreamStep[]; status?: ChatMessag
 }
 
 function ToolCallList({ toolCalls }: { toolCalls?: StreamToolCall[] }) {
+  const [isOpen, setIsOpen] = useState(false)
+
   if (!toolCalls?.length) {
     return null
   }
-
-  const [isOpen, setIsOpen] = useState(false)
 
   return (
     <div className="assistant-run-steps assistant-tool-calls">

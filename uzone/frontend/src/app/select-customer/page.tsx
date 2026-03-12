@@ -1,5 +1,5 @@
 import { CustomerPickerClient } from '../../components/CustomerPickerClient'
-import { buildBackendApiUrl } from '../../lib/backend'
+import { buildServerBackendApiUrl } from '../../lib/backend'
 
 type CustomerChoice = {
   orgid: string
@@ -16,7 +16,9 @@ type PageProps = {
 
 async function loadCustomers() {
   try {
-    const response = await fetch(buildBackendApiUrl('/api/public/customers'), { cache: 'no-store' })
+    const response = await fetch(await buildServerBackendApiUrl('/api/public/customers'), {
+      cache: 'no-store',
+    })
     if (!response.ok) {
       return []
     }

@@ -82,6 +82,62 @@ function formatConversation(messages: ChatMessage[], customerName: string): stri
 }
 
 function normalizeContent(value: unknown): string {
+  const visited = new WeakSet<object>()
+
+  const collectText = (input: unknown): string[] => {
+    if (typeof input === "string") {
+      const trimmed = input.trim()
+      return trimmed ? [trimmed] : []
+    }
+
+    if (typeof input === "number" || typeof input === "boolean") {
+      return [String(input)]
+    }
+
+    if (Array.isArray(input)) {
+      return input.flatMap((item) => collectText(item))
+    }
+
+    if (!input || typeof input !== "object") {
+      return []
+    }
+
+    if (visited.has(input)) {
+      return []
+    }
+    visited.add(input)
+
+    const record = input as Record<string, unknown>
+    const prioritizedKeys = [
+      "output_text",
+      "text",
+      "content",
+      "value",
+      "markdown",
+      "response",
+      "message",
+      "parts",
+      "blocks",
+      "items",
+      "results",
+    ]
+
+    const prioritized = prioritizedKeys.flatMap((key) => (key in record ? collectText(record[key]) : []))
+    if (prioritized.length) {
+      return prioritized
+    }
+
+    return Object.values(record).flatMap((item) => collectText(item))
+  }
+
+  const extracted = collectText(value)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  if (extracted.length) {
+    return extracted.join("\n\n")
+  }
+
   if (typeof value === "string") {
     return value
   }
@@ -365,6 +421,12 @@ async function fetchCompletedRun(
       },
     )
     if (!response.ok) {
+      if (response.status === 404) {
+        return {
+          payload: null,
+          debug: null,
+        }
+      }
       const body = await response.text().catch(() => "")
       return {
         payload: null,
@@ -743,7 +805,9 @@ export function AgentChatPanel({
 
       if (event.event === "RunCompleted") {
         let debugDetail: string | null = null
-        let finalContent = sanitizeAssistantContent(normalizeContent(payload.content))
+        let finalContent = sanitizeAssistantContent(
+          normalizeContent(payload.content) || getAssistantContent(payload as AgentRunResponse),
+        )
 
         if (!finalContent && runIdRef.current) {
           const completedRun = await fetchCompletedRun(backendBase, agentId, runIdRef.current, sessionIdRef.current)

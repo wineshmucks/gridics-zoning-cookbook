@@ -194,7 +194,8 @@ function getAssistantContent(payload: AgentRunResponse): string {
 }
 
 function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string } {
-  const blocks = chunk.split("\n\n")
+  const normalizedChunk = chunk.replace(/\r\n/g, "\n")
+  const blocks = normalizedChunk.split("\n\n")
   const remainder = blocks.pop() ?? ""
   const events: SSEEvent[] = []
 
@@ -938,8 +939,18 @@ export function AgentChatPanel({
       }
 
       if (!finished && !controller.signal.aborted) {
+        let debugDetail: string | null = null
+        let fallbackContent = textContent || provisionalContent || lastVisibleContent
+
+        if (!fallbackContent && runIdRef.current) {
+          const completedRun = await fetchCompletedRun(backendBase, agentId, runIdRef.current, sessionIdRef.current)
+          debugDetail = completedRun.debug
+          fallbackContent = getAssistantContent(completedRun.payload || {})
+          runSteps = appendDebugStep(runSteps, debugDetail)
+        }
+
         handleStreamUpdate({
-          content: textContent || provisionalContent || lastVisibleContent || buildEmptyAssistantResponse(null),
+          content: fallbackContent || buildEmptyAssistantResponse(debugDetail),
           status: "complete",
           steps: runSteps,
           toolCalls,

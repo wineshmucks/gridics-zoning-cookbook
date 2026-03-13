@@ -8,6 +8,9 @@ type AgentRunResponse = {
   session_id?: string
   run_id?: string
   content?: unknown
+  response?: unknown
+  run_response?: unknown
+  data?: unknown
   messages?: Array<{
     role?: string
     content?: unknown
@@ -189,8 +192,33 @@ function getAssistantContent(payload: AgentRunResponse): string {
   const assistantMessage = [...(payload.messages || [])]
     .reverse()
     .find((message) => message.role === "assistant" || message.role === "model")
+  const assistantMessageContent = sanitizeAssistantContent(normalizeContent(assistantMessage?.content))
+  if (assistantMessageContent) {
+    return assistantMessageContent
+  }
 
-  return sanitizeAssistantContent(normalizeContent(assistantMessage?.content))
+  const nestedCandidates = [payload.response, payload.run_response, payload.data]
+  for (const candidate of nestedCandidates) {
+    if (!candidate || typeof candidate !== "object") {
+      continue
+    }
+
+    const nestedPayload = candidate as AgentRunResponse
+    const nestedContent = sanitizeAssistantContent(normalizeContent(nestedPayload.content))
+    if (nestedContent) {
+      return nestedContent
+    }
+
+    const nestedAssistantMessage = [...(nestedPayload.messages || [])]
+      .reverse()
+      .find((message) => message.role === "assistant" || message.role === "model")
+    const nestedAssistantContent = sanitizeAssistantContent(normalizeContent(nestedAssistantMessage?.content))
+    if (nestedAssistantContent) {
+      return nestedAssistantContent
+    }
+  }
+
+  return ""
 }
 
 function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string } {
@@ -444,6 +472,32 @@ async function fetchCompletedRun(
       debug: error instanceof Error ? error.message : "Completed run lookup failed.",
     }
   }
+}
+
+async function fetchCompletedRunWithRetry(
+  backendBase: string,
+  agentId: string,
+  runId: string,
+  sessionId: string | null,
+): Promise<CompletedRunFetchResult> {
+  const attempts = 4
+  let lastResult: CompletedRunFetchResult = {
+    payload: null,
+    debug: "Completed run lookup was never attempted.",
+  }
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastResult = await fetchCompletedRun(backendBase, agentId, runId, sessionId)
+    if (lastResult.payload || lastResult.debug !== null) {
+      return lastResult
+    }
+
+    if (attempt < attempts) {
+      await new Promise((resolve) => window.setTimeout(resolve, attempt * 400))
+    }
+  }
+
+  return lastResult
 }
 
 function RunSteps({ steps, status }: { steps?: StreamStep[]; status?: ChatMessage["status"] }) {
@@ -806,12 +860,15 @@ export function AgentChatPanel({
 
       if (event.event === "RunCompleted") {
         let debugDetail: string | null = null
-        let finalContent = sanitizeAssistantContent(
-          normalizeContent(payload.content) || getAssistantContent(payload as AgentRunResponse),
-        )
+        let finalContent = getAssistantContent(payload as AgentRunResponse)
 
         if (!finalContent && runIdRef.current) {
-          const completedRun = await fetchCompletedRun(backendBase, agentId, runIdRef.current, sessionIdRef.current)
+          const completedRun = await fetchCompletedRunWithRetry(
+            backendBase,
+            agentId,
+            runIdRef.current,
+            sessionIdRef.current,
+          )
           debugDetail = completedRun.debug
           const fetchedContent = getAssistantContent(completedRun.payload || {})
           if (fetchedContent) {
@@ -943,7 +1000,12 @@ export function AgentChatPanel({
         let fallbackContent = textContent || provisionalContent || lastVisibleContent
 
         if (!fallbackContent && runIdRef.current) {
-          const completedRun = await fetchCompletedRun(backendBase, agentId, runIdRef.current, sessionIdRef.current)
+          const completedRun = await fetchCompletedRunWithRetry(
+            backendBase,
+            agentId,
+            runIdRef.current,
+            sessionIdRef.current,
+          )
           debugDetail = completedRun.debug
           fallbackContent = getAssistantContent(completedRun.payload || {})
           runSteps = appendDebugStep(runSteps, debugDetail)

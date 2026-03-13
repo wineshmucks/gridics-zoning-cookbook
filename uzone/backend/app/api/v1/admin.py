@@ -46,7 +46,9 @@ from app.schemas import (
     ZoningKnowledgeQueryResponse,
     ZoningKnowledgeStatusRead,
 )
+from app.core.config import settings
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
+from app.services.cache_service import get_cache_service
 from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
 from app.services.tenant_service import (
     get_home_page_content_record,
@@ -64,6 +66,14 @@ from app.services.zoning_knowledge_service import (
 )
 
 router = APIRouter()
+
+
+def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
+    return f"admin:fee-structure:{tenant_client.id}"
+
+
+def _admin_home_page_cache_key(tenant_client: TenantClient) -> str:
+    return f"admin:home-page-content:{tenant_client.id}"
 
 
 def _normalize_jurisdiction_code(value: str) -> str:
@@ -367,12 +377,23 @@ def get_fee_structure(
     db: Session = Depends(get_db),
 ) -> FeeStructureResponse:
     tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+    cache = get_cache_service()
+    cached = cache.get_json(_admin_fee_structure_cache_key(tenant_client))
+    if cached is not cache.cache_miss:
+        return FeeStructureResponse.model_validate(cached)
+
     _ensure_tenant_jurisdiction(db, tenant_client)
     db.commit()
     db.refresh(tenant_client)
     schedule, items = ensure_active_fee_schedule_for_tenant(db, tenant_client)
     invalidate_tenant_cache()
-    return _build_fee_structure_response(tenant_client, schedule, items)
+    response = _build_fee_structure_response(tenant_client, schedule, items)
+    cache.set_json(
+        _admin_fee_structure_cache_key(tenant_client),
+        response.model_dump(mode="json"),
+        ttl_seconds=settings.admin_config_cache_ttl_seconds,
+    )
+    return response
 
 
 @router.put("/fees/structure", response_model=FeeStructureResponse)
@@ -391,7 +412,14 @@ def save_fee_structure(
         items=[item.model_dump() for item in payload.items],
     )
     invalidate_tenant_cache()
-    return _build_fee_structure_response(tenant_client, schedule, items)
+    cache = get_cache_service()
+    response = _build_fee_structure_response(tenant_client, schedule, items)
+    cache.set_json(
+        _admin_fee_structure_cache_key(tenant_client),
+        response.model_dump(mode="json"),
+        ttl_seconds=settings.admin_config_cache_ttl_seconds,
+    )
+    return response
 
 
 @router.get("/home-page-content", response_model=HomePageContentResponse)
@@ -401,14 +429,25 @@ def get_home_page_content(
     db: Session = Depends(get_db),
 ) -> HomePageContentResponse:
     tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+    cache = get_cache_service()
+    cached = cache.get_json(_admin_home_page_cache_key(tenant_client))
+    if cached is not cache.cache_miss:
+        return HomePageContentResponse.model_validate(cached)
+
     _ensure_tenant_jurisdiction(db, tenant_client)
     db.commit()
     db.refresh(tenant_client)
     record = get_home_page_content_record(db, tenant_client.jurisdiction_id)
-    return _build_home_page_content_response(
+    response = _build_home_page_content_response(
         tenant_client,
         get_home_page_content_payload(record, tenant_client),
     )
+    cache.set_json(
+        _admin_home_page_cache_key(tenant_client),
+        response.model_dump(mode="json"),
+        ttl_seconds=settings.admin_config_cache_ttl_seconds,
+    )
+    return response
 
 
 @router.put("/home-page-content", response_model=HomePageContentResponse)
@@ -453,10 +492,17 @@ def save_home_page_content(
     db.refresh(tenant_client)
     db.refresh(record)
     invalidate_tenant_cache()
-    return _build_home_page_content_response(
+    cache = get_cache_service()
+    response = _build_home_page_content_response(
         tenant_client,
         get_home_page_content_payload(record, tenant_client),
     )
+    cache.set_json(
+        _admin_home_page_cache_key(tenant_client),
+        response.model_dump(mode="json"),
+        ttl_seconds=settings.admin_config_cache_ttl_seconds,
+    )
+    return response
 
 
 @router.post("/fees/schedules", response_model=FeeScheduleRead, status_code=status.HTTP_201_CREATED)

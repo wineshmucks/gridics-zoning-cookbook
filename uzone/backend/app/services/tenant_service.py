@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import asdict, dataclass
-from threading import Lock
 
 from sqlalchemy import func, inspect, select
 from sqlalchemy.exc import ProgrammingError
@@ -12,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import JurisdictionHomePageContent, TenantClient, TenantDomain
+from app.services.cache_service import get_cache_service
 
 
 @dataclass(slots=True)
@@ -35,11 +34,6 @@ class TenantPublicConfig:
 AGENT_URL_SETTING_KEY = "agent_url"
 ZONING_CODE_URL_SETTING_KEY = "zoning_code_url"
 
-
-_cache_lock = Lock()
-_tenant_cache: dict[str, tuple[float, TenantPublicConfig | None]] = {}
-
-
 def normalize_hostname(host: str | None) -> str | None:
     if not host:
         return None
@@ -56,26 +50,8 @@ def _cache_key(*, host: str | None, client_id: str | None, organization_id: str 
     return "default"
 
 
-def _get_cached(key: str) -> TenantPublicConfig | None | object:
-    with _cache_lock:
-        cached = _tenant_cache.get(key)
-        if cached is None:
-            return _CACHE_MISS
-        expires_at, value = cached
-        if expires_at < time.time():
-            _tenant_cache.pop(key, None)
-            return _CACHE_MISS
-        return value
-
-
-def _put_cached(key: str, value: TenantPublicConfig | None) -> None:
-    with _cache_lock:
-        _tenant_cache[key] = (time.time() + settings.tenant_config_ttl_seconds, value)
-
-
 def invalidate_tenant_cache() -> None:
-    with _cache_lock:
-        _tenant_cache.clear()
+    get_cache_service().delete_prefix("tenant-public:")
 
 
 def get_tenant_experience_settings(settings_json: dict | None) -> tuple[str | None, str | None]:
@@ -274,10 +250,13 @@ def resolve_tenant_public_config(
     normalized_host = normalize_hostname(host)
     normalized_client_id = client_id.strip().lower() if client_id else None
     normalized_organization_id = organization_id.strip() if organization_id else None
-    key = _cache_key(host=normalized_host, client_id=normalized_client_id, organization_id=normalized_organization_id)
-    cached = _get_cached(key)
-    if cached is not _CACHE_MISS:
-        return cached
+    key = f"tenant-public:{_cache_key(host=normalized_host, client_id=normalized_client_id, organization_id=normalized_organization_id)}"
+    cache = get_cache_service()
+    cached = cache.get_json(key)
+    if cached is not cache.cache_miss:
+        if cached is None:
+            return None
+        return TenantPublicConfig(**cached)
 
     client: TenantClient | None = None
     if normalized_client_id:
@@ -319,11 +298,12 @@ def resolve_tenant_public_config(
         )
 
     result = _to_public_config(db, client) if client else None
-    _put_cached(key, result)
+    cache.set_json(
+        key,
+        asdict(result) if result is not None else None,
+        ttl_seconds=settings.tenant_config_ttl_seconds,
+    )
     return result
-
-
-_CACHE_MISS = object()
 
 
 def tenant_public_config_to_dict(config: TenantPublicConfig) -> dict:

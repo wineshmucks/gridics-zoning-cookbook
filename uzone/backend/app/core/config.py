@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     postmark_server_token: str | None = None
     aws_region: str | None = None
     artifacts_dir: str = "/tmp/uzone-artifacts"
+    cache_backend: str = "local"
+    cache_redis_url: str | None = None
+    cache_default_ttl_seconds: int = 300
+    admin_config_cache_ttl_seconds: int = 120
     tenant_config_ttl_seconds: int = 300
     enable_agent_os: bool = True
     require_agent_os: bool = False

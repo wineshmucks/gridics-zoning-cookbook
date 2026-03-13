@@ -14,7 +14,7 @@ export default async function AdminPage() {
       <section className="card">
         <h1 className="section-title">Admin Access Required</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          You need Clerk admin access for the current customer organization. Super admins must belong
+          You need Clerk admin access for the current jurisdiction organization. Super admins must belong
           to the Gridics organization with the admin role.
         </p>
       </section>

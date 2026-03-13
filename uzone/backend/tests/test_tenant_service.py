@@ -1,12 +1,18 @@
 """Unit tests for tenant config resolution."""
 
+from unittest.mock import Mock
+
 from sqlalchemy import create_engine
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 from app.db.models import Jurisdiction, TenantClient, TenantDomain
 from app.services.tenant_service import (
+    build_default_home_page_content,
+    get_home_page_content_record,
     get_tenant_experience_settings,
+    has_home_page_content_storage,
     invalidate_tenant_cache,
     merge_tenant_experience_settings,
     resolve_tenant_public_config,
@@ -63,6 +69,7 @@ def test_resolve_tenant_public_config_by_hostname_and_client_id() -> None:
         assert by_client_id is not None
         assert by_client_id.support_email == "tenant-a@example.com"
         assert by_client_id.zoning_code_url == "https://codes.example.com/tenant-a/zoning"
+        assert by_client_id.home_page_content["contact"]["email"] == "tenant-a@example.com"
     finally:
         db.close()
 
@@ -81,3 +88,45 @@ def test_merge_tenant_experience_settings_preserves_agent_url_when_updating_zoni
         "https://agents.example.com/tenant-a",
         "https://codes.example.com/tenant-a/new",
     )
+
+
+def test_build_default_home_page_content_uses_tenant_specific_values() -> None:
+    tenant = TenantClient(
+        client_id="tenant-a",
+        city_name="Dream Town",
+        department_name="Planning & Zoning Department",
+        standard_letter_fee_cents=10000,
+        comprehensive_letter_fee_cents=20000,
+        expedited_fee_cents=5000,
+        support_email="support@dreamtown.gov",
+        support_phone="555-0000",
+        contact_address="100 Main Street",
+    )
+
+    content = build_default_home_page_content(tenant)
+
+    assert content["hero"]["title"] == "Welcome to the Dream Town"
+    assert content["about"]["body"].startswith("An official document from the Dream Town")
+    assert content["contact"]["email"] == "support@dreamtown.gov"
+
+
+def test_get_home_page_content_record_returns_none_when_table_is_missing() -> None:
+    db = Mock()
+    db.scalar.side_effect = ProgrammingError(
+        "SELECT ...",
+        {},
+        Exception('relation "jurisdiction_home_page_content" does not exist'),
+    )
+
+    result = get_home_page_content_record(db, "jur-1")
+
+    assert result is None
+    db.rollback.assert_called_once()
+
+
+def test_has_home_page_content_storage_returns_true_for_created_schema() -> None:
+    db = _db()
+    try:
+        assert has_home_page_content_storage(db) is True
+    finally:
+        db.close()

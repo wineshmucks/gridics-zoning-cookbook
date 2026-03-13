@@ -90,17 +90,15 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
   }
 
   return (
-    <div className="grid" style={{ gap: 20 }}>
+    <div className="page-stack">
       <section className="card">
         <div className="stack-header">
-          <div>
-            <p style={{ color: 'var(--accent-2)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-              Request detail
-            </p>
+          <div className="page-intro">
+            <div className="eyebrow">Request detail</div>
             <h1 className="section-title" style={{ marginBottom: 8 }}>
               {request.public_id}
             </h1>
-            <p className="subtitle" style={{ marginBottom: 0, fontSize: 16 }}>
+            <p className="page-intro-copy">
               {request.requester_first_name} {request.requester_last_name} · {request.requester_email}
             </p>
           </div>

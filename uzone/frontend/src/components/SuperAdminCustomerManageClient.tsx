@@ -1,7 +1,7 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useActionState, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useActionState, useEffect } from 'react'
 
 import {
   deleteCustomerAction,
@@ -12,6 +12,7 @@ import {
   type InviteAdminState,
   type RemoveAdminState,
 } from '../app/admin/actions'
+import { SuperAdminCustomerHeader } from './SuperAdminCustomerIcons'
 
 type AdminMember = {
   userId: string
@@ -34,8 +35,6 @@ type SelectedCustomer = {
   customerId: string | null
 }
 
-type SuperAdminSectionId = 'general' | 'admin-users'
-
 const initialInviteState: InviteAdminState = {
   error: null,
   success: null,
@@ -51,23 +50,6 @@ const initialCustomerMutationState: CustomerMutationState = {
   success: null,
 }
 
-const superAdminSections: Array<{
-  id: SuperAdminSectionId
-  label: string
-  description: string
-}> = [
-  {
-    id: 'general',
-    label: 'General',
-    description: 'Overview and customer controls.',
-  },
-  {
-    id: 'admin-users',
-    label: 'Admin Users',
-    description: 'Invites, assignments, and pending access.',
-  },
-]
-
 export function SuperAdminCustomerManageClient({
   customer,
   adminMembers,
@@ -77,7 +59,6 @@ export function SuperAdminCustomerManageClient({
   adminMembers: AdminMember[]
   pendingInvites: PendingInvite[]
 }) {
-  const [activeSection, setActiveSection] = useState<SuperAdminSectionId>('general')
   const [inviteState, inviteAction, invitePending] = useActionState(
     inviteClientAdminAction,
     initialInviteState,
@@ -95,6 +76,8 @@ export function SuperAdminCustomerManageClient({
     initialCustomerMutationState,
   )
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const activeSection = searchParams.get('section') === 'admin-users' ? 'admin-users' : 'general'
 
   useEffect(() => {
     if (!inviteState.success && !removeState.success && !inactiveState.success) {
@@ -115,41 +98,25 @@ export function SuperAdminCustomerManageClient({
 
   return (
     <div className="panel-stack">
-      <div className="admin-list">
-        <div className="admin-list-heading">Customer sections</div>
-        <div style={{ color: 'var(--muted)' }}>
-          Use the persistent sidebar to switch between customer management, assistant setup, and chat.
-        </div>
-        <nav className="super-admin-nav" aria-label="Customer management sections" style={{ marginTop: 16 }}>
-          {superAdminSections.map((section) => {
-            const isActive = activeSection === section.id
-
-            return (
-              <button
-                key={section.id}
-                type="button"
-                className={`super-admin-nav-item${isActive ? ' is-active' : ''}`}
-                onClick={() => setActiveSection(section.id)}
-                aria-pressed={isActive}
-              >
-                <span className="super-admin-nav-label">{section.label}</span>
-                <span className="super-admin-nav-description">{section.description}</span>
-              </button>
-            )
-          })}
-        </nav>
-      </div>
-
       {activeSection === 'general' ? (
         <div className="panel-stack">
+          <section className="card">
+            <SuperAdminCustomerHeader
+              icon="jurisdiction-details"
+              eyebrow="Jurisdiction Details"
+              title={customer.name}
+              description="Review the jurisdiction profile, lifecycle controls, and account context."
+            />
+          </section>
+
           <div className="admin-list">
             <div className="admin-list-heading">General</div>
             <div style={{ color: 'var(--muted)' }}>
-              Customer record details and lifecycle controls for {customer.name}.
+              Jurisdiction details and lifecycle controls for {customer.name}.
             </div>
             <dl className="detail-list">
               <div>
-                <dt>Customer name</dt>
+                <dt>Jurisdiction name</dt>
                 <dd>{customer.name}</dd>
               </div>
               <div>
@@ -172,15 +139,15 @@ export function SuperAdminCustomerManageClient({
           </div>
 
           <div className="admin-list">
-            <div className="admin-list-heading">Customer controls</div>
+            <div className="admin-list-heading">Jurisdiction controls</div>
             <div className="panel-stack">
               <form action={inactiveAction} className="admin-action-row">
                 <input type="hidden" name="organizationId" value={customer.id} />
                 <input type="hidden" name="customerName" value={customer.name} />
                 <div>
-                  <div style={{ fontWeight: 700 }}>Set customer inactive</div>
+                  <div style={{ fontWeight: 700 }}>Set jurisdiction inactive</div>
                   <div style={{ color: 'var(--muted)' }}>
-                    Disable tenant resolution for this customer without removing the Clerk organization.
+                    Disable tenant resolution for this jurisdiction without removing the Clerk organization.
                   </div>
                 </div>
                 <button className="button secondary" type="submit" disabled={inactivePending}>
@@ -192,7 +159,7 @@ export function SuperAdminCustomerManageClient({
                 <input type="hidden" name="organizationId" value={customer.id} />
                 <input type="hidden" name="customerName" value={customer.name} />
                 <div>
-                  <div style={{ fontWeight: 700 }}>Delete customer</div>
+                  <div style={{ fontWeight: 700 }}>Delete jurisdiction</div>
                   <div style={{ color: 'var(--muted)' }}>
                     Remove the Clerk organization and delete its tenant mapping.
                   </div>
@@ -220,6 +187,15 @@ export function SuperAdminCustomerManageClient({
 
       {activeSection === 'admin-users' ? (
         <div className="panel-stack">
+          <section className="card">
+            <SuperAdminCustomerHeader
+              icon="admin-users"
+              eyebrow="Admin Users"
+              title={customer.name}
+              description="Manage admin access, invitations, and active assignments for this jurisdiction."
+            />
+          </section>
+
           <div className="admin-list">
             <div className="admin-list-heading">Invite admin user</div>
             <form action={inviteAction} className="admin-form">

@@ -32,13 +32,17 @@ class FeeScheduleItemCreate(BaseModel):
     fee_schedule_id: str
     code: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=255)
+    category: str = Field(default="general", min_length=1, max_length=50)
     fee_type: str = Field(min_length=1, max_length=50)
+    description: str | None = None
     amount_cents: int = Field(ge=0)
     currency: str = Field(default="USD", min_length=3, max_length=3)
     applies_to_letter_type: str | None = Field(default=None, max_length=50)
     applies_to_processing_type: str | None = Field(default=None, max_length=50)
     applies_to_delivery_method: str | None = Field(default=None, max_length=50)
     tax_mode: str | None = Field(default=None, max_length=50)
+    charge_unit: str | None = Field(default=None, max_length=50)
+    display_order: int = Field(default=0, ge=0)
     is_active: bool = True
     metadata_json: dict | None = None
 
@@ -50,17 +54,59 @@ class FeeScheduleItemRead(BaseModel):
     fee_schedule_id: str
     code: str
     name: str
+    category: str
     fee_type: str
+    description: str | None
     amount_cents: int
     currency: str
     applies_to_letter_type: str | None
     applies_to_processing_type: str | None
     applies_to_delivery_method: str | None
     tax_mode: str | None
+    charge_unit: str | None
+    display_order: int
     is_active: bool
     metadata_json: dict | None
     created_at: datetime
     updated_at: datetime
+
+
+class FeeStructureClientContextRead(BaseModel):
+    id: str
+    client_id: str
+    clerk_organization_id: str | None
+    city_name: str
+    department_name: str
+    jurisdiction_id: str
+
+
+class FeeStructureItemUpsert(BaseModel):
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    category: str = Field(min_length=1, max_length=50)
+    fee_type: str = Field(min_length=1, max_length=50)
+    description: str | None = None
+    amount_cents: int = Field(ge=0)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    applies_to_letter_type: str | None = Field(default=None, max_length=50)
+    applies_to_processing_type: str | None = Field(default=None, max_length=50)
+    applies_to_delivery_method: str | None = Field(default=None, max_length=50)
+    tax_mode: str | None = Field(default=None, max_length=50)
+    charge_unit: str | None = Field(default=None, max_length=50)
+    display_order: int = Field(default=0, ge=0)
+    is_active: bool = True
+    metadata_json: dict | None = None
+
+
+class FeeStructureUpsert(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    items: list[FeeStructureItemUpsert] = Field(min_length=1)
+
+
+class FeeStructureResponse(BaseModel):
+    client: FeeStructureClientContextRead
+    schedule: FeeScheduleRead
+    items: list[FeeScheduleItemRead]
 
 
 class LetterTemplateCreate(BaseModel):
@@ -131,6 +177,71 @@ class EmailTemplateEffectiveRead(BaseModel):
 class EmailTemplatesResponse(BaseModel):
     client: EmailTemplateClientContextRead
     templates: list[EmailTemplateEffectiveRead]
+
+
+class HomePageClientContextRead(BaseModel):
+    id: str
+    client_id: str
+    clerk_organization_id: str | None
+    city_name: str
+    department_name: str
+    jurisdiction_id: str
+
+
+class HomePageHeroStat(BaseModel):
+    label: str = Field(min_length=1, max_length=100)
+    value: str = Field(min_length=1, max_length=100)
+    icon: str = Field(min_length=1, max_length=10)
+
+
+class HomePageHero(BaseModel):
+    badge: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=255)
+    subtitle: str = Field(min_length=1, max_length=2000)
+    primary_button_text: str = Field(min_length=1, max_length=100)
+    secondary_button_text: str = Field(min_length=1, max_length=100)
+    learn_more_text: str = Field(min_length=1, max_length=100)
+    stats: list[HomePageHeroStat] = Field(min_length=1, max_length=3)
+
+
+class HomePageServiceItem(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=1, max_length=1000)
+    processing_time: str = Field(min_length=1, max_length=100)
+    fee: str = Field(min_length=1, max_length=100)
+
+
+class HomePageAbout(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class HomePageFaqItem(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    question: str = Field(min_length=1, max_length=255)
+    answer: str = Field(min_length=1, max_length=2000)
+
+
+class HomePageContact(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    body: str = Field(min_length=1, max_length=2000)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=50)
+    address: str | None = Field(default=None, max_length=255)
+
+
+class HomePageContentUpsert(BaseModel):
+    hero: HomePageHero
+    services: list[HomePageServiceItem] = Field(min_length=1, max_length=12)
+    about: HomePageAbout
+    faq: list[HomePageFaqItem] = Field(min_length=1, max_length=12)
+    contact: HomePageContact
+
+
+class HomePageContentResponse(BaseModel):
+    client: HomePageClientContextRead
+    content: HomePageContentUpsert
 
 
 class TenantClientCreate(BaseModel):

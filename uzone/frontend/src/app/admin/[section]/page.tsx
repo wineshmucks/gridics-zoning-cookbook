@@ -19,7 +19,7 @@ export default async function AdminSectionRoute({ params }: PageProps) {
       <section className="card">
         <h1 className="section-title">Admin Access Required</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          You need Clerk admin access for the current customer organization.
+          You need Clerk admin access for the current jurisdiction organization.
         </p>
       </section>
     )

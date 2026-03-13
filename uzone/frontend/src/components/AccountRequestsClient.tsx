@@ -79,10 +79,10 @@ function ClerkAccountRequests() {
   }, [getToken, isSignedIn])
 
   if (error) {
-    return <ErrorCard title="Customer Requests" message={error} />
+    return <ErrorCard title="Jurisdiction Requests" message={error} />
   }
   if (!requests) {
-    return <LoadingCard title="Customer Requests" />
+    return <LoadingCard title="Jurisdiction Requests" />
   }
 
   return (
@@ -133,10 +133,10 @@ function LocalAccountRequests() {
   }, [])
 
   if (error) {
-    return <ErrorCard title="Customer Requests" message={error} />
+    return <ErrorCard title="Jurisdiction Requests" message={error} />
   }
   if (!requests) {
-    return <LoadingCard title="Customer Requests" />
+    return <LoadingCard title="Jurisdiction Requests" />
   }
 
   return (
@@ -202,8 +202,14 @@ function AccountRequestsTable({
   }
 
   return (
-    <section className="card">
-      <h1 className="section-title">Customer Requests</h1>
+    <section className="card page-stack">
+      <div className="page-intro">
+        <div className="eyebrow">Requests</div>
+        <h1 className="section-title">Jurisdiction Requests</h1>
+        <p className="page-intro-copy">
+          Review request status, delivery method, and the next action for each zoning letter.
+        </p>
+      </div>
       <table className="table">
         <thead>
           <tr>

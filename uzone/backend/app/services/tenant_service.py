@@ -6,11 +6,12 @@ import time
 from dataclasses import asdict, dataclass
 from threading import Lock
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import TenantClient, TenantDomain
+from app.db.models import JurisdictionHomePageContent, TenantClient, TenantDomain
 
 
 @dataclass(slots=True)
@@ -28,6 +29,7 @@ class TenantPublicConfig:
     jurisdiction_id: str | None
     agent_url: str | None
     zoning_code_url: str | None
+    home_page_content: dict
 
 
 AGENT_URL_SETTING_KEY = "agent_url"
@@ -109,8 +111,141 @@ def merge_tenant_experience_settings(
     return next_settings
 
 
-def _to_public_config(client: TenantClient) -> TenantPublicConfig:
+def build_default_home_page_content(client: TenantClient) -> dict:
+    city_name = client.city_name.strip() or "Your City"
+    department_name = client.department_name.strip() or "Planning & Zoning Department"
+    support_email = client.support_email.strip() if client.support_email else None
+    support_phone = client.support_phone.strip() if client.support_phone else None
+    contact_address = client.contact_address.strip() if client.contact_address else None
+    return {
+        "hero": {
+            "badge": "Official City Documentation",
+            "title": f"Welcome to the {city_name}",
+            "subtitle": (
+                f"Request zoning verification letters and access {department_name.lower()} "
+                "services through a modern online portal."
+            ),
+            "primary_button_text": "Request a Letter",
+            "secondary_button_text": "Ask the Zoning Assistant",
+            "learn_more_text": "Learn More",
+            "stats": [
+                {"label": "Processing Time", "value": "Under 3 Days", "icon": "◔"},
+                {"label": "Security", "value": "PCI Compliant", "icon": "◈"},
+                {"label": "Updates", "value": "Real-Time Tracking", "icon": "◉"},
+            ],
+        },
+        "services": [
+            {
+                "id": "zoning-verification-letters",
+                "title": "Zoning Verification Letters",
+                "description": "Official documentation for property zoning classifications and permitted uses.",
+                "processing_time": "2-3 business days",
+                "fee": "Varies by request",
+            },
+            {
+                "id": "building-permits",
+                "title": "Building Permits",
+                "description": "Permits for construction, renovation, and property modifications.",
+                "processing_time": "5-10 business days",
+                "fee": "Varies by project",
+            },
+            {
+                "id": "business-licenses",
+                "title": "Business Licenses",
+                "description": "Licensing for new and existing business operations within city limits.",
+                "processing_time": "3-5 business days",
+                "fee": "See fee schedule",
+            },
+        ],
+        "about": {
+            "title": "What is a Zoning Verification Letter?",
+            "body": (
+                f"An official document from the {city_name} {department_name} that confirms "
+                "zoning classification, permitted uses, and related property details."
+            ),
+        },
+        "faq": [
+            {
+                "id": "turnaround",
+                "question": "How long does it take to receive my letter?",
+                "answer": (
+                    "Standard processing typically takes fewer than 3 business days. "
+                    "Expedited processing may be available for an additional fee."
+                ),
+            },
+            {
+                "id": "payment-methods",
+                "question": "What payment methods are accepted?",
+                "answer": "We accept major credit cards through a secure online checkout flow.",
+            },
+            {
+                "id": "delivery",
+                "question": "How will I receive my zoning verification letter?",
+                "answer": "Approved letters are typically delivered digitally, with mail options when configured.",
+            },
+        ],
+        "contact": {
+            "title": "Need help with your request?",
+            "body": (
+                f"Contact the {department_name} if you need assistance with zoning letters, "
+                "application status, or related municipal services."
+            ),
+            "email": support_email,
+            "phone": support_phone,
+            "address": contact_address,
+        },
+    }
+
+
+def get_home_page_content_payload(
+    record: JurisdictionHomePageContent | None,
+    client: TenantClient,
+) -> dict:
+    if record is None:
+        return build_default_home_page_content(client)
+
+    return {
+        "hero": dict(record.hero_json or {}),
+        "services": list(record.services_json or []),
+        "about": dict(record.about_json or {}),
+        "faq": list(record.faq_json or []),
+        "contact": dict(record.contact_json or {}),
+    }
+
+
+def get_home_page_content_record(
+    db: Session,
+    jurisdiction_id: str | None,
+) -> JurisdictionHomePageContent | None:
+    if not jurisdiction_id:
+        return None
+
+    try:
+        return db.scalar(
+            select(JurisdictionHomePageContent).where(
+                JurisdictionHomePageContent.jurisdiction_id == jurisdiction_id
+            )
+        )
+    except ProgrammingError as exc:
+        # Allow environments that have the code deployed before the new migration runs
+        # to fall back to generated default content instead of returning a 500.
+        if "jurisdiction_home_page_content" in str(exc):
+            db.rollback()
+            return None
+        raise
+
+
+def has_home_page_content_storage(db: Session) -> bool:
+    bind = db.get_bind()
+    return bool(bind is not None and inspect(bind).has_table("jurisdiction_home_page_content"))
+
+
+def _to_public_config(
+    db: Session,
+    client: TenantClient,
+) -> TenantPublicConfig:
     agent_url, zoning_code_url = get_tenant_experience_settings(client.settings_json)
+    home_page_content_record = get_home_page_content_record(db, client.jurisdiction_id)
     return TenantPublicConfig(
         client_id=client.client_id,
         clerk_organization_id=client.clerk_organization_id,
@@ -125,6 +260,7 @@ def _to_public_config(client: TenantClient) -> TenantPublicConfig:
         jurisdiction_id=client.jurisdiction_id,
         agent_url=agent_url,
         zoning_code_url=zoning_code_url,
+        home_page_content=get_home_page_content_payload(home_page_content_record, client),
     )
 
 
@@ -182,7 +318,7 @@ def resolve_tenant_public_config(
             select(TenantClient).where(TenantClient.is_active.is_(True)).order_by(TenantClient.created_at.asc())
         )
 
-    result = _to_public_config(client) if client else None
+    result = _to_public_config(db, client) if client else None
     _put_cached(key, result)
     return result
 

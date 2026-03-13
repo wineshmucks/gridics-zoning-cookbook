@@ -37,25 +37,25 @@ export function SuperAdminCustomerCreateClient() {
         <div>
           <div className="eyebrow">Super Admin</div>
           <h1 className="section-title" style={{ marginBottom: 8 }}>
-            Add Customer
+            Add Jurisdiction
           </h1>
           <p className="admin-copy">
-            Create a new customer organization, then manage its admins on the next screen.
+            Create a new jurisdiction organization, then manage its admins on the next screen.
           </p>
         </div>
         <Link href="/super-admin" className="button secondary">
-          Back to Customers
+          Back to Jurisdictions
         </Link>
       </div>
 
       <form action={provisionAction} className="admin-form" style={{ maxWidth: 560 }}>
-        <div className="admin-list-heading">New customer</div>
+        <div className="admin-list-heading">New jurisdiction</div>
         <label className="field">
-          <span>Customer name</span>
+          <span>Jurisdiction name</span>
           <input name="clientName" required />
         </label>
         <button className="button" type="submit" disabled={provisionPending}>
-          {provisionPending ? 'Creating…' : 'Create Customer'}
+          {provisionPending ? 'Creating…' : 'Create Jurisdiction'}
         </button>
         {provisionState.error ? (
           <div className="status-banner status-banner-error">{provisionState.error}</div>

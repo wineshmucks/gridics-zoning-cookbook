@@ -26,7 +26,7 @@ export default async function SuperAdminAssistantPage() {
     <section className="card admin-stack" style={{ marginBottom: 18 }}>
       <div className="super-admin-toolbar">
         <Link href="/super-admin" className="button secondary">
-          Back to Customers
+          Back to Jurisdictions
         </Link>
       </div>
 

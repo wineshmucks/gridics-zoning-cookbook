@@ -306,13 +306,17 @@ class FeeScheduleItem(Base, TimestampMixin):
     fee_schedule_id: Mapped[str] = mapped_column(ForeignKey("fee_schedules.id"), nullable=False)
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
     fee_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     applies_to_letter_type: Mapped[str | None] = mapped_column(String(50))
     applies_to_processing_type: Mapped[str | None] = mapped_column(String(50))
     applies_to_delivery_method: Mapped[str | None] = mapped_column(String(50))
     tax_mode: Mapped[str | None] = mapped_column(String(50))
+    charge_unit: Mapped[str | None] = mapped_column(String(50))
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     metadata_json: Mapped[dict | None] = mapped_column(JSON)
 
@@ -445,6 +449,18 @@ class EmailTemplate(Base, TimestampMixin):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     is_system_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class JurisdictionHomePageContent(Base, TimestampMixin):
+    __tablename__ = "jurisdiction_home_page_content"
+
+    id: Mapped[str] = uuid_pk()
+    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("jurisdictions.id"), nullable=False, unique=True)
+    hero_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    services_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    about_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    faq_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    contact_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
 class EmailEvent(Base):

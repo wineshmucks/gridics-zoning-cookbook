@@ -38,21 +38,32 @@ export default async function SelectCustomerPage({ searchParams }: PageProps) {
   const customers = await loadCustomers()
 
   return (
-    <section className="card" style={{ maxWidth: 720, margin: '48px auto' }}>
-      <h1 className="section-title">Choose a Customer</h1>
-      <p style={{ color: 'var(--muted)', marginTop: 0 }}>
-        Select the customer organization you want to work in before continuing.
-      </p>
-      {customers.length > 0 ? (
-        <CustomerPickerClient customers={customers} returnTo={returnTo} />
-      ) : (
-        <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
-          No active customer organizations are available right now.
-        </p>
-      )}
-      <p style={{ color: 'var(--muted)', marginBottom: 0 }}>
-        The selected URL will include the customer org in the path so the customer stays in context.
-      </p>
+    <section className="jurisdiction-picker-page">
+      <div className="jurisdiction-picker-shell">
+        <div className="jurisdiction-picker-hero">
+          <div className="eyebrow">Get started</div>
+          <h1 className="jurisdiction-picker-title">Choose your jurisdiction</h1>
+          <p className="subtitle jurisdiction-picker-subtitle">
+            Your jurisdiction determines the zoning letter workflow, property search tools, and
+            assistant guidance available to you.
+          </p>
+        </div>
+
+        {customers.length > 0 ? (
+          <CustomerPickerClient customers={customers} returnTo={returnTo} />
+        ) : (
+          <section className="card jurisdiction-picker-empty">
+            <h2 className="section-title">No Jurisdictions Available</h2>
+            <p style={{ color: 'var(--muted)', margin: 0 }}>
+              No active jurisdictions are available right now.
+            </p>
+          </section>
+        )}
+
+        <div className="jurisdiction-picker-support">
+          Need access to another jurisdiction? Contact your administrator or support.
+        </div>
+      </div>
     </section>
   )
 }

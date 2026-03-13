@@ -8,17 +8,14 @@ import { useSearchParams } from 'next/navigation'
 import { API_BASE, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
 import { ErrorCard, LoadingCard } from './RemoteState'
 
-type Jurisdiction = {
-  id: string
-  name: string
-  code: string
-}
-
 type FeeItem = {
+  code: string
+  name: string
   fee_type: string
   amount_cents: number
-  letter_type: string | null
-  processing_type: string | null
+  applies_to_letter_type: string | null
+  applies_to_processing_type: string | null
+  applies_to_delivery_method: string | null
 }
 
 type FeesResponse = {
@@ -156,14 +153,17 @@ function IntakeFlow({
   getToken,
   actorUserId,
   clerkMode,
+  tenantClientId,
+  tenantJurisdictionId,
 }: {
   getToken: () => Promise<string | null>
   actorUserId: string | null
   clerkMode: boolean
+  tenantClientId: string
+  tenantJurisdictionId: string | null
 }) {
   const searchParams = useSearchParams()
   const detailsRef = useRef<HTMLElement | null>(null)
-  const [jurisdictions, setJurisdictions] = useState<Jurisdiction[] | null>(null)
   const [fees, setFees] = useState<FeesResponse | null>(null)
   const [addressSearch, setAddressSearch] = useState('')
   const [apnSearch, setApnSearch] = useState('')
@@ -194,25 +194,19 @@ function IntakeFlow({
   useEffect(() => {
     let active = true
 
-    Promise.all([
-      fetch(`${API_BASE}/api/admin/jurisdictions`, { cache: 'no-store' }),
-      fetch(`${API_BASE}/api/admin/fees`, { cache: 'no-store' }),
-    ])
-      .then(async ([jurisdictionResponse, feeResponse]) => {
+    fetch(`${API_BASE}/api/admin/fees?client_id=${encodeURIComponent(tenantClientId)}`, {
+      cache: 'no-store',
+    })
+      .then(async (feeResponse) => {
         if (!active) {
           return
         }
-        const jurisdictionData = jurisdictionResponse.ok
-          ? ((await jurisdictionResponse.json()) as Jurisdiction[])
-          : []
         const feeData = feeResponse.ok ? ((await feeResponse.json()) as FeesResponse) : { items: [] }
-        setJurisdictions(jurisdictionData)
         setFees(feeData)
       })
       .catch(() => {
         if (active) {
           setError('Failed to load parcel selection data.')
-          setJurisdictions([])
           setFees({ items: [] })
         }
       })
@@ -220,7 +214,7 @@ function IntakeFlow({
     return () => {
       active = false
     }
-  }, [])
+  }, [tenantClientId])
 
   const selectedParcels = useMemo(
     () => mockParcels.filter((parcel) => selectedParcelIds.includes(parcel.id)),
@@ -239,7 +233,11 @@ function IntakeFlow({
 
   const baseLetterFee = useMemo(() => {
     const match = fees?.items.find(
-      (item) => item.fee_type === 'base' && item.letter_type === form.letter_type,
+      (item) =>
+        item.fee_type === 'base' &&
+        item.applies_to_letter_type === form.letter_type &&
+        !item.applies_to_processing_type &&
+        !item.applies_to_delivery_method,
     )
     return match?.amount_cents ?? (form.letter_type === 'standard' ? 12500 : 32500)
   }, [fees?.items, form.letter_type])
@@ -248,14 +246,19 @@ function IntakeFlow({
     const match = fees?.items.find(
       (item) =>
         item.fee_type === 'rush' &&
-        item.letter_type === form.letter_type &&
-        item.processing_type === 'expedited',
+        item.applies_to_processing_type === 'expedited',
     )
     return match?.amount_cents ?? 5000
-  }, [fees?.items, form.letter_type])
+  }, [fees?.items])
+
+  const mailFee = useMemo(() => {
+    const match = fees?.items.find((item) => item.applies_to_delivery_method === 'mail')
+    return match?.amount_cents ?? 0
+  }, [fees?.items])
 
   const estimatedTotal = selectedParcels.length * baseLetterFee +
-    (form.processing_type === 'expedited' ? selectedParcels.length * rushFee : 0)
+    (form.processing_type === 'expedited' ? selectedParcels.length * rushFee : 0) +
+    (form.delivery_method === 'mail' ? selectedParcels.length * mailFee : 0)
 
   const mailingAddress =
     form.mailing_street || form.mailing_city || form.mailing_state || form.mailing_postal_code
@@ -290,8 +293,8 @@ function IntakeFlow({
       if (!actorUserId) {
         throw new Error('Sign in before submitting requests.')
       }
-      if (!jurisdictions?.[0]) {
-        throw new Error('No jurisdiction is configured yet.')
+      if (!tenantJurisdictionId) {
+        throw new Error('No jurisdiction is configured for the selected tenant.')
       }
       if (selectedParcels.length === 0) {
         throw new Error('Select at least one parcel before continuing.')
@@ -303,7 +306,7 @@ function IntakeFlow({
         const property = await postJsonWithToken<{ id: string }>(
           '/api/properties',
           {
-            jurisdiction_id: jurisdictions[0].id,
+            jurisdiction_id: tenantJurisdictionId,
             source_system: 'parcel_selection',
             source_property_id: parcel.source_property_id,
             group_id: parcel.group_id,
@@ -352,7 +355,7 @@ function IntakeFlow({
         const request = await postJsonWithToken<CreatedRequest>(
           '/api/requests',
           {
-            jurisdiction_id: jurisdictions[0].id,
+            jurisdiction_id: tenantJurisdictionId,
             requester_user_id: actorUserId,
             property_id: property.id,
             property_snapshot_id: snapshot.id,
@@ -384,10 +387,10 @@ function IntakeFlow({
     }
   }
 
-  if (error && !jurisdictions) {
+  if (error && !fees) {
     return <ErrorCard title="Select Property" message={error} />
   }
-  if (!jurisdictions || !fees) {
+  if (!fees) {
     return <LoadingCard title="Select Property" />
   }
 
@@ -806,7 +809,13 @@ function IntakeFlow({
   )
 }
 
-function ClerkRequestIntake() {
+function ClerkRequestIntake({
+  tenantClientId,
+  tenantJurisdictionId,
+}: {
+  tenantClientId: string
+  tenantJurisdictionId: string | null
+}) {
   const { getToken, isSignedIn } = useAuth()
   const [localUserId, setLocalUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -868,11 +877,19 @@ function ClerkRequestIntake() {
       getToken={async () => (isSignedIn ? getToken() : null)}
       actorUserId={localUserId}
       clerkMode
+      tenantClientId={tenantClientId}
+      tenantJurisdictionId={tenantJurisdictionId}
     />
   )
 }
 
-function LocalRequestIntake() {
+function LocalRequestIntake({
+  tenantClientId,
+  tenantJurisdictionId,
+}: {
+  tenantClientId: string
+  tenantJurisdictionId: string | null
+}) {
   const [localUserId, setLocalUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -911,9 +928,29 @@ function LocalRequestIntake() {
     return <ErrorCard title="Select Property" message={error} />
   }
 
-  return <IntakeFlow getToken={async () => null} actorUserId={localUserId} clerkMode={false} />
+  return (
+    <IntakeFlow
+      getToken={async () => null}
+      actorUserId={localUserId}
+      clerkMode={false}
+      tenantClientId={tenantClientId}
+      tenantJurisdictionId={tenantJurisdictionId}
+    />
+  )
 }
 
-export function RequestIntakeClient({ clerkEnabled }: { clerkEnabled: boolean }) {
-  return clerkEnabled ? <ClerkRequestIntake /> : <LocalRequestIntake />
+export function RequestIntakeClient({
+  clerkEnabled,
+  tenantClientId,
+  tenantJurisdictionId,
+}: {
+  clerkEnabled: boolean
+  tenantClientId: string
+  tenantJurisdictionId: string | null
+}) {
+  return clerkEnabled ? (
+    <ClerkRequestIntake tenantClientId={tenantClientId} tenantJurisdictionId={tenantJurisdictionId} />
+  ) : (
+    <LocalRequestIntake tenantClientId={tenantClientId} tenantJurisdictionId={tenantJurisdictionId} />
+  )
 }

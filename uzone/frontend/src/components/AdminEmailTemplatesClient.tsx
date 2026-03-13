@@ -8,6 +8,7 @@ import {
   resetAdminEmailTemplateOverrideAction,
   saveAdminEmailTemplateOverrideAction,
 } from '../app/admin/actions'
+import { AdminSectionTitle } from './AdminSectionTitle'
 
 function formatTimestamp(value: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -122,10 +123,9 @@ export function AdminEmailTemplatesClient({
         <div className="admin-header">
           <div>
             <div className="eyebrow">Admin</div>
-            <h1 className="section-title" style={{ marginBottom: 8 }}>
-              Email Templates
-            </h1>
-            <p className="admin-copy">No email templates are available for the current customer.</p>
+            <AdminSectionTitle icon="email-settings" title="Email Templates">
+              <p className="admin-copy">No email templates are available for the current jurisdiction.</p>
+            </AdminSectionTitle>
           </div>
         </div>
       </section>
@@ -138,16 +138,15 @@ export function AdminEmailTemplatesClient({
         <div className="admin-header">
           <div>
             <div className="eyebrow">Admin</div>
-            <h1 className="section-title" style={{ marginBottom: 8 }}>
-              Email Templates
-            </h1>
-            <p className="admin-copy">
-              Manage request-state notifications for {payload.client.city_name}. Gridics provides the
-              default setup, and customer-specific overrides replace that default only when saved.
-            </p>
+            <AdminSectionTitle icon="email-settings" title="Email Templates">
+              <p className="admin-copy">
+                Manage request-state notifications for {payload.client.city_name}. Gridics provides the
+                default setup, and jurisdiction-specific overrides replace that default only when saved.
+              </p>
+            </AdminSectionTitle>
           </div>
           <div className="email-admin-summary">
-            <div className="email-admin-summary-label">Customer</div>
+            <div className="email-admin-summary-label">Jurisdiction</div>
             <div className="email-admin-summary-value">{payload.client.city_name}</div>
             <div className="email-admin-summary-meta">{payload.client.client_id}</div>
           </div>
@@ -195,7 +194,7 @@ export function AdminEmailTemplatesClient({
               <p className="email-template-list-item-copy">{template.description || 'No description provided.'}</p>
               <div className="email-template-list-item-meta">
                 <span className={`source-pill ${template.is_override ? 'is-override' : ''}`}>
-                  {template.is_override ? 'Customer override' : 'Gridics default'}
+                  {template.is_override ? 'Jurisdiction override' : 'Gridics default'}
                 </span>
                 <span>Updated {formatTimestamp(template.updated_at)}</span>
               </div>
@@ -214,7 +213,7 @@ export function AdminEmailTemplatesClient({
               </div>
               <div className="email-admin-source">
                 <span className={`source-pill ${selectedTemplate.is_override ? 'is-override' : ''}`}>
-                  {selectedTemplate.is_override ? 'Customer override' : 'Gridics default'}
+                  {selectedTemplate.is_override ? 'Jurisdiction override' : 'Gridics default'}
                 </span>
               </div>
             </div>

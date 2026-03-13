@@ -4,8 +4,8 @@ import type { ReactNode } from 'react'
 
 import { AuthControls, ClerkShell } from '../components/ClerkShell'
 import { HeaderBrand } from '../components/HeaderBrand'
+import { PublicNav } from '../components/PublicNav'
 import { getCurrentOrgId } from '../lib/org-context'
-import { appendOrgIdToHref } from '../lib/org-url'
 import { getPermissionContext } from '../lib/permissions'
 import { getTenantConfig } from '../lib/tenant'
 
@@ -41,15 +41,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   selectedAdminOrganizationId={permissions.selectedAdminMembership?.organizationId || null}
                 />
                 <div className="topbar-actions">
-                  <nav className="nav nav-public">
-                    <a href={appendOrgIdToHref('/', orgId)} className="nav-current">
-                      Zoning Verification Letters
-                    </a>
-                    <a href={appendOrgIdToHref('/assistant', orgId)}>Assistant</a>
-                    <a href={appendOrgIdToHref('/request/new', orgId)}>Property Search</a>
-                    <a href={appendOrgIdToHref('/#features-section', orgId)}>Resources</a>
-                    <a href={appendOrgIdToHref('/#cta-section', orgId)}>Contact</a>
-                  </nav>
+                  <PublicNav orgId={orgId} />
                   <AuthControls
                     clerkEnabled={clerkEnabled}
                     canAccessAdminScreens={permissions.canAccessAdminScreens}

@@ -1,11 +1,22 @@
 """Admin routes."""
 
+import re
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
-from app.db.models import EmailTemplate, FeeSchedule, FeeScheduleItem, Jurisdiction, LetterTemplate, TenantClient, User
+from app.db.models import (
+    EmailTemplate,
+    FeeSchedule,
+    FeeScheduleItem,
+    Jurisdiction,
+    JurisdictionHomePageContent,
+    LetterTemplate,
+    TenantClient,
+    User,
+)
 from app.schemas import (
     EmailTemplateClientContextRead,
     EmailTemplateEffectiveRead,
@@ -15,6 +26,12 @@ from app.schemas import (
     FeeScheduleItemCreate,
     FeeScheduleItemRead,
     FeeScheduleRead,
+    FeeStructureClientContextRead,
+    FeeStructureResponse,
+    FeeStructureUpsert,
+    HomePageClientContextRead,
+    HomePageContentResponse,
+    HomePageContentUpsert,
     JurisdictionCreate,
     JurisdictionRead,
     LetterTemplateCreate,
@@ -30,8 +47,12 @@ from app.schemas import (
     ZoningKnowledgeStatusRead,
 )
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
+from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
 from app.services.tenant_service import (
+    get_home_page_content_record,
+    get_home_page_content_payload,
     get_tenant_experience_settings,
+    has_home_page_content_storage,
     invalidate_tenant_cache,
     merge_tenant_experience_settings,
 )
@@ -43,6 +64,87 @@ from app.services.zoning_knowledge_service import (
 )
 
 router = APIRouter()
+
+
+def _normalize_jurisdiction_code(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    return normalized[:100] or "jurisdiction"
+
+
+def _ensure_tenant_jurisdiction(db: Session, tenant_client: TenantClient) -> Jurisdiction:
+    if tenant_client.jurisdiction_id:
+        jurisdiction = db.get(Jurisdiction, tenant_client.jurisdiction_id)
+        if jurisdiction is not None:
+            return jurisdiction
+
+    existing = db.scalar(
+        select(Jurisdiction).where(
+            (Jurisdiction.code == tenant_client.client_id) | (Jurisdiction.name == tenant_client.city_name)
+        )
+    )
+    if existing is not None:
+        tenant_client.jurisdiction_id = existing.id
+        db.flush()
+        return existing
+
+    base_code = _normalize_jurisdiction_code(tenant_client.client_id or tenant_client.city_name)
+    code = base_code
+    suffix = 1
+    while db.scalar(select(Jurisdiction).where(Jurisdiction.code == code)) is not None:
+        suffix += 1
+        code = f"{base_code[:96]}-{suffix}"
+
+    jurisdiction = Jurisdiction(
+        code=code,
+        name=tenant_client.city_name,
+        department_name=tenant_client.department_name,
+        public_site_title=f"{tenant_client.city_name} Zoning Verification",
+        public_contact_email=tenant_client.support_email,
+        public_contact_phone=tenant_client.support_phone,
+        timezone="UTC",
+        is_active=True,
+    )
+    db.add(jurisdiction)
+    db.flush()
+    tenant_client.jurisdiction_id = jurisdiction.id
+    db.flush()
+    return jurisdiction
+
+
+def _build_fee_structure_response(
+    tenant_client: TenantClient,
+    schedule: FeeSchedule,
+    items: list[FeeScheduleItem],
+) -> FeeStructureResponse:
+    return FeeStructureResponse(
+        client=FeeStructureClientContextRead(
+            id=tenant_client.id,
+            client_id=tenant_client.client_id,
+            clerk_organization_id=tenant_client.clerk_organization_id,
+            city_name=tenant_client.city_name,
+            department_name=tenant_client.department_name,
+            jurisdiction_id=tenant_client.jurisdiction_id or "",
+        ),
+        schedule=FeeScheduleRead.model_validate(schedule),
+        items=[FeeScheduleItemRead.model_validate(item) for item in items],
+    )
+
+
+def _build_home_page_content_response(
+    tenant_client: TenantClient,
+    content: dict,
+) -> HomePageContentResponse:
+    return HomePageContentResponse(
+        client=HomePageClientContextRead(
+            id=tenant_client.id,
+            client_id=tenant_client.client_id,
+            clerk_organization_id=tenant_client.clerk_organization_id,
+            city_name=tenant_client.city_name,
+            department_name=tenant_client.department_name,
+            jurisdiction_id=tenant_client.jurisdiction_id or "",
+        ),
+        content=HomePageContentUpsert.model_validate(content),
+    )
 
 
 def _get_tenant_client_by_org_id(db: Session, organization_id: str) -> TenantClient:
@@ -96,6 +198,8 @@ def create_tenant_client(
 
     tenant_client = TenantClient(**payload.model_dump())
     db.add(tenant_client)
+    if not tenant_client.jurisdiction_id:
+        _ensure_tenant_jurisdiction(db, tenant_client)
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()
@@ -226,13 +330,27 @@ def create_jurisdiction(
 @router.get("/fees")
 def get_fees(
     jurisdiction_id: str | None = Query(default=None),
+    organization_id: str | None = Query(default=None),
+    client_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
+    if organization_id or client_id:
+        tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+        _ensure_tenant_jurisdiction(db, tenant_client)
+        db.commit()
+        db.refresh(tenant_client)
+        schedule, items = ensure_active_fee_schedule_for_tenant(db, tenant_client)
+        invalidate_tenant_cache()
+        return {
+            "schedules": [FeeScheduleRead.model_validate(schedule).model_dump()],
+            "items": [FeeScheduleItemRead.model_validate(item).model_dump() for item in items],
+        }
+
     schedules_stmt = select(FeeSchedule).order_by(FeeSchedule.created_at.desc())
     if jurisdiction_id:
         schedules_stmt = schedules_stmt.where(FeeSchedule.jurisdiction_id == jurisdiction_id)
     schedules = db.scalars(schedules_stmt).all()
-    items_stmt = select(FeeScheduleItem).order_by(FeeScheduleItem.created_at.desc())
+    items_stmt = select(FeeScheduleItem).order_by(FeeScheduleItem.display_order.asc(), FeeScheduleItem.created_at.asc())
     if jurisdiction_id:
         items_stmt = items_stmt.join(FeeSchedule).where(FeeSchedule.jurisdiction_id == jurisdiction_id)
     items = db.scalars(items_stmt).all()
@@ -240,6 +358,105 @@ def get_fees(
         "schedules": [FeeScheduleRead.model_validate(item).model_dump() for item in schedules],
         "items": [FeeScheduleItemRead.model_validate(item).model_dump() for item in items],
     }
+
+
+@router.get("/fees/structure", response_model=FeeStructureResponse)
+def get_fee_structure(
+    organization_id: str | None = Query(default=None),
+    client_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> FeeStructureResponse:
+    tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+    _ensure_tenant_jurisdiction(db, tenant_client)
+    db.commit()
+    db.refresh(tenant_client)
+    schedule, items = ensure_active_fee_schedule_for_tenant(db, tenant_client)
+    invalidate_tenant_cache()
+    return _build_fee_structure_response(tenant_client, schedule, items)
+
+
+@router.put("/fees/structure", response_model=FeeStructureResponse)
+def save_fee_structure(
+    payload: FeeStructureUpsert,
+    organization_id: str | None = Query(default=None),
+    client_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> FeeStructureResponse:
+    tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+    _ensure_tenant_jurisdiction(db, tenant_client)
+    schedule, items = update_fee_structure_for_tenant(
+        db,
+        tenant_client,
+        name=payload.name.strip() if payload.name else None,
+        items=[item.model_dump() for item in payload.items],
+    )
+    invalidate_tenant_cache()
+    return _build_fee_structure_response(tenant_client, schedule, items)
+
+
+@router.get("/home-page-content", response_model=HomePageContentResponse)
+def get_home_page_content(
+    organization_id: str | None = Query(default=None),
+    client_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> HomePageContentResponse:
+    tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+    _ensure_tenant_jurisdiction(db, tenant_client)
+    db.commit()
+    db.refresh(tenant_client)
+    record = get_home_page_content_record(db, tenant_client.jurisdiction_id)
+    return _build_home_page_content_response(
+        tenant_client,
+        get_home_page_content_payload(record, tenant_client),
+    )
+
+
+@router.put("/home-page-content", response_model=HomePageContentResponse)
+def save_home_page_content(
+    payload: HomePageContentUpsert,
+    organization_id: str | None = Query(default=None),
+    client_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> HomePageContentResponse:
+    if not has_home_page_content_storage(db):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Home page content storage is not ready. Run the "
+                "20260313_000009_home_page_content migration and try again."
+            ),
+        )
+
+    tenant_client = _get_tenant_client_by_lookup(db, organization_id=organization_id, client_id=client_id)
+    jurisdiction = _ensure_tenant_jurisdiction(db, tenant_client)
+    record = get_home_page_content_record(db, jurisdiction.id)
+    normalized = payload.model_dump()
+
+    if record is None:
+        record = JurisdictionHomePageContent(
+            jurisdiction_id=jurisdiction.id,
+            hero_json=normalized["hero"],
+            services_json=normalized["services"],
+            about_json=normalized["about"],
+            faq_json=normalized["faq"],
+            contact_json=normalized["contact"],
+        )
+        db.add(record)
+    else:
+        record.hero_json = normalized["hero"]
+        record.services_json = normalized["services"]
+        record.about_json = normalized["about"]
+        record.faq_json = normalized["faq"]
+        record.contact_json = normalized["contact"]
+
+    db.commit()
+    db.refresh(tenant_client)
+    db.refresh(record)
+    invalidate_tenant_cache()
+    return _build_home_page_content_response(
+        tenant_client,
+        get_home_page_content_payload(record, tenant_client),
+    )
 
 
 @router.post("/fees/schedules", response_model=FeeScheduleRead, status_code=status.HTTP_201_CREATED)

@@ -5,6 +5,7 @@ import {
   fetchCustomerZoningKnowledgeStatus,
 } from '../../../../admin/actions'
 import { CustomerAssistantSetupPanel } from '../../../../../components/CustomerAssistantSetupPanel'
+import { SuperAdminCustomerHeader } from '../../../../../components/SuperAdminCustomerIcons'
 import { getClerkManagementClient } from '../../../../../lib/clerk'
 import { getPermissionContext } from '../../../../../lib/permissions'
 
@@ -23,7 +24,7 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params }: P
       <section className="card">
         <h1 className="section-title">Super Admin Access Required</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only super admins can manage customer assistant setup.
+          Only super admins can manage jurisdiction assistant setup.
         </p>
       </section>
     )
@@ -48,17 +49,14 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params }: P
 
   return (
     <div className="panel-stack">
-      <div className="admin-header">
-        <div>
-          <div className="eyebrow">Assistant Setup</div>
-          <h1 className="section-title" style={{ marginBottom: 8 }}>
-            {organization.name}
-          </h1>
-          <p className="admin-copy">
-            Save the zoning code source, run ingestion, and inspect the customer knowledge base.
-          </p>
-        </div>
-      </div>
+      <section className="card">
+        <SuperAdminCustomerHeader
+          icon="assistant-setup"
+          eyebrow="Assistant Setup"
+          title={organization.name}
+          description="Save the zoning code source, run ingestion, and inspect the jurisdiction knowledge base."
+        />
+      </section>
 
       <CustomerAssistantSetupPanel
         customer={{

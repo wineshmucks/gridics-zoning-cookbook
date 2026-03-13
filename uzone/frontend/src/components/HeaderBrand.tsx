@@ -138,7 +138,7 @@ function ClerkHeaderBrand({
                 }}
                 disabled={pendingOrganizationId !== null}
               >
-                Switch customer
+                Switch jurisdiction
               </button>
               {isOpen ? (
                 <div className="brand-switch-menu">

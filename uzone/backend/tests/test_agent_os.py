@@ -26,7 +26,7 @@ def test_build_agent_os_db_uses_app_postgres_settings(monkeypatch) -> None:
 
     assert db.db_url == agent_os.settings.database_url
     assert db.db_schema == "agent_os"
-    assert db.session_table_name == "agent_os_sessions"
+    assert db.session_table_name == "aos_sessions"
 
 
 def test_build_agent_os_app_configures_persistent_db(monkeypatch) -> None:

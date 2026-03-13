@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import { AgentChatPanel } from '../../../../../components/AgentChatPanel'
+import { SuperAdminCustomerHeader } from '../../../../../components/SuperAdminCustomerIcons'
 import { fetchCustomerZoningKnowledgeStatus } from '../../../../admin/actions'
 import { getClerkManagementClient } from '../../../../../lib/clerk'
 import { getPermissionContext } from '../../../../../lib/permissions'
@@ -22,7 +23,7 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
       <section className="card">
         <h1 className="section-title">Super Admin Access Required</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only super admins can access the customer assistant.
+          Only super admins can access the jurisdiction assistant.
         </p>
       </section>
     )
@@ -44,6 +45,15 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
 
   return (
     <div className="panel-stack">
+      <section className="card">
+        <SuperAdminCustomerHeader
+          icon="assistant"
+          eyebrow="Assistant"
+          title={organization.name}
+          description="Chat with the jurisdiction-scoped assistant using the current zoning knowledge base."
+        />
+      </section>
+
       <AgentChatPanel
         agentId="customer-zoning-agent"
         backendBase={backendBase}

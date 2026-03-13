@@ -195,8 +195,14 @@ function StaffRequestsTable({
   }
 
   return (
-    <section className="card">
-      <h1 className="section-title">Staff Queue</h1>
+    <section className="card page-stack">
+      <div className="page-intro">
+        <div className="eyebrow">Staff</div>
+        <h1 className="section-title">Staff Queue</h1>
+        <p className="page-intro-copy">
+          Assign, review, approve, and deliver zoning letter requests from one queue.
+        </p>
+      </div>
       <table className="table">
         <thead>
           <tr>

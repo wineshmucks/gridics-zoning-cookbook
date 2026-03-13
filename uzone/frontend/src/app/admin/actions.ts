@@ -105,6 +105,106 @@ export type AdminEmailTemplatesPayload = {
   templates: AdminEmailTemplate[]
 }
 
+export type AdminFeeStructureItem = {
+  id: string
+  fee_schedule_id: string
+  code: string
+  name: string
+  category: 'base_fees' | 'expedited_fees' | 'additional_services' | 'general'
+  fee_type: string
+  description: string | null
+  amount_cents: number
+  currency: string
+  applies_to_letter_type: string | null
+  applies_to_processing_type: string | null
+  applies_to_delivery_method: string | null
+  tax_mode: string | null
+  charge_unit: string | null
+  display_order: number
+  is_active: boolean
+  metadata_json: Record<string, string | number | boolean | null> | null
+  created_at: string
+  updated_at: string
+}
+
+export type AdminFeeStructurePayload = {
+  client: {
+    id: string
+    client_id: string
+    clerk_organization_id: string | null
+    city_name: string
+    department_name: string
+    jurisdiction_id: string
+  }
+  schedule: {
+    id: string
+    jurisdiction_id: string
+    name: string
+    status: string
+    effective_start_at: string | null
+    effective_end_at: string | null
+    created_by_user_id: string | null
+    created_at: string
+    updated_at: string
+  }
+  items: AdminFeeStructureItem[]
+}
+
+export type AdminHomePageHeroStat = {
+  label: string
+  value: string
+  icon: string
+}
+
+export type AdminHomePageServiceItem = {
+  id: string
+  title: string
+  description: string
+  processing_time: string
+  fee: string
+}
+
+export type AdminHomePageFaqItem = {
+  id: string
+  question: string
+  answer: string
+}
+
+export type AdminHomePagePayload = {
+  client: {
+    id: string
+    client_id: string
+    clerk_organization_id: string | null
+    city_name: string
+    department_name: string
+    jurisdiction_id: string
+  }
+  content: {
+    hero: {
+      badge: string
+      title: string
+      subtitle: string
+      primary_button_text: string
+      secondary_button_text: string
+      learn_more_text: string
+      stats: AdminHomePageHeroStat[]
+    }
+    services: AdminHomePageServiceItem[]
+    about: {
+      title: string
+      body: string
+    }
+    faq: AdminHomePageFaqItem[]
+    contact: {
+      title: string
+      body: string
+      email: string | null
+      phone: string | null
+      address: string | null
+    }
+  }
+}
+
 const initialProvisionState: ProvisionClientState = {
   error: null,
   success: null,
@@ -200,12 +300,12 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase()
 }
 
-async function getAdminEmailTemplateTarget() {
+async function getAdminScopedTarget() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
 
   if (!permissions.canAccessAdminScreens) {
-    throw new Error('You need admin access for the selected customer organization.')
+    throw new Error('You need admin access for the selected jurisdiction organization.')
   }
 
   const organizationId =
@@ -218,7 +318,7 @@ async function getAdminEmailTemplateTarget() {
     null
 
   if (!organizationId && !clientId) {
-    throw new Error('Unable to resolve the current customer context.')
+    throw new Error('Unable to resolve the current jurisdiction context.')
   }
 
   return { organizationId, clientId }
@@ -274,7 +374,7 @@ async function updateTenantClientStatus(organizationId: string, isActive: boolea
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
     throw new Error(
-      typeof payload?.detail === 'string' ? payload.detail : 'Unable to update customer status.',
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to update jurisdiction status.',
     )
   }
 }
@@ -291,7 +391,7 @@ async function deleteTenantClientRecord(organizationId: string) {
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
     throw new Error(
-      typeof payload?.detail === 'string' ? payload.detail : 'Unable to delete customer record.',
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to delete jurisdiction record.',
     )
   }
 }
@@ -365,7 +465,7 @@ export async function saveCustomerExperienceSettingsAction(
       throw new Error(
         typeof payload?.detail === 'string'
           ? payload.detail
-          : 'Unable to save customer assistant settings.',
+          : 'Unable to save jurisdiction assistant settings.',
       )
     }
 
@@ -376,12 +476,12 @@ export async function saveCustomerExperienceSettingsAction(
 
     return {
       error: null,
-      success: 'Customer assistant settings saved.',
+      success: 'Jurisdiction assistant settings saved.',
     }
   } catch (error) {
     return {
       ...initialCustomerExperienceSettingsState,
-      error: getErrorMessage(error, 'Unable to save customer assistant settings.'),
+      error: getErrorMessage(error, 'Unable to save jurisdiction assistant settings.'),
     }
   }
 }
@@ -557,7 +657,7 @@ export async function provisionClientAction(
   const clientName = String(formData.get('clientName') || '').trim()
 
   if (!clientName) {
-    return { ...initialProvisionState, error: 'Customer name is required.' }
+    return { ...initialProvisionState, error: 'Jurisdiction name is required.' }
   }
 
   const client = await getClerkManagementClient()
@@ -741,7 +841,7 @@ export async function setCustomerInactiveAction(
   const { role } = await getPermissionContext(clerkEnabled)
 
   if (role !== 'super_admin') {
-    return { error: 'Only super admins can set customers inactive.', success: null }
+    return { error: 'Only super admins can set jurisdictions inactive.', success: null }
   }
 
   const organizationId = String(formData.get('organizationId') || '').trim()
@@ -758,11 +858,11 @@ export async function setCustomerInactiveAction(
 
     return {
       error: null,
-      success: `${customerName || 'Customer'} was set inactive.`,
+      success: `${customerName || 'Jurisdiction'} was set inactive.`,
     }
   } catch (error) {
     return {
-      error: getErrorMessage(error, 'Unable to set the customer inactive.'),
+      error: getErrorMessage(error, 'Unable to set the jurisdiction inactive.'),
       success: null,
     }
   }
@@ -776,7 +876,7 @@ export async function deleteCustomerAction(
   const { role } = await getPermissionContext(clerkEnabled)
 
   if (role !== 'super_admin') {
-    return { error: 'Only super admins can delete customers.', success: null }
+    return { error: 'Only super admins can delete jurisdictions.', success: null }
   }
 
   const organizationId = String(formData.get('organizationId') || '').trim()
@@ -792,17 +892,17 @@ export async function deleteCustomerAction(
     await client.organizations.deleteOrganization(organizationId)
     await deleteTenantClientRecord(organizationId)
     revalidatePath('/super-admin')
-    redirect(`/super-admin?status=customer-deleted&customerName=${encodeURIComponent(customerName || 'Customer')}`)
+    redirect(`/super-admin?status=customer-deleted&customerName=${encodeURIComponent(customerName || 'Jurisdiction')}`)
   } catch (error) {
     return {
-      error: getErrorMessage(error, 'Unable to delete the customer.'),
+      error: getErrorMessage(error, 'Unable to delete the jurisdiction.'),
       success: null,
     }
   }
 }
 
 export async function fetchAdminEmailTemplatesAction(): Promise<AdminEmailTemplatesPayload> {
-  const target = await getAdminEmailTemplateTarget()
+  const target = await getAdminScopedTarget()
   const params = new URLSearchParams()
 
   if (target.organizationId) {
@@ -828,6 +928,155 @@ export async function fetchAdminEmailTemplatesAction(): Promise<AdminEmailTempla
   return (await response.json()) as AdminEmailTemplatesPayload
 }
 
+export async function fetchAdminFeeStructureAction(): Promise<AdminFeeStructurePayload> {
+  const target = await getAdminScopedTarget()
+  const params = new URLSearchParams()
+
+  if (target.organizationId) {
+    params.set('organization_id', target.organizationId)
+  }
+  if (target.clientId) {
+    params.set('client_id', target.clientId)
+  }
+
+  const response = await fetch(buildBackendApiUrl(`/api/admin/fees/structure?${params.toString()}`), {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string'
+        ? payload.detail
+        : 'Unable to load the jurisdiction fee structure.',
+    )
+  }
+
+  return (await response.json()) as AdminFeeStructurePayload
+}
+
+export async function fetchAdminHomePageContentAction(): Promise<AdminHomePagePayload> {
+  const target = await getAdminScopedTarget()
+  const params = new URLSearchParams()
+
+  if (target.organizationId) {
+    params.set('organization_id', target.organizationId)
+  }
+  if (target.clientId) {
+    params.set('client_id', target.clientId)
+  }
+
+  const response = await fetch(buildBackendApiUrl(`/api/admin/home-page-content?${params.toString()}`), {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string'
+        ? payload.detail
+        : 'Unable to load the jurisdiction home page content.',
+    )
+  }
+
+  return (await response.json()) as AdminHomePagePayload
+}
+
+export async function saveAdminFeeStructureAction(input: {
+  name: string
+  items: Array<{
+    code: string
+    name: string
+    category: string
+    fee_type: string
+    description: string
+    amount_cents: number
+    currency: string
+    applies_to_letter_type: string | null
+    applies_to_processing_type: string | null
+    applies_to_delivery_method: string | null
+    tax_mode: string | null
+    charge_unit: string | null
+    display_order: number
+    is_active: boolean
+    metadata_json: Record<string, string | number | boolean | null>
+  }>
+}): Promise<{ success: string; payload: AdminFeeStructurePayload }> {
+  const target = await getAdminScopedTarget()
+  const params = new URLSearchParams()
+
+  if (target.organizationId) {
+    params.set('organization_id', target.organizationId)
+  }
+  if (target.clientId) {
+    params.set('client_id', target.clientId)
+  }
+
+  const response = await fetch(buildBackendApiUrl(`/api/admin/fees/structure?${params.toString()}`), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to save the fee structure.',
+    )
+  }
+
+  revalidatePath('/admin')
+  revalidatePath('/admin/fee-structure')
+
+  return {
+    success: 'Fee structure saved.',
+    payload: (await response.json()) as AdminFeeStructurePayload,
+  }
+}
+
+export async function saveAdminHomePageContentAction(input: AdminHomePagePayload['content']): Promise<{
+  success: string
+  payload: AdminHomePagePayload
+}> {
+  const target = await getAdminScopedTarget()
+  const params = new URLSearchParams()
+
+  if (target.organizationId) {
+    params.set('organization_id', target.organizationId)
+  }
+  if (target.clientId) {
+    params.set('client_id', target.clientId)
+  }
+
+  const response = await fetch(buildBackendApiUrl(`/api/admin/home-page-content?${params.toString()}`), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string'
+        ? payload.detail
+        : 'Unable to save the jurisdiction home page content.',
+    )
+  }
+
+  revalidatePath('/admin')
+  revalidatePath('/admin/home-page')
+  revalidatePath('/')
+
+  return {
+    success: 'Home page content saved.',
+    payload: (await response.json()) as AdminHomePagePayload,
+  }
+}
+
 export async function saveAdminEmailTemplateOverrideAction(input: {
   code: string
   name: string
@@ -837,7 +1086,7 @@ export async function saveAdminEmailTemplateOverrideAction(input: {
   body_template: string
   status: 'draft' | 'active' | 'inactive'
 }): Promise<{ success: string; template: AdminEmailTemplate }> {
-  const target = await getAdminEmailTemplateTarget()
+  const target = await getAdminScopedTarget()
   const params = new URLSearchParams()
 
   if (target.organizationId) {
@@ -877,7 +1126,7 @@ export async function saveAdminEmailTemplateOverrideAction(input: {
 }
 
 export async function resetAdminEmailTemplateOverrideAction(code: string): Promise<{ success: string }> {
-  const target = await getAdminEmailTemplateTarget()
+  const target = await getAdminScopedTarget()
   const params = new URLSearchParams()
 
   if (target.organizationId) {
@@ -908,5 +1157,5 @@ export async function resetAdminEmailTemplateOverrideAction(code: string): Promi
   revalidatePath('/admin')
   revalidatePath('/admin/email-settings')
 
-  return { success: 'Customer override removed. Gridics default restored.' }
+  return { success: 'Jurisdiction override removed. Gridics default restored.' }
 }

@@ -20,10 +20,10 @@ export function SuperAdminCustomerList({
         <div>
           <div className="eyebrow">Super Admin</div>
           <h1 className="section-title" style={{ marginBottom: 8 }}>
-            Customer management
+            Jurisdiction management
           </h1>
           <p className="admin-copy">
-            Start with the customer list. Open a customer to manage admins, or add a new customer.
+            Start with the jurisdiction list. Open a jurisdiction to manage admins, or add a new jurisdiction.
           </p>
         </div>
         <div className="button-row">
@@ -31,7 +31,7 @@ export function SuperAdminCustomerList({
             Open Assistant
           </Link>
           <Link href="/super-admin/customers/new" className="button">
-            Add Customer
+            Add Jurisdiction
           </Link>
         </div>
       </div>
@@ -41,7 +41,7 @@ export function SuperAdminCustomerList({
       ) : null}
 
       <div className="admin-list">
-        <div className="admin-list-heading">Customers</div>
+        <div className="admin-list-heading">Jurisdictions</div>
         {customers.length ? (
           <table className="table">
             <thead>
@@ -71,7 +71,7 @@ export function SuperAdminCustomerList({
             </tbody>
           </table>
         ) : (
-          <div style={{ color: 'var(--muted)' }}>No customers have been provisioned yet.</div>
+          <div style={{ color: 'var(--muted)' }}>No jurisdictions have been provisioned yet.</div>
         )}
       </div>
     </section>

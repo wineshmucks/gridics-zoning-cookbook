@@ -19,14 +19,14 @@ export default async function SuperAdminPage({ searchParams }: PageProps) {
     ? resolvedSearchParams.customerName[0] || null
     : resolvedSearchParams.customerName || null
   const flashMessage =
-    status === 'customer-deleted' ? `${customerName || 'Customer'} was deleted.` : null
+    status === 'customer-deleted' ? `${customerName || 'Jurisdiction'} was deleted.` : null
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
       <section className="card">
         <h1 className="section-title">Super Admin Access Required</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only Gridics super admins can access customer management.
+          Only Gridics super admins can access jurisdiction management.
         </p>
       </section>
     )

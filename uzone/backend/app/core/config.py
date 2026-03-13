@@ -1,5 +1,6 @@
 """Application configuration for the UZone backend."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,10 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3001,http://127.0.0.1:3001"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/uzone"
     auth_provider: str = "local"
-    clerk_secret_key: str | None = None
+    clerk_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("UZONE_CLERK_SECRET_KEY", "CLERK_SECRET_KEY"),
+    )
     clerk_pem_public_key: str | None = None
     clerk_jwks_url: str = "https://api.clerk.com/v1/jwks"
     clerk_authorized_parties: str = "http://localhost:3001,http://127.0.0.1:3001"

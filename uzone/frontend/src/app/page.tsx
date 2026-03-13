@@ -8,57 +8,43 @@ import { getTenantConfig } from '../lib/tenant'
 export default async function HomePage() {
   const tenant = await getTenantConfig()
   const orgId = await getCurrentOrgId()
+  const content = tenant.home_page_content
   const standardPrice = `$${(tenant.standard_letter_fee_cents / 100).toFixed(2)}`
   const comprehensivePrice = `$${(tenant.comprehensive_letter_fee_cents / 100).toFixed(2)}`
   const expeditedPrice = `+$${(tenant.expedited_fee_cents / 100).toFixed(2)}`
+  const topServices = content.services.slice(0, 2)
+  const infoServices = content.services.slice(0, 3)
 
   return (
     <>
       <section className="home-hero">
         <div className="home-container">
           <div className="home-hero-inner">
-            <div className="hero-chip">Official City Documentation</div>
-            <h1 className="home-hero-title">Zoning Verification Letters</h1>
-            <p className="home-hero-copy">
-              Request official zoning verification letters for your property quickly and securely.
-              Get verified documentation for real estate transactions, permits, and legal purposes
-              in less than 3 business days.
-            </p>
+            <div className="hero-chip">{content.hero.badge}</div>
+            <h1 className="home-hero-title">{content.hero.title}</h1>
+            <p className="home-hero-copy">{content.hero.subtitle}</p>
             <div className="button-row">
               <Link className="button button-hero-light" href={appendOrgIdToHref('/request/new', orgId)}>
-                Request a Letter
+                {content.hero.primary_button_text}
               </Link>
               <Link className="button button-hero-outline" href={appendOrgIdToHref('/assistant', orgId)}>
-                Ask the Zoning Assistant
+                {content.hero.secondary_button_text}
               </Link>
               <a className="button button-hero-outline" href="#info-section">
-                Learn More
+                {content.hero.learn_more_text}
               </a>
             </div>
             <div className="hero-stats">
-              <div className="hero-stat">
-                <div className="hero-stat-icon">◔</div>
-                <div>
-                  <p>Processing Time</p>
-                  <strong>Under 3 Days</strong>
+              {content.hero.stats.map((item, index) => (
+                <div key={`${item.label}-${index}`} className="hero-stat">
+                  {index > 0 ? <div className="hero-divider" /> : null}
+                  <div className="hero-stat-icon">{item.icon}</div>
+                  <div>
+                    <p>{item.label}</p>
+                    <strong>{item.value}</strong>
+                  </div>
                 </div>
-              </div>
-              <div className="hero-divider" />
-              <div className="hero-stat">
-                <div className="hero-stat-icon">◈</div>
-                <div>
-                  <p>Security</p>
-                  <strong>PCI Compliant</strong>
-                </div>
-              </div>
-              <div className="hero-divider" />
-              <div className="hero-stat">
-                <div className="hero-stat-icon">◉</div>
-                <div>
-                  <p>Updates</p>
-                  <strong>Real-Time Tracking</strong>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -67,40 +53,18 @@ export default async function HomePage() {
       <section id="info-section" className="home-section">
         <div className="home-container">
           <div className="section-center">
-            <h2>What is a Zoning Verification Letter?</h2>
-            <p>
-              An official document from the {tenant.city_name} {tenant.department_name} that
-              confirms the zoning classification and permitted uses for a specific property.
-            </p>
+            <h2>{content.about.title}</h2>
+            <p>{content.about.body}</p>
           </div>
 
           <div className="home-grid home-grid-3">
-            <div className="feature-card feature-card-soft">
-              <div className="feature-icon">H</div>
-              <h3>Real Estate Transactions</h3>
-              <p>
-                Required for property sales, purchases, and due diligence processes to verify zoning
-                compliance and permitted uses.
-              </p>
-            </div>
-
-            <div className="feature-card feature-card-soft">
-              <div className="feature-icon">T</div>
-              <h3>Permit Applications</h3>
-              <p>
-                Essential documentation for building permits, business licenses, and development
-                applications to ensure zoning compliance.
-              </p>
-            </div>
-
-            <div className="feature-card feature-card-soft">
-              <div className="feature-icon">L</div>
-              <h3>Legal &amp; Financial</h3>
-              <p>
-                Required for legal proceedings, mortgage applications, and insurance purposes to
-                establish official zoning status.
-              </p>
-            </div>
+            {infoServices.map((service) => (
+              <div key={service.id} className="feature-card feature-card-soft">
+                <div className="feature-icon">{service.title.slice(0, 1).toUpperCase()}</div>
+                <h3>{service.title}</h3>
+                <p>{service.description}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -108,74 +72,39 @@ export default async function HomePage() {
       <section id="letter-types-section" className="home-section home-section-alt">
         <div className="home-container">
           <div className="section-center">
-            <h2>Available Letter Types</h2>
-            <p>Choose the verification letter that meets your specific needs</p>
+            <h2>Available Services</h2>
+            <p>Jurisdiction-specific offerings and timing</p>
           </div>
 
           <div className="home-grid home-grid-2">
-            <div className="letter-card">
-              <div className="letter-card-head">
-                <div>
-                  <h3>Standard Zoning Letter</h3>
-                  <p>Basic zoning classification and permitted uses</p>
+            {topServices.map((service, index) => (
+              <div key={service.id} className={`letter-card${index === 1 ? ' letter-card-featured' : ''}`}>
+                {index === 1 ? <div className="letter-badge">Featured</div> : null}
+                <div className="letter-card-head">
+                  <div>
+                    <h3>{service.title}</h3>
+                    <p>{service.description}</p>
+                  </div>
+                  <div className="letter-price">
+                    <span>Fee</span>
+                    <strong>{service.fee}</strong>
+                  </div>
                 </div>
-                <div className="letter-price">
-                  <span>Starting at</span>
-                  <strong>{standardPrice}</strong>
-                </div>
+                <ul className="check-list">
+                  <li>Processing time: {service.processing_time}</li>
+                  <li>Jurisdiction-specific public service content</li>
+                  <li>Online request intake and status visibility</li>
+                </ul>
+                {index === 1 && tenant.zoning_code_url ? (
+                  <a className="button secondary" href={tenant.zoning_code_url} target="_blank" rel="noreferrer">
+                    Review Zoning Code
+                  </a>
+                ) : null}
+                <Link className="button button-block" href={appendOrgIdToHref('/request/new', orgId)}>
+                  {content.hero.primary_button_text}
+                </Link>
               </div>
-              <ul className="check-list">
-                <li>Zoning classification</li>
-                <li>Permitted uses list</li>
-                <li>Basic property information</li>
-                <li>Official city seal and signature</li>
-                <li>3 business day processing</li>
-              </ul>
-              <Link
-                className="button button-block"
-                href={appendOrgIdToHref('/request/new?letter_type=standard', orgId)}
-              >
-                Select Standard Letter
-              </Link>
-            </div>
-
-            <div className="letter-card letter-card-featured">
-              <div className="letter-badge">Most Popular</div>
-              <div className="letter-card-head">
-                <div>
-                  <h3>Comprehensive Zoning Letter</h3>
-                  <p>Detailed zoning analysis with restrictions</p>
-                </div>
-                <div className="letter-price">
-                  <span>Starting at</span>
-                  <strong>{comprehensivePrice === '$xx.xx' ? '$xxx.xx' : comprehensivePrice}</strong>
-                </div>
-              </div>
-              <ul className="check-list">
-                <li>Everything in Standard, plus:</li>
-                <li>Detailed setback requirements</li>
-                <li>Height and density restrictions</li>
-                <li>Parking requirements</li>
-                <li>Overlay district information</li>
-                <li>Referenced zoning code sections</li>
-              </ul>
-              {tenant.zoning_code_url ? (
-                <a
-                  className="button secondary"
-                  href={tenant.zoning_code_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Review Zoning Code
-                </a>
-              ) : null}
-              <Link
-                className="button button-block"
-                href={appendOrgIdToHref('/request/new?letter_type=comprehensive', orgId)}
-              >
-                Select Comprehensive Letter
-              </Link>
-            </div>
+            ))}
           </div>
 
           <div className="expedite-card">
@@ -237,7 +166,7 @@ export default async function HomePage() {
             <h3>Ready to Get Started?</h3>
             <p>Request your zoning verification letter today</p>
             <Link className="button button-hero-light" href={appendOrgIdToHref('/request/new', orgId)}>
-              Start Your Request
+              {content.hero.primary_button_text}
             </Link>
           </div>
         </div>
@@ -301,37 +230,12 @@ export default async function HomePage() {
           </div>
 
           <div className="faq-list">
-            {[
-              [
-                'How long does it take to receive my letter?',
-                "Standard processing takes less than 3 business days. Expedited processing (24 hours) is available for an additional $50 fee. You'll receive email notifications at each stage of processing.",
-              ],
-              [
-                'What payment methods are accepted?',
-                'We accept all major credit cards through our secure payment gateway. All transactions are PCI DSS compliant and encrypted for your security.',
-              ],
-              [
-                'Can I request letters for multiple properties?',
-                'Yes, you can select multiple parcels during the property selection process. Each property will require a separate letter and fee.',
-              ],
-              [
-                'How will I receive my zoning verification letter?',
-                'You can choose to receive your letter via email (PDF format) or physical mail. Email delivery is instant upon approval, while physical mail takes 3-5 additional business days.',
-              ],
-              [
-                'What information is included in the letter?',
-                'Standard letters include zoning classification, permitted uses, and basic property information. Comprehensive letters also include setbacks, height restrictions, parking requirements, and overlay district information.',
-              ],
-              [
-                'Can I track the status of my request?',
-                'Yes, once you create an account and submit a request, you can log in anytime to view your order history and track the current status of all your requests in real-time.',
-              ],
-            ].map(([question, answer]) => (
-              <div key={question} className="faq-item">
+            {content.faq.map((item) => (
+              <div key={item.id} className="faq-item">
                 <div className="faq-head">
                   <div>
-                    <h3>{question}</h3>
-                    <p>{answer}</p>
+                    <h3>{item.question}</h3>
+                    <p>{item.answer}</p>
                   </div>
                   <span className="faq-chevron">⌄</span>
                 </div>
@@ -343,21 +247,25 @@ export default async function HomePage() {
 
       <section id="cta-section" className="support-section">
         <div className="home-container support-section-inner">
-          <h2>Need Help Getting Started?</h2>
-          <p>
-            Our {tenant.department_name} staff is here to assist you with any questions about the
-            zoning verification letter process.
-          </p>
+          <h2>{content.contact.title}</h2>
+          <p>{content.contact.body}</p>
           <div className="support-cards">
             <div className="support-card">
               <h3>Call Us</h3>
-              <p>{tenant.support_phone || '(555) 123-4567'}</p>
+              <p>{content.contact.phone || tenant.support_phone || '(555) 123-4567'}</p>
               <span>Mon-Fri, 8am-5pm</span>
             </div>
             <div className="support-card">
               <h3>Email Us</h3>
-              <p>{tenant.support_email || 'planning@dreamtown.gov'}</p>
+              <p>{content.contact.email || tenant.support_email || 'planning@dreamtown.gov'}</p>
               <span>Response within 24 hours</span>
+            </div>
+            <div className="support-card">
+              <h3>Fees</h3>
+              <p>
+                Standard from {standardPrice}, comprehensive from {comprehensivePrice}
+              </p>
+              <span>Expedited: {expeditedPrice}</span>
             </div>
           </div>
         </div>
@@ -403,10 +311,10 @@ export default async function HomePage() {
               <h4>Resources</h4>
               <ul className="footer-list">
                 <li>
-                  <a href="#letter-types-section">Zoning Code</a>
+                  <a href="#letter-types-section">Services</a>
                 </li>
                 <li>
-                  <a href="#features-section">Zoning Map</a>
+                  <a href="#features-section">Why Choose Us</a>
                 </li>
                 <li>
                   <a href="#faq-section">Payment Options</a>
@@ -418,20 +326,12 @@ export default async function HomePage() {
             </div>
 
             <div>
-              <h4>Contact</h4>
+              <h4>Office</h4>
               <ul className="footer-list">
-                <li>{tenant.contact_address || '123 Main St, Dream Town'}</li>
-                <li>{tenant.support_phone || '(555) 123-4567'}</li>
-                <li>{tenant.support_email || 'planning@dreamtown.gov'}</li>
+                <li>{content.contact.address || tenant.contact_address || tenant.city_name}</li>
+                <li>{content.contact.email || tenant.support_email || 'support@example.gov'}</li>
+                <li>{content.contact.phone || tenant.support_phone || '(555) 123-4567'}</li>
               </ul>
-            </div>
-          </div>
-          <div className="footer-bar">
-            <p>© 2024 {tenant.city_name}. All rights reserved.</p>
-            <div className="footer-inline-links">
-              <a href="/">Privacy Policy</a>
-              <a href="/">Terms of Service</a>
-              <a href="/">Accessibility</a>
             </div>
           </div>
         </div>

@@ -6,8 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
-from app.db.models import FeeSchedule, FeeScheduleItem, Request
-from app.services.fee_service import build_quote_for_request
+from app.db.models import FeeSchedule, FeeScheduleItem, Request, TenantClient
+from app.services.fee_service import build_quote_for_request, ensure_active_fee_schedule_for_tenant
 
 
 def _db() -> Session:
@@ -83,5 +83,44 @@ def test_build_quote_for_request_matches_applicable_items() -> None:
         quote = build_quote_for_request(db, request)
         assert quote.total_cents == 14000
         assert len(quote.line_items_json) == 3
+    finally:
+        db.close()
+
+
+def test_ensure_active_fee_schedule_for_tenant_seeds_default_items_and_syncs_summary_fields() -> None:
+    db = _db()
+    try:
+        tenant = TenantClient(
+            id="tenant-1",
+            client_id="tenant-a",
+            clerk_organization_id="org-tenant-a",
+            jurisdiction_id="jur-1",
+            city_name="Dream Town",
+            department_name="Planning",
+            standard_letter_fee_cents=8100,
+            comprehensive_letter_fee_cents=16200,
+            expedited_fee_cents=5400,
+            is_active=True,
+        )
+        db.add(tenant)
+        db.commit()
+
+        schedule, items = ensure_active_fee_schedule_for_tenant(db, tenant)
+
+        assert schedule.jurisdiction_id == "jur-1"
+        assert schedule.status == "active"
+        assert {item.code for item in items} >= {
+            "standard_letter",
+            "comprehensive_letter",
+            "rush_processing",
+            "certified_copy",
+            "physical_mail_delivery",
+        }
+        assert next(item for item in items if item.code == "standard_letter").amount_cents == 8100
+        assert next(item for item in items if item.code == "comprehensive_letter").amount_cents == 16200
+        assert next(item for item in items if item.code == "rush_processing").amount_cents == 5400
+        assert tenant.standard_letter_fee_cents == 8100
+        assert tenant.comprehensive_letter_fee_cents == 16200
+        assert tenant.expedited_fee_cents == 5400
     finally:
         db.close()

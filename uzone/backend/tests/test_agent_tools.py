@@ -205,9 +205,24 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
         "guidance": "Use this property as the default context for follow-up zoning questions until the user supplies a different address.",
     }
     assert result["gridics"]["zone_combination_name"] == "R-3 Mixed"
-    assert result["gridics_api"] == {
-        "property_record": {"mock": "payload"},
-        "call_log": [],
+    assert result["memo_context"] == {
+        "resolved_address": "123 Main Street, Springfield, IL 62704",
+        "zone_classification": "R-3 Mixed",
+        "typology": "Residential",
+        "dimensional_standards": {
+            "Max FAR": "1.5",
+            "Max Units": "12 units",
+            "Max Height": "45 ft",
+            "Front Setback": "Not specified",
+            "Side Setback": "Not specified",
+            "Rear Setback": "Not specified",
+        },
+        "gridics_system_notes": ["Overlay review may apply."],
+        "agent_directives": (
+            "Base the memorandum on the structured zoning summary and customer-scoped knowledge. "
+            "If parcel-specific Gridics context and broader code references do not align cleanly, explain the discrepancy "
+            "professionally and avoid overstating certainty."
+        ),
     }
     assert gridics_calls == [
         {

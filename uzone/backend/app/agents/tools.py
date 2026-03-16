@@ -461,6 +461,49 @@ def _extract_gridics_zoning_summary(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _format_constraint_value(value: float | None, *, suffix: str = "") -> str:
+    if value is None:
+        return "Not specified"
+    if value.is_integer():
+        rendered = str(int(value))
+    else:
+        rendered = str(value)
+    return f"{rendered}{suffix}"
+
+
+def _build_memo_context(
+    *,
+    standardized_address: str,
+    state_env: str,
+    zip_code: str,
+    zoning_summary: dict[str, Any],
+) -> dict[str, Any]:
+    constraints = zoning_summary.get("constraints") or {}
+    resolved_address = standardized_address
+    address_suffix = f"{state_env.upper()} {zip_code}"
+    if not standardized_address.upper().endswith(address_suffix):
+        resolved_address = f"{standardized_address}, {address_suffix}"
+    return {
+        "resolved_address": resolved_address,
+        "zone_classification": zoning_summary.get("zone_combination_name"),
+        "typology": zoning_summary.get("typology"),
+        "dimensional_standards": {
+            "Max FAR": _format_constraint_value(constraints.get("max_far")),
+            "Max Units": _format_constraint_value(constraints.get("max_units"), suffix=" units"),
+            "Max Height": _format_constraint_value(constraints.get("max_height_ft"), suffix=" ft"),
+            "Front Setback": _format_constraint_value(constraints.get("front_setback_ft"), suffix=" ft"),
+            "Side Setback": _format_constraint_value(constraints.get("side_setback_ft"), suffix=" ft"),
+            "Rear Setback": _format_constraint_value(constraints.get("rear_setback_ft"), suffix=" ft"),
+        },
+        "gridics_system_notes": zoning_summary.get("notes") or [],
+        "agent_directives": (
+            "Base the memorandum on the structured zoning summary and customer-scoped knowledge. "
+            "If parcel-specific Gridics context and broader code references do not align cleanly, explain the discrepancy "
+            "professionally and avoid overstating certainty."
+        ),
+    }
+
+
 def _build_augmented_knowledge_query(
     *,
     query: str,
@@ -742,10 +785,12 @@ def _analyze_customer_zoning_request_once(
             "constraints": zoning_summary.get("constraints"),
             "notes": zoning_summary.get("notes"),
         },
-        "gridics_api": {
-            "property_record": property_record,
-            "call_log": getattr(client, "call_log", []),
-        },
+        "memo_context": _build_memo_context(
+            standardized_address=standardized_address,
+            state_env=resolved_state_env,
+            zip_code=resolved_zip_code,
+            zoning_summary=zoning_summary,
+        ),
         "knowledge": primary_knowledge,
         "constraints_knowledge": constraints_knowledge,
     }

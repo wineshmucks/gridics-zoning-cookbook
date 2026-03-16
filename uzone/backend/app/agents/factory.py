@@ -32,7 +32,7 @@ def _get_agent_model_api_key(provider: str) -> str | None:
     return None
 
 
-def build_agent_model(*, model_id_override: str | None = None):
+def build_agent_model(*, model_id_override: str | None = None, max_tokens: int = 4096):
     """Construct the Agno chat model configured for zoning chat agents."""
     provider = settings.zoning_agent_llm_provider.strip().lower()
     model_id = model_id_override.strip() if isinstance(model_id_override, str) and model_id_override.strip() else settings.zoning_agent_llm_model_id.strip()
@@ -62,6 +62,7 @@ def build_agent_model(*, model_id_override: str | None = None):
             id=model_id,
             api_key=api_key,
             base_url=settings.zoning_agent_llm_base_url or "https://openrouter.ai/api/v1",
+            max_tokens=max_tokens,
         )
 
     if provider == "openai":

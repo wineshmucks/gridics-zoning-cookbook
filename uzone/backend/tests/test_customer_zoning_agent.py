@@ -39,7 +39,8 @@ def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> No
     assert kwargs["tool_call_limit"] == 3
     assert kwargs["use_instruction_tags"] is True
     assert "Gridics parcel data" in kwargs["description"]
-    assert "specific address" in kwargs["expected_output"]
+    assert "Zoning Memorandum" in kwargs["expected_output"]
+    assert "Never output your internal thought process" in kwargs["expected_output"]
 
 
 def test_customer_zoning_agent_model_override_hooks_swap_and_restore(monkeypatch) -> None:

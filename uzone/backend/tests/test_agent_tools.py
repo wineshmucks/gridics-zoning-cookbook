@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+import json
 
 from app.agents.tools import analyze_customer_zoning_request, query_customer_zoning_code
 
@@ -15,6 +16,7 @@ class DummyTenant:
 class DummyRunContext:
     def __init__(self, dependencies: dict[str, object] | None = None) -> None:
         self.dependencies = dependencies
+        self.session_state: dict[str, object] = {}
 
 
 def test_query_customer_zoning_code_uses_run_context_client_id(monkeypatch) -> None:
@@ -221,7 +223,20 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
             ),
             "limit": 4,
             "client_id": "springfield",
-        }
+        },
+        {
+            "query": (
+                "Can I build an ADU at 123 Main Street Apt 4, Springfield, IL 62704?\n"
+                "Address: 123 Main Street, Springfield, IL 62704\n"
+                "Gridics zone: R-3 Mixed\n"
+                "Gridics typology: Residential\n"
+                "Find numeric development standards and dimensional controls for this property and zoning district, "
+                "especially maximum building height, FAR, dwelling units, lot coverage, open space, "
+                "front setback, side setback, rear setback, parking, and any section references."
+            ),
+            "limit": 4,
+            "client_id": "springfield",
+        },
     ]
 
 
@@ -267,3 +282,139 @@ def test_analyze_customer_zoning_request_requests_full_address_when_location_det
         "reuse_for_follow_ups": True,
         "guidance": "Use this property as the default context for follow-up zoning questions until the user supplies a different address.",
     }
+
+
+def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeypatch) -> None:
+    monkeypatch.setattr("app.agents.tools._ANALYZE_RETRY_ATTEMPTS", 2)
+    monkeypatch.setattr("app.agents.tools._ANALYZE_RETRY_DELAY_SECONDS", 0.0)
+
+    attempts = {"count": 0}
+
+    class FlakyGridicsClient:
+        def __init__(self) -> None:
+            self.call_log: list[dict[str, object]] = []
+
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            attempts["count"] += 1
+            self.call_log.append(
+                {
+                    "request": {
+                        "path": "/property-record",
+                        "params": {"state_env": state_env, "address": address, "zipCode": zip_code},
+                    }
+                }
+            )
+            if attempts["count"] == 1:
+                raise RuntimeError("Gridics connection error: temporary outage")
+            return {"mock": "payload"}
+
+    def fake_build_gridics_client():
+        return FlakyGridicsClient()
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "zone_combination_name": "R-3 Mixed",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 1.5,
+                "max_units": 12,
+                "max_height_ft": 45,
+                "front_setback_ft": 10,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        return {"query": query, "results": [{"name": "R-3 standards", "content": "Applies to R-3."}]}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+
+    result = analyze_customer_zoning_request(
+        query="Can I build an ADU at 123 Main Street, Springfield, IL 62704?",
+        knowledge_limit=4,
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert attempts["count"] == 2
+    assert result["retry_debug"]["recovered"] is True
+    assert result["retry_debug"]["attempts"] == 2
+    assert result["retry_debug"]["failed_attempts"][0]["attempt"] == 1
+    assert result["retry_debug"]["failed_attempts"][0]["error_message"] == "Gridics connection error: temporary outage"
+    assert result["retry_debug"]["failed_attempts"][0]["address_context"] == {
+        "address_source": "query",
+        "detected_address": "123 Main Street, Springfield, IL 62704",
+        "standardized_address": "123 Main Street, Springfield, IL 62704",
+        "state_env": "il",
+        "zip_code": "62704",
+    }
+    assert result["retry_debug"]["failed_attempts"][0]["gridics_call_log"] == [
+        {
+            "request": {
+                "path": "/property-record",
+                "params": {
+                    "state_env": "il",
+                    "address": "123 Main Street, Springfield, IL 62704",
+                    "zipCode": "62704",
+                },
+            }
+        }
+    ]
+
+
+def test_analyze_customer_zoning_request_surfaces_failure_diagnostics_after_retries(monkeypatch) -> None:
+    monkeypatch.setattr("app.agents.tools._ANALYZE_RETRY_ATTEMPTS", 2)
+    monkeypatch.setattr("app.agents.tools._ANALYZE_RETRY_DELAY_SECONDS", 0.0)
+
+    class BrokenGridicsClient:
+        def __init__(self) -> None:
+            self.call_log: list[dict[str, object]] = []
+
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            self.call_log.append(
+                {
+                    "request": {
+                        "path": "/property-record",
+                        "params": {"state_env": state_env, "address": address, "zipCode": zip_code},
+                    },
+                    "error": "simulated upstream failure",
+                }
+            )
+            raise RuntimeError("Gridics HTTP 502: bad gateway")
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", BrokenGridicsClient)
+
+    try:
+        analyze_customer_zoning_request(
+            query="What can I build at 123 Main Street, Springfield, IL 62704?",
+            run_context=DummyRunContext({"client_id": "springfield"}),
+        )
+    except RuntimeError as exc:
+        diagnostics = json.loads(str(exc))
+    else:  # pragma: no cover - explicit failure branch
+        raise AssertionError("Expected analyze_customer_zoning_request to fail")
+
+    assert diagnostics["message"] == "analyze_customer_zoning_request failed after 2 attempt(s)"
+    assert len(diagnostics["failures"]) == 2
+    assert diagnostics["failures"][0]["stage"] == "analyzing_request"
+    assert diagnostics["failures"][0]["error_type"] == "RuntimeError"
+    assert diagnostics["failures"][0]["error_message"] == "Gridics HTTP 502: bad gateway"
+    assert diagnostics["failures"][0]["question_type"] == "specific_address"
+    assert diagnostics["failures"][0]["gridics_call_log"] == [
+        {
+            "request": {
+                "path": "/property-record",
+                "params": {
+                    "state_env": "il",
+                    "address": "123 Main Street, Springfield, IL 62704",
+                    "zipCode": "62704",
+                },
+            },
+            "error": "simulated upstream failure",
+        }
+    ]

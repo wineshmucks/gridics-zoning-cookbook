@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -90,6 +91,8 @@ _FOLLOW_UP_PROPERTY_PATTERN = re.compile(
     r")\b",
     flags=re.IGNORECASE,
 )
+_ANALYZE_RETRY_ATTEMPTS = max(1, int(os.getenv("UZONE_ANALYZE_RETRY_ATTEMPTS", "2")))
+_ANALYZE_RETRY_DELAY_SECONDS = max(0.0, float(os.getenv("UZONE_ANALYZE_RETRY_DELAY_SECONDS", "0.35")))
 
 
 @dataclass
@@ -512,6 +515,34 @@ def _build_constraints_knowledge_query(
     )
 
 
+def _summarize_attempt_failure(
+    *,
+    attempt: int,
+    stage: str,
+    error: Exception,
+    query: str,
+    client_id: str | None,
+    question_type: str | None = None,
+    address_context: dict[str, Any] | None = None,
+    gridics_call_log: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "attempt": attempt,
+        "stage": stage,
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+        "query": query,
+        "client_id": client_id,
+        "question_type": question_type,
+        "address_context": address_context,
+        "gridics_call_log": gridics_call_log or [],
+    }
+
+
+def _format_failure_details(summary: dict[str, Any]) -> str:
+    return json.dumps(summary, indent=2, sort_keys=True, default=str)
+
+
 def query_customer_zoning_code(
     query: str,
     limit: int = 5,
@@ -534,7 +565,7 @@ def query_customer_zoning_code(
         return query_customer_zoning_knowledge(db, tenant_client, query=query, limit=limit)
 
 
-def analyze_customer_zoning_request(
+def _analyze_customer_zoning_request_once(
     query: str,
     address: str | None = None,
     state_env: str | None = None,
@@ -542,6 +573,7 @@ def analyze_customer_zoning_request(
     knowledge_limit: int = 5,
     client_id: str | None = None,
     run_context: Any = None,
+    gridics_client: _GridicsClient | None = None,
 ) -> dict:
     """Route a zoning question to either general knowledge or an address-aware Gridics workflow."""
     question = query.strip()
@@ -626,7 +658,7 @@ def analyze_customer_zoning_request(
             "clarification_prompt": "Please provide the full property address, including state and ZIP code.",
         }
 
-    client = _build_gridics_client()
+    client = gridics_client or _build_gridics_client()
     property_record = client.get_property_record(
         state_env=resolved_state_env,
         address=standardized_address,
@@ -699,3 +731,119 @@ def analyze_customer_zoning_request(
         "knowledge": primary_knowledge,
         "constraints_knowledge": constraints_knowledge,
     }
+
+
+def analyze_customer_zoning_request(
+    query: str,
+    address: str | None = None,
+    state_env: str | None = None,
+    zip_code: str | None = None,
+    knowledge_limit: int = 5,
+    client_id: str | None = None,
+    run_context: Any = None,
+) -> dict:
+    """Route a zoning question to either general knowledge or an address-aware Gridics workflow, with retries and diagnostics."""
+    failures: list[dict[str, Any]] = []
+
+    for attempt in range(1, _ANALYZE_RETRY_ATTEMPTS + 1):
+        stage = "initializing"
+        resolved_client_id: str | None = None
+        question_type: str | None = None
+        address_context: dict[str, Any] | None = None
+        client: _GridicsClient | None = None
+
+        try:
+            question = query.strip()
+            if not question:
+                raise ValueError("Query text is required.")
+
+            stage = "resolving_client_id"
+            resolved_client_id = _resolve_client_id(client_id, run_context)
+
+            provided_address = address.strip() if isinstance(address, str) and address.strip() else None
+            extracted_address = None if provided_address else _extract_address_from_query(question)
+            active_property_context = _get_active_property_context(run_context)
+            reused_active_property = False
+            resolved_address = provided_address or extracted_address
+            if not resolved_address and _should_reuse_active_property(question, active_property_context):
+                resolved_address = str(active_property_context.get("standardized_address") or "").strip() or None
+                reused_active_property = bool(resolved_address)
+            question_type = _classify_question(question, resolved_address)
+
+            if question_type == "specific_address":
+                standardized_address = _standardize_address(resolved_address or "")
+                resolved_state_env = (
+                    state_env.strip().lower()
+                    if isinstance(state_env, str) and state_env.strip()
+                    else (
+                        str(active_property_context.get("state_env")).strip().lower()
+                        if reused_active_property and active_property_context and active_property_context.get("state_env")
+                        else _infer_state_env(standardized_address)
+                    )
+                )
+                resolved_zip_code = (
+                    zip_code.strip()
+                    if isinstance(zip_code, str) and zip_code.strip()
+                    else (
+                        str(active_property_context.get("zip_code")).strip()
+                        if reused_active_property and active_property_context and active_property_context.get("zip_code")
+                        else _infer_zip(standardized_address)
+                    )
+                )
+                address_context = {
+                    "address_source": "argument" if provided_address else ("session" if reused_active_property else "query"),
+                    "detected_address": resolved_address,
+                    "standardized_address": standardized_address,
+                    "state_env": resolved_state_env,
+                    "zip_code": resolved_zip_code,
+                }
+
+                if question_type == "specific_address" and address_context:
+                    lookup_ready = bool(address_context.get("standardized_address") and resolved_state_env and resolved_zip_code)
+                else:
+                    lookup_ready = False
+
+                if lookup_ready:
+                    client = _build_gridics_client()
+
+                stage = "analyzing_request"
+            result = _analyze_customer_zoning_request_once(
+                query=query,
+                address=address,
+                state_env=state_env,
+                zip_code=zip_code,
+                knowledge_limit=knowledge_limit,
+                client_id=client_id,
+                run_context=run_context,
+                gridics_client=client,
+            )
+            if failures:
+                result["retry_debug"] = {
+                    "recovered": True,
+                    "attempts": attempt,
+                    "failed_attempts": failures,
+                }
+            return result
+        except Exception as exc:
+            failure = _summarize_attempt_failure(
+                attempt=attempt,
+                stage=stage,
+                error=exc,
+                query=query,
+                client_id=resolved_client_id,
+                question_type=question_type,
+                address_context=address_context,
+                gridics_call_log=client.call_log if client is not None else None,
+            )
+            failures.append(failure)
+            if attempt < _ANALYZE_RETRY_ATTEMPTS:
+                time.sleep(_ANALYZE_RETRY_DELAY_SECONDS)
+                continue
+
+            details = {
+                "message": f"analyze_customer_zoning_request failed after {attempt} attempt(s)",
+                "failures": failures,
+            }
+            raise RuntimeError(_format_failure_details(details)) from exc
+
+    raise RuntimeError("analyze_customer_zoning_request failed before any attempt was executed.")

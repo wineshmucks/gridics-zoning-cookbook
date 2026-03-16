@@ -1,5 +1,6 @@
 import { CustomerPickerClient } from '../../components/CustomerPickerClient'
 import { buildServerBackendApiUrl } from '../../lib/backend'
+import { getClerkManagementClient } from '../../lib/clerk'
 
 type CustomerChoice = {
   orgid: string
@@ -29,13 +30,37 @@ async function loadCustomers() {
   }
 }
 
+async function loadClerkOrganizationIds() {
+  try {
+    const client = await getClerkManagementClient()
+    const organizations = await client.organizations.getOrganizationList({
+      limit: 100,
+    })
+
+    return new Set(
+      organizations.data
+        .map((organization) => organization.id?.trim())
+        .filter((organizationId): organizationId is string => Boolean(organizationId)),
+    )
+  } catch {
+    return null
+  }
+}
+
 export default async function SelectCustomerPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const requestedReturnTo = Array.isArray(resolvedSearchParams.returnTo)
     ? resolvedSearchParams.returnTo[0] || '/'
     : resolvedSearchParams.returnTo || '/'
   const returnTo = requestedReturnTo.startsWith('/') ? requestedReturnTo : '/'
-  const customers = await loadCustomers()
+  const [customers, clerkOrganizationIds] = await Promise.all([
+    loadCustomers(),
+    loadClerkOrganizationIds(),
+  ])
+  const visibleCustomers =
+    clerkOrganizationIds === null
+      ? customers
+      : customers.filter((customer) => clerkOrganizationIds.has(customer.orgid.trim()))
 
   return (
     <section className="jurisdiction-picker-page">
@@ -49,8 +74,8 @@ export default async function SelectCustomerPage({ searchParams }: PageProps) {
           </p>
         </div>
 
-        {customers.length > 0 ? (
-          <CustomerPickerClient customers={customers} returnTo={returnTo} />
+        {visibleCustomers.length > 0 ? (
+          <CustomerPickerClient customers={visibleCustomers} returnTo={returnTo} />
         ) : (
           <section className="card jurisdiction-picker-empty">
             <h2 className="section-title">No Jurisdictions Available</h2>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { getAssistantContent, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent.js'
+import { getAssistantContent, getAssistantContentDebug, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent.js'
 
 type AgentRunResponse = {
   session_id?: string
@@ -725,6 +725,9 @@ export function AgentChatPanel({
       if (event.event === "RunCompleted") {
         let debugDetail: string | null = null
         let finalContent = getAssistantContent(payload as AgentRunResponse)
+        if (!finalContent) {
+          debugDetail = `RunCompleted payload inspection: ${getAssistantContentDebug(payload as AgentRunResponse)}`
+        }
 
         if (!finalContent && runIdRef.current) {
           const completedRun = await fetchCompletedRunWithRetry(
@@ -733,7 +736,11 @@ export function AgentChatPanel({
             runIdRef.current,
             sessionIdRef.current,
           )
-          debugDetail = completedRun.debug
+          const completedRunDebug = completedRun.debug
+          const contentDebug = getAssistantContentDebug(completedRun.payload || {})
+          debugDetail = [debugDetail, completedRunDebug, `Completed run payload inspection: ${contentDebug}`]
+            .filter(Boolean)
+            .join(" | ")
           const fetchedContent = getAssistantContent(completedRun.payload || {})
           if (fetchedContent) {
             finalContent = fetchedContent
@@ -803,15 +810,20 @@ export function AgentChatPanel({
       if (!response.body) {
         const payload = (await response.json().catch(() => null)) as AgentRunResponse | null
         sessionIdRef.current = payload?.session_id ?? null
+        const content = getAssistantContent(payload || {})
+        const debugDetail = content ? null : getAssistantContentDebug(payload || {})
         handleStreamUpdate({
-          content: getAssistantContent(payload || {}) || "The assistant returned an empty response.",
+          content: content || buildEmptyAssistantResponse(debugDetail),
           status: "complete",
-          steps: upsertStep(runSteps, {
-            id: "model-request",
-            label: "Drafting response",
-            detail: "Answer completed",
-            status: "complete",
-          }),
+          steps: appendDebugStep(
+            upsertStep(runSteps, {
+              id: "model-request",
+              label: "Drafting response",
+              detail: "Answer completed",
+              status: "complete",
+            }),
+            debugDetail,
+          ),
           toolCalls,
         })
         return
@@ -870,7 +882,9 @@ export function AgentChatPanel({
             runIdRef.current,
             sessionIdRef.current,
           )
-          debugDetail = completedRun.debug
+          const completedRunDebug = completedRun.debug
+          const contentDebug = getAssistantContentDebug(completedRun.payload || {})
+          debugDetail = [completedRunDebug, `Completed run payload inspection: ${contentDebug}`].filter(Boolean).join(" | ")
           fallbackContent = getAssistantContent(completedRun.payload || {})
           runSteps = appendDebugStep(runSteps, debugDetail)
         }

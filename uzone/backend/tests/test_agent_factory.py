@@ -67,6 +67,31 @@ def test_build_agent_model_uses_openrouter_default_base_url(monkeypatch) -> None
     }
 
 
+def test_build_agent_model_accepts_model_override(monkeypatch) -> None:
+    captured = {}
+
+    class FakeOpenRouter:
+        def __init__(self, *, id=None, api_key=None, base_url=None):
+            captured["id"] = id
+            captured["api_key"] = api_key
+            captured["base_url"] = base_url
+
+    monkeypatch.setattr("agno.models.openrouter.OpenRouter", FakeOpenRouter)
+    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "openrouter")
+    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "default/model")
+    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "openrouter-key")
+    monkeypatch.setattr(settings, "zoning_agent_llm_base_url", None)
+
+    model = build_agent_model(model_id_override="override/model")
+
+    assert isinstance(model, FakeOpenRouter)
+    assert captured == {
+        "id": "override/model",
+        "api_key": "openrouter-key",
+        "base_url": "https://openrouter.ai/api/v1",
+    }
+
+
 def test_build_agent_model_rejects_missing_api_key(monkeypatch) -> None:
     monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")

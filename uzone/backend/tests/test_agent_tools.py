@@ -205,6 +205,10 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
         "guidance": "Use this property as the default context for follow-up zoning questions until the user supplies a different address.",
     }
     assert result["gridics"]["zone_combination_name"] == "R-3 Mixed"
+    assert result["gridics_api"] == {
+        "property_record": {"mock": "payload"},
+        "call_log": [],
+    }
     assert gridics_calls == [
         {
             "state_env": "il",
@@ -219,20 +223,9 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
                 "Address: 123 Main Street, Springfield, IL 62704\n"
                 "Gridics zone: R-3 Mixed\n"
                 "Gridics typology: Residential\n"
+                "Explain this zoning district in plain English for this property, including what is typically allowed here, "
+                "what approval or reference sections matter most, and any numeric development standards that apply.\n"
                 "Observed constraints: max FAR=1.5, max units=12, max height ft=45"
-            ),
-            "limit": 4,
-            "client_id": "springfield",
-        },
-        {
-            "query": (
-                "Can I build an ADU at 123 Main Street Apt 4, Springfield, IL 62704?\n"
-                "Address: 123 Main Street, Springfield, IL 62704\n"
-                "Gridics zone: R-3 Mixed\n"
-                "Gridics typology: Residential\n"
-                "Find numeric development standards and dimensional controls for this property and zoning district, "
-                "especially maximum building height, FAR, dwelling units, lot coverage, open space, "
-                "front setback, side setback, rear setback, parking, and any section references."
             ),
             "limit": 4,
             "client_id": "springfield",
@@ -282,6 +275,116 @@ def test_analyze_customer_zoning_request_requests_full_address_when_location_det
         "reuse_for_follow_ups": True,
         "guidance": "Use this property as the default context for follow-up zoning questions until the user supplies a different address.",
     }
+
+
+def test_analyze_customer_zoning_request_accepts_integer_zip_code(monkeypatch) -> None:
+    gridics_calls: list[dict[str, str]] = []
+
+    class FakeGridicsClient:
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            gridics_calls.append(
+                {
+                    "state_env": state_env,
+                    "address": address,
+                    "zip_code": zip_code,
+                }
+            )
+            return {"mock": "payload"}
+
+    def fake_build_gridics_client():
+        return FakeGridicsClient()
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "zone_combination_name": "R-3 Mixed",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 1.0,
+                "max_units": 2,
+                "max_height_ft": 35,
+                "front_setback_ft": 10,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        return {"query": query, "results": []}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+
+    result = analyze_customer_zoning_request(
+        query="What can I build here?",
+        address="123 Main Street, Miami, FL",
+        state_env="fl",
+        zip_code=33138,
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert result["address_context"]["zip_code"] == "33138"
+    assert result["address_resolution"]["resolved_zip_code"] == "33138"
+    assert gridics_calls == [
+        {
+            "state_env": "fl",
+            "address": "123 Main Street, Miami, FL",
+            "zip_code": "33138",
+        }
+    ]
+
+
+def test_analyze_customer_zoning_request_runs_constraints_lookup_only_when_primary_is_empty(monkeypatch) -> None:
+    knowledge_calls: list[str] = []
+
+    class FakeGridicsClient:
+        call_log: list[dict[str, object]] = []
+
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            return {"mock": "payload"}
+
+    def fake_build_gridics_client():
+        return FakeGridicsClient()
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "zone_combination_name": "RU-1",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": None,
+                "max_units": None,
+                "max_height_ft": None,
+                "front_setback_ft": None,
+                "side_setback_ft": None,
+                "rear_setback_ft": None,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        knowledge_calls.append(query)
+        if len(knowledge_calls) == 1:
+            return {"query": query, "results": []}
+        return {"query": query, "results": [{"name": "Numeric standards", "content": "Height 35 feet."}]}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+
+    result = analyze_customer_zoning_request(
+        query="Tell me about 1101 NE 90 St, Miami, FL 33138",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert len(knowledge_calls) == 2
+    assert "Explain this zoning district in plain English" in knowledge_calls[0]
+    assert "Find numeric development standards and dimensional controls" in knowledge_calls[1]
+    assert result["constraints_knowledge"]["results"][0]["content"] == "Height 35 feet."
 
 
 def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeypatch) -> None:

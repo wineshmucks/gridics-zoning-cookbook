@@ -32,10 +32,10 @@ def _get_agent_model_api_key(provider: str) -> str | None:
     return None
 
 
-def build_agent_model():
+def build_agent_model(*, model_id_override: str | None = None):
     """Construct the Agno chat model configured for zoning chat agents."""
     provider = settings.zoning_agent_llm_provider.strip().lower()
-    model_id = settings.zoning_agent_llm_model_id.strip()
+    model_id = model_id_override.strip() if isinstance(model_id_override, str) and model_id_override.strip() else settings.zoning_agent_llm_model_id.strip()
     api_key = _get_agent_model_api_key(provider)
 
     if not model_id:

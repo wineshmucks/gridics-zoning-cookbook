@@ -35,8 +35,10 @@ type StreamStep = {
 type StreamToolCall = {
   id: string
   label: string
+  toolName?: string
   detail?: string
   status: StreamStepStatus
+  rawResult?: unknown
 }
 
 type ChatMessage = {
@@ -211,12 +213,8 @@ function toStepDetail(tool: Record<string, unknown> | undefined): string | undef
 }
 
 function summarizeToolResult(raw: unknown): string | undefined {
-  if (typeof raw !== "string") {
-    return undefined
-  }
-
   try {
-    const parsed = JSON.parse(raw) as {
+    const parsed = unwrapToolResult(raw) as {
       results?: unknown[]
       question_type?: string
       address_resolution?: { standardized_address?: string; lookup_ready?: boolean }
@@ -244,6 +242,157 @@ function summarizeToolResult(raw: unknown): string | undefined {
   }
 
   return undefined
+}
+
+function unwrapToolResult(raw: unknown): unknown {
+  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw
+  if (!parsed || typeof parsed !== "object") {
+    return parsed
+  }
+
+  const record = parsed as Record<string, unknown>
+  const nestedCandidates = [record.result, record.content, record.data, record.response]
+  for (const candidate of nestedCandidates) {
+    if (!candidate) {
+      continue
+    }
+
+    const nested = typeof candidate === "string" ? (() => {
+      try {
+        return JSON.parse(candidate)
+      } catch {
+        return candidate
+      }
+    })() : candidate
+
+    if (nested && typeof nested === "object") {
+      const nestedRecord = nested as Record<string, unknown>
+      if (
+        "question_type" in nestedRecord ||
+        "address_resolution" in nestedRecord ||
+        "gridics" in nestedRecord ||
+        "gridics_api" in nestedRecord ||
+        "request_classification" in nestedRecord
+      ) {
+        return nested
+      }
+    }
+  }
+
+  return parsed
+}
+
+function buildToolResultFallback(toolCalls: StreamToolCall[]): string | null {
+  const analyzeCall = [...toolCalls]
+    .reverse()
+    .find((toolCall) => (toolCall.toolName === "analyze_customer_zoning_request" || toolCall.label === "Analyze Customer Zoning Request") && toolCall.rawResult)
+
+  if (!analyzeCall?.rawResult) {
+    return null
+  }
+
+  try {
+    const parsed = unwrapToolResult(analyzeCall.rawResult) as {
+      question_type?: string
+      request_classification?: { label?: string }
+      address_resolution?: {
+        standardized_address?: string
+        resolved_state_env?: string
+        resolved_zip_code?: string
+      }
+      gridics?: {
+        zone_combination_name?: string
+        typology?: string
+        calculation_status?: string
+        constraints?: {
+          max_far?: number | null
+          max_units?: number | null
+          max_height_ft?: number | null
+          front_setback_ft?: number | null
+          side_setback_ft?: number | null
+          rear_setback_ft?: number | null
+        }
+        notes?: string[]
+      }
+      needs_address_clarification?: boolean
+      clarification_prompt?: string
+    }
+
+    if (parsed.needs_address_clarification) {
+      return parsed.clarification_prompt || "Please provide the full property address, including state and ZIP code."
+    }
+
+    const lines: string[] = []
+    if (parsed.request_classification?.label) {
+      lines.push(`This request was treated as a **${parsed.request_classification.label}** question.`)
+    }
+
+    const resolvedAddress = parsed.address_resolution?.standardized_address
+    const stateEnv = parsed.address_resolution?.resolved_state_env?.toUpperCase()
+    const resolvedZip = parsed.address_resolution?.resolved_zip_code
+    if (resolvedAddress) {
+      lines.push(`**Resolved Address:** ${resolvedAddress}${stateEnv || resolvedZip ? ` (${[stateEnv, resolvedZip].filter(Boolean).join(" ")})` : ""}`)
+    }
+
+    const zone = parsed.gridics?.zone_combination_name
+    const typology = parsed.gridics?.typology
+    if (zone || typology) {
+      lines.push(`**Gridics Parcel Context:** ${[zone, typology].filter(Boolean).join(" - ")}`)
+    }
+
+    const constraints = parsed.gridics?.constraints
+    if (constraints) {
+      const constraintBits = [
+        constraints.max_far != null ? `Max FAR ${constraints.max_far}` : null,
+        constraints.max_units != null ? `Max units ${constraints.max_units}` : null,
+        constraints.max_height_ft != null ? `Max height ${constraints.max_height_ft} ft` : null,
+        constraints.front_setback_ft != null ? `Front setback ${constraints.front_setback_ft} ft` : null,
+        constraints.side_setback_ft != null ? `Side setback ${constraints.side_setback_ft} ft` : null,
+        constraints.rear_setback_ft != null ? `Rear setback ${constraints.rear_setback_ft} ft` : null,
+      ].filter(Boolean)
+      if (constraintBits.length) {
+        lines.push(`**Observed Standards:** ${constraintBits.join(", ")}`)
+      }
+    }
+
+    if (Array.isArray(parsed.gridics?.notes) && parsed.gridics?.notes.length) {
+      lines.push(`**Notes:** ${parsed.gridics.notes[0]}`)
+    }
+
+    return lines.length ? lines.join("\n\n") : null
+  } catch {
+    return null
+  }
+}
+
+function formatExpandableToolPayload(rawResult: unknown): { label: string; content: string } | null {
+  try {
+    const parsed = unwrapToolResult(rawResult)
+    if (!parsed || typeof parsed !== "object") {
+      return null
+    }
+
+    const record = parsed as Record<string, unknown>
+    if (record.gridics_api && typeof record.gridics_api === "object") {
+      return {
+        label: "View Gridics API response",
+        content: JSON.stringify(record.gridics_api, null, 2),
+      }
+    }
+
+    return {
+      label: "View raw tool result",
+      content: JSON.stringify(record, null, 2),
+    }
+  } catch {
+    if (typeof rawResult === "string" && rawResult.trim()) {
+      return {
+        label: "View raw tool result",
+        content: rawResult,
+      }
+    }
+    return null
+  }
 }
 
 function upsertStep(steps: StreamStep[], next: StreamStep): StreamStep[] {
@@ -447,6 +596,20 @@ function ToolCallList({ toolCalls }: { toolCalls?: StreamToolCall[] }) {
               <div className="assistant-run-step-copy">
                 <strong>{toolCall.label}</strong>
                 {toolCall.detail ? <span>{toolCall.detail}</span> : null}
+                {toolCall.rawResult ? (
+                  (() => {
+                    const payload = formatExpandableToolPayload(toolCall.rawResult)
+                    if (!payload) {
+                      return null
+                    }
+                    return (
+                      <details className="assistant-tool-result-details">
+                        <summary>{payload.label}</summary>
+                        <pre>{payload.content}</pre>
+                      </details>
+                    )
+                  })()
+                ) : null}
               </div>
             </div>
           ))}
@@ -461,6 +624,7 @@ export function AgentChatPanel({
   backendBase,
   customerName,
   clientId,
+  defaultModelId = "",
   surface,
   title,
   description,
@@ -470,6 +634,7 @@ export function AgentChatPanel({
   backendBase: string
   customerName: string
   clientId: string
+  defaultModelId?: string
   surface: string
   title: string
   description: string
@@ -480,7 +645,10 @@ export function AgentChatPanel({
   const [isStreaming, setIsStreaming] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle")
+  const [modelId, setModelId] = useState(defaultModelId)
+  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const modelPickerRef = useRef<HTMLDivElement | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const runIdRef = useRef<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -492,6 +660,33 @@ export function AgentChatPanel({
     }
     viewport.scrollTop = viewport.scrollHeight
   }, [messages])
+
+  useEffect(() => {
+    if (!isModelPickerOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (modelPickerRef.current?.contains(event.target as Node)) {
+        return
+      }
+      setIsModelPickerOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsModelPickerOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown)
+    window.addEventListener("keydown", handleKeyDown)
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown)
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [isModelPickerOpen])
 
   const updateAssistantMessage = (messageId: string, updater: (message: ChatMessage) => ChatMessage): void => {
     setMessages((prevMessages) =>
@@ -557,6 +752,7 @@ export function AgentChatPanel({
       JSON.stringify({
         surface,
         client_id: clientId,
+        assistant_model_id: modelId.trim() && modelId.trim() !== defaultModelId.trim() ? modelId.trim() : undefined,
       }),
     )
 
@@ -648,6 +844,7 @@ export function AgentChatPanel({
         toolCalls = upsertToolCall(toolCalls, {
           id: toolId,
           label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          toolName: typeof tool?.tool_name === "string" ? tool.tool_name : undefined,
           detail: toStepDetail(tool),
           status: "running",
         })
@@ -670,8 +867,10 @@ export function AgentChatPanel({
         toolCalls = upsertToolCall(toolCalls, {
           id: toolId,
           label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          toolName: typeof tool?.tool_name === "string" ? tool.tool_name : undefined,
           detail: summarizeToolResult(tool?.result) || toStepDetail(tool),
           status: "complete",
+          rawResult: tool?.result,
         })
         handleStreamUpdate({ steps: runSteps, toolCalls })
         return false
@@ -692,6 +891,7 @@ export function AgentChatPanel({
         toolCalls = upsertToolCall(toolCalls, {
           id: toolId,
           label: toStepLabel(typeof tool?.tool_name === "string" ? tool.tool_name : undefined),
+          toolName: typeof tool?.tool_name === "string" ? tool.tool_name : undefined,
           detail: typeof payload.error === "string" ? payload.error : "Tool execution failed",
           status: "error",
         })
@@ -754,6 +954,10 @@ export function AgentChatPanel({
           lastVisibleContent = textContent
         }
 
+        const toolFallbackContent = finalContent || textContent || provisionalContent || lastVisibleContent
+          ? null
+          : buildToolResultFallback(toolCalls)
+
         runSteps = upsertStep(runSteps, {
           id: "model-request",
           label: "Drafting response",
@@ -762,7 +966,13 @@ export function AgentChatPanel({
         })
         runSteps = appendDebugStep(runSteps, debugDetail)
         handleStreamUpdate({
-          content: finalContent || textContent || provisionalContent || lastVisibleContent || buildEmptyAssistantResponse(debugDetail),
+          content:
+            finalContent ||
+            textContent ||
+            provisionalContent ||
+            lastVisibleContent ||
+            toolFallbackContent ||
+            buildEmptyAssistantResponse(debugDetail),
           steps: runSteps,
           toolCalls,
           status: "complete",
@@ -889,6 +1099,10 @@ export function AgentChatPanel({
           runSteps = appendDebugStep(runSteps, debugDetail)
         }
 
+        if (!fallbackContent) {
+          fallbackContent = buildToolResultFallback(toolCalls) || ""
+        }
+
         handleStreamUpdate({
           content: fallbackContent || buildEmptyAssistantResponse(debugDetail),
           status: "complete",
@@ -994,6 +1208,65 @@ export function AgentChatPanel({
         </div>
 
         <div className={`agent-chat-form assistant-ui-composer assistant-ui-composer-${variant}`}>
+          <div className="assistant-model-popover-shell" ref={modelPickerRef}>
+            <button
+              className="assistant-model-trigger"
+              type="button"
+              aria-label="Open model settings"
+              aria-haspopup="dialog"
+              aria-expanded={isModelPickerOpen}
+              onClick={() => setIsModelPickerOpen((open) => !open)}
+            >
+              <span className="assistant-model-trigger-label">Model</span>
+              <span className="assistant-model-trigger-status">
+                {modelId.trim() && modelId.trim() !== defaultModelId.trim() ? "Custom" : "Default"}
+              </span>
+            </button>
+
+            {isModelPickerOpen ? (
+              <div className="assistant-model-popover" role="dialog" aria-label="Model settings">
+                <div className="assistant-model-popover-header">
+                  <div className="assistant-model-controls-copy">
+                    <strong>Model override</strong>
+                    <span>
+                      Default: <code>{defaultModelId || "env configured model"}</code>
+                    </span>
+                  </div>
+                  <button
+                    className="assistant-model-popover-close"
+                    type="button"
+                    aria-label="Close model settings"
+                    onClick={() => setIsModelPickerOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="assistant-model-controls-inputs">
+                  <input
+                    type="text"
+                    className="assistant-model-input"
+                    value={modelId}
+                    disabled={isStreaming}
+                    onChange={(event) => setModelId(event.target.value)}
+                    placeholder={defaultModelId || "Paste a model id to test"}
+                  />
+                  <button
+                    className="button secondary"
+                    type="button"
+                    disabled={isStreaming || modelId.trim() === defaultModelId.trim()}
+                    onClick={() => setModelId(defaultModelId)}
+                  >
+                    Use Default
+                  </button>
+                </div>
+                <div className="assistant-model-controls-status">
+                  {modelId.trim() && modelId.trim() !== defaultModelId.trim()
+                    ? `Override active for new runs: ${modelId.trim()}`
+                    : "Using the default model from the environment."}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div className="assistant-ui-composer-row">
             <label className="field assistant-ui-input-wrap">
               <textarea

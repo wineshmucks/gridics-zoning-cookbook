@@ -359,6 +359,15 @@ def _infer_zip(address: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _normalize_zip_code(zip_code: str | int | None) -> str | None:
+    if isinstance(zip_code, int):
+        return str(zip_code)
+    if isinstance(zip_code, str):
+        normalized = zip_code.strip()
+        return normalized or None
+    return None
+
+
 def _extract_gridics_zoning_summary(payload: dict[str, Any]) -> dict[str, Any]:
     def normalize_key(key: str) -> str:
         return re.sub(r"[^a-z0-9]", "", key.lower())
@@ -473,6 +482,10 @@ def _build_augmented_knowledge_query(
         f"Address: {standardized_address}",
         f"Gridics zone: {zone_name}",
         f"Gridics typology: {typology}",
+        (
+            "Explain this zoning district in plain English for this property, including what is typically allowed here, "
+            "what approval or reference sections matter most, and any numeric development standards that apply."
+        ),
     ]
     if rendered_constraints:
         parts.append(f"Observed constraints: {rendered_constraints}")
@@ -569,7 +582,7 @@ def _analyze_customer_zoning_request_once(
     query: str,
     address: str | None = None,
     state_env: str | None = None,
-    zip_code: str | None = None,
+    zip_code: str | int | None = None,
     knowledge_limit: int = 5,
     client_id: str | None = None,
     run_context: Any = None,
@@ -615,9 +628,10 @@ def _analyze_customer_zoning_request_once(
             else _infer_state_env(standardized_address)
         )
     )
+    normalized_zip_code = _normalize_zip_code(zip_code)
     resolved_zip_code = (
-        zip_code.strip()
-        if isinstance(zip_code, str) and zip_code.strip()
+        normalized_zip_code
+        if normalized_zip_code
         else (
             str(active_property_context.get("zip_code")).strip()
             if reused_active_property and active_property_context and active_property_context.get("zip_code")
@@ -685,7 +699,7 @@ def _analyze_customer_zoning_request_once(
             limit=knowledge_limit,
             client_id=resolved_client_id,
         )
-        if _needs_constraints_lookup(zoning_summary)
+        if _needs_constraints_lookup(zoning_summary) and not primary_knowledge.get("results")
         else None
     )
 
@@ -728,6 +742,10 @@ def _analyze_customer_zoning_request_once(
             "constraints": zoning_summary.get("constraints"),
             "notes": zoning_summary.get("notes"),
         },
+        "gridics_api": {
+            "property_record": property_record,
+            "call_log": getattr(client, "call_log", []),
+        },
         "knowledge": primary_knowledge,
         "constraints_knowledge": constraints_knowledge,
     }
@@ -737,7 +755,7 @@ def analyze_customer_zoning_request(
     query: str,
     address: str | None = None,
     state_env: str | None = None,
-    zip_code: str | None = None,
+    zip_code: str | int | None = None,
     knowledge_limit: int = 5,
     client_id: str | None = None,
     run_context: Any = None,
@@ -781,9 +799,10 @@ def analyze_customer_zoning_request(
                         else _infer_state_env(standardized_address)
                     )
                 )
+                normalized_zip_code = _normalize_zip_code(zip_code)
                 resolved_zip_code = (
-                    zip_code.strip()
-                    if isinstance(zip_code, str) and zip_code.strip()
+                    normalized_zip_code
+                    if normalized_zip_code
                     else (
                         str(active_property_context.get("zip_code")).strip()
                         if reused_active_property and active_property_context and active_property_context.get("zip_code")

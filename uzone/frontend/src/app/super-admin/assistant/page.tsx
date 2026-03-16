@@ -10,6 +10,7 @@ export default async function SuperAdminAssistantPage() {
   const tenant = await getTenantConfig()
   const backendBase =
     process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+  const defaultModelId = process.env.UZONE_ZONING_AGENT_LLM_MODEL_ID || ''
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
@@ -63,6 +64,7 @@ export default async function SuperAdminAssistantPage() {
         backendBase={backendBase}
         customerName={tenant.city_name}
         clientId={tenant.client_id}
+        defaultModelId={defaultModelId}
         surface="super-admin-assistant"
         title="Deployment assistant"
         description="This assistant-ui surface runs against the backend AgentOS deployment for the active tenant and is structured for reuse in other screens."

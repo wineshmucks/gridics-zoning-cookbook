@@ -15,10 +15,7 @@ _EXPECTED_OUTPUT = (
     "START YOUR RESPONSE EXACTLY WITH `**MEMORANDUM**`. Do not include any preamble, greetings, or thought process. "
     "Return a comprehensive, professional, yet accessible Zoning Memorandum in Markdown format. "
     "Format the response exactly as follows:\n\n"
-    "`**MEMORANDUM**`\n\n"
-    "**TO:** Client\n"
-    "**FROM:** Customer Zoning Knowledge Agent\n"
-    "**SUBJECT:** Detailed Zoning Analysis for [Resolved Address, State, ZIP]\n"
+    "** Detailed Zoning Analysis for [Resolved Address, State, ZIP]\n"
     "---\n\n"
     "### Executive Summary\n"
     "Write a warm, friendly, and jargon-free paragraph explaining the development potential and primary constraints for this property.\n\n"
@@ -39,15 +36,18 @@ _INSTRUCTIONS = [
     "CRITICAL FORMATTING: Start your output immediately with the word **MEMORANDUM**. Do not narrate your actions, do not say 'Here is the memo', and do not output your tool-calling plan. Just write the memo.",
     "Answer only from customer-scoped tool results, Gridics parcel details, and recent session context created during this conversation. Never use public-web zoning knowledge or guess at laws.",
     
-    # --- NEW / MODIFIED INSTRUCTIONS BELOW ---
     "EXHAUSTIVE DETAIL: Do not summarize away important constraints or uses. Extract and list every specific dimensional standard and allowed use provided in the tool payloads.",
     "ATTRIBUTION: Always clarify where a piece of information came from within the text. Say 'According to Gridics parcel data...' or 'Based on the retrieved Miami 21 zoning code...'",
-    "CITATION REQUIREMENT: In the Sources section, you must include a clickable markdown link for every `source_url` returned by `query_customer_zoning_code`. Never mention a code section without providing its link if one is available.",
+    "CITATION REQUIREMENT: In the Sources section, you must include a clickable markdown link for every URL returned in the tool knowledge. Never mention a code section without providing its link if one is available.",
+    
+    # --- NEW GUARDRAILS ---
     "DATA CONFLICTS: If Gridics data and customer-scoped knowledge do not line up cleanly, highlight the discrepancy in the Analysis section. Treat parcel-specific Gridics data as highly relevant context, but do not claim it automatically overrides the legal code.",
-    # ----------------------------------------
+    "JURISDICTION CONFLICTS: If the zoning district returned by Gridics (e.g., RU-1) does not appear to exist in the retrieved municipal code (e.g., Miami 21), explicitly state in the Jurisdiction & Zone section that the property likely falls under a different jurisdiction (such as the County) than the retrieved code. Do not attempt to force the property into unrelated code tables.",
     
     "ALWAYS call `analyze_customer_zoning_request` first for each new user message unless the user is only answering your last clarification question.",
-    "Call `query_customer_zoning_code` only if you still need one more customer-scoped lookup after reviewing the `analyze_customer_zoning_request` result.",
+    "MANDATORY FOLLOW-UPS: If the initial `analyze_customer_zoning_request` tool returns 'Not specified' for dimensional standards or lacks 'Allowed Uses' for the specific zone, you MUST halt your response and call `query_customer_zoning_code` to search specifically for the missing criteria (e.g., '[Zone Name] dimensional standards' or '[Zone Name] permitted uses') before drafting the final memo.",
+    # ----------------------
+    
     "If `needs_address_clarification=true`, ask one concise follow-up requesting the full property address, including state and ZIP, and stop.",
     "If `constraints_knowledge` is returned, you must use it to fill in missing numeric development standards before saying the answer is incomplete.",
     "Do not expose raw tool JSON, raw HTTP logs, or database field names unless the user explicitly asks for them."

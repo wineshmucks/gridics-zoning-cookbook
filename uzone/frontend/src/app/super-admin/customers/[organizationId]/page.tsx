@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 
+import { fetchCustomerRecord } from '../../../../app/admin/actions'
 import { SuperAdminCustomerManageClient } from '../../../../components/SuperAdminCustomerManageClient'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
@@ -67,6 +68,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
       role: invitation.role,
       status: invitation.status || 'pending',
     }))
+  const tenantRecord = await fetchCustomerRecord(organizationId)
 
   return (
     <SuperAdminCustomerManageClient
@@ -75,6 +77,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
         name: organization.name,
         slug: organization.slug,
         customerId: organization.id,
+        isActive: tenantRecord?.is_active ?? null,
       }}
       adminMembers={adminMembers}
       pendingInvites={pendingInvites}

@@ -7,7 +7,7 @@ import {
   deleteCustomerAction,
   inviteClientAdminAction,
   removeClientAdminAction,
-  setCustomerInactiveAction,
+  setCustomerActiveStateAction,
   type CustomerMutationState,
   type InviteAdminState,
   type RemoveAdminState,
@@ -33,6 +33,7 @@ type SelectedCustomer = {
   name: string
   slug: string | null
   customerId: string | null
+  isActive: boolean | null
 }
 
 const initialInviteState: InviteAdminState = {
@@ -67,8 +68,8 @@ export function SuperAdminCustomerManageClient({
     removeClientAdminAction,
     initialRemoveState,
   )
-  const [inactiveState, inactiveAction, inactivePending] = useActionState(
-    setCustomerInactiveAction,
+  const [statusState, statusAction, statusPending] = useActionState(
+    setCustomerActiveStateAction,
     initialCustomerMutationState,
   )
   const [deleteState, deleteAction, deletePending] = useActionState(
@@ -80,12 +81,12 @@ export function SuperAdminCustomerManageClient({
   const activeSection = searchParams.get('section') === 'admin-users' ? 'admin-users' : 'general'
 
   useEffect(() => {
-    if (!inviteState.success && !removeState.success && !inactiveState.success) {
+    if (!inviteState.success && !removeState.success && !statusState.success) {
       return
     }
 
     router.refresh()
-  }, [inactiveState.success, inviteState.success, removeState.success, router])
+  }, [inviteState.success, removeState.success, router, statusState.success])
 
   useEffect(() => {
     if (!deleteState.success) {
@@ -96,6 +97,11 @@ export function SuperAdminCustomerManageClient({
     router.refresh()
   }, [deleteState.success, router])
 
+  const statusLabel =
+    customer.isActive === true ? 'Active' : customer.isActive === false ? 'Inactive' : 'Unprovisioned'
+  const statusTone =
+    customer.isActive === true ? 'is-active' : customer.isActive === false ? 'is-inactive' : 'is-draft'
+
   return (
     <div className="panel-stack">
       {activeSection === 'general' ? (
@@ -105,8 +111,11 @@ export function SuperAdminCustomerManageClient({
               icon="jurisdiction-details"
               eyebrow="Jurisdiction Details"
               title={customer.name}
-              description="Review the jurisdiction profile, lifecycle controls, and account context."
+              description="Review the jurisdiction profile, account context, and whether this jurisdiction is live for public tenant resolution."
             />
+            <div style={{ marginTop: 14 }}>
+              <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
+            </div>
           </section>
 
           <div className="admin-list">
@@ -135,23 +144,49 @@ export function SuperAdminCustomerManageClient({
                 <dt>Pending invites</dt>
                 <dd>{pendingInvites.length}</dd>
               </div>
+              <div>
+                <dt>Current status</dt>
+                <dd>
+                  <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
+                </dd>
+              </div>
             </dl>
           </div>
 
           <div className="admin-list">
             <div className="admin-list-heading">Jurisdiction controls</div>
             <div className="panel-stack">
-              <form action={inactiveAction} className="admin-action-row">
+              <form action={statusAction} className="admin-form">
                 <input type="hidden" name="organizationId" value={customer.id} />
                 <input type="hidden" name="customerName" value={customer.name} />
-                <div>
-                  <div style={{ fontWeight: 700 }}>Set jurisdiction inactive</div>
-                  <div style={{ color: 'var(--muted)' }}>
-                    Disable tenant resolution for this jurisdiction without removing the Clerk organization.
+                <div className="admin-action-row">
+                  <div>
+                    <div style={{ fontWeight: 700 }}>Public availability</div>
+                    <div style={{ color: 'var(--muted)' }}>
+                      Active jurisdictions appear in the public selector and resolve tenant configuration. Inactive ones stay in admin but are hidden from the public flow.
+                    </div>
                   </div>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <span>Status</span>
+                    <select
+                      name="isActive"
+                      defaultValue={customer.isActive === false ? 'false' : 'true'}
+                    >
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                  </label>
                 </div>
-                <button className="button secondary" type="submit" disabled={inactivePending}>
-                  {inactivePending ? 'Updating…' : 'Set Inactive'}
+                <button className="button secondary" type="submit" disabled={statusPending}>
+                  {statusPending ? 'Updating…' : 'Save Status'}
                 </button>
               </form>
 
@@ -169,11 +204,11 @@ export function SuperAdminCustomerManageClient({
                 </button>
               </form>
             </div>
-            {inactiveState.error ? (
-              <div className="status-banner status-banner-error">{inactiveState.error}</div>
+            {statusState.error ? (
+              <div className="status-banner status-banner-error">{statusState.error}</div>
             ) : null}
-            {inactiveState.success ? (
-              <div className="status-banner status-banner-success">{inactiveState.success}</div>
+            {statusState.success ? (
+              <div className="status-banner status-banner-success">{statusState.success}</div>
             ) : null}
             {deleteState.error ? (
               <div className="status-banner status-banner-error">{deleteState.error}</div>

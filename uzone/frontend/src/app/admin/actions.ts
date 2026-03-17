@@ -27,6 +27,16 @@ export type CustomerMutationState = {
   success: string | null
 }
 
+export type CustomerRecord = {
+  id: string
+  client_id: string
+  clerk_organization_id: string | null
+  jurisdiction_id: string | null
+  city_name: string
+  department_name: string
+  is_active: boolean
+}
+
 export type CustomerExperienceSettingsState = {
   error: string | null
   success: string | null
@@ -376,6 +386,28 @@ async function updateTenantClientStatus(organizationId: string, isActive: boolea
     throw new Error(
       typeof payload?.detail === 'string' ? payload.detail : 'Unable to update jurisdiction status.',
     )
+  }
+}
+
+export async function fetchCustomerRecord(
+  organizationId: string,
+): Promise<CustomerRecord | null> {
+  try {
+    const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}`), {
+      cache: 'no-store',
+    })
+
+    if (response.status === 404) {
+      return null
+    }
+
+    if (!response.ok) {
+      throw new Error('Unable to load jurisdiction status.')
+    }
+
+    return (await response.json()) as CustomerRecord
+  } catch {
+    return null
   }
 }
 
@@ -833,7 +865,7 @@ export async function removeClientAdminAction(
   }
 }
 
-export async function setCustomerInactiveAction(
+export async function setCustomerActiveStateAction(
   _previousState: CustomerMutationState,
   formData: FormData,
 ): Promise<CustomerMutationState> {
@@ -841,28 +873,29 @@ export async function setCustomerInactiveAction(
   const { role } = await getPermissionContext(clerkEnabled)
 
   if (role !== 'super_admin') {
-    return { error: 'Only super admins can set jurisdictions inactive.', success: null }
+    return { error: 'Only super admins can update jurisdiction status.', success: null }
   }
 
   const organizationId = String(formData.get('organizationId') || '').trim()
   const customerName = String(formData.get('customerName') || '').trim()
+  const isActive = String(formData.get('isActive') || '').trim() === 'true'
 
   if (!organizationId) {
     return { error: 'Organization is required.', success: null }
   }
 
   try {
-    await updateTenantClientStatus(organizationId, false)
+    await updateTenantClientStatus(organizationId, isActive)
     revalidatePath('/super-admin')
     revalidatePath(`/super-admin/customers/${organizationId}`)
 
     return {
       error: null,
-      success: `${customerName || 'Jurisdiction'} was set inactive.`,
+      success: `${customerName || 'Jurisdiction'} was set ${isActive ? 'active' : 'inactive'}.`,
     }
   } catch (error) {
     return {
-      error: getErrorMessage(error, 'Unable to set the jurisdiction inactive.'),
+      error: getErrorMessage(error, 'Unable to update the jurisdiction status.'),
       success: null,
     }
   }

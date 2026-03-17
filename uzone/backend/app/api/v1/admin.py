@@ -216,6 +216,15 @@ def create_tenant_client(
     return TenantClientRead.model_validate(tenant_client)
 
 
+@router.get("/clients/{organization_id}", response_model=TenantClientRead)
+def get_tenant_client(
+    organization_id: str,
+    db: Session = Depends(get_db),
+) -> TenantClientRead:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    return TenantClientRead.model_validate(tenant_client)
+
+
 @router.patch("/clients/{organization_id}", response_model=TenantClientRead)
 def update_tenant_client_status(
     organization_id: str,

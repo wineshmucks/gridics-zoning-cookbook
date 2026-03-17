@@ -5,6 +5,27 @@ type CustomerSummary = {
   name: string
   membersCount: number | null
   customerId: string | null
+  isActive: boolean | null
+}
+
+function statusTone(isActive: boolean | null): string {
+  if (isActive === true) {
+    return 'is-active'
+  }
+  if (isActive === false) {
+    return 'is-inactive'
+  }
+  return 'is-draft'
+}
+
+function statusLabel(isActive: boolean | null): string {
+  if (isActive === true) {
+    return 'Active'
+  }
+  if (isActive === false) {
+    return 'Inactive'
+  }
+  return 'Unprovisioned'
 }
 
 export function SuperAdminCustomerList({
@@ -48,6 +69,7 @@ export function SuperAdminCustomerList({
               <tr>
                 <th>Name</th>
                 <th>Clerk Org ID</th>
+                <th>Status</th>
                 <th>Members</th>
                 <th />
               </tr>
@@ -57,6 +79,11 @@ export function SuperAdminCustomerList({
                 <tr key={customer.id}>
                   <td>{customer.name}</td>
                   <td>{customer.customerId || 'Unavailable'}</td>
+                  <td>
+                    <span className={`status-pill ${statusTone(customer.isActive)}`}>
+                      {statusLabel(customer.isActive)}
+                    </span>
+                  </td>
                   <td>{customer.membersCount ?? 0}</td>
                   <td>
                     <Link

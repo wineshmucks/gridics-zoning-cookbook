@@ -654,6 +654,15 @@ export function AgentChatPanel({
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
+    setModelId((currentModelId) => {
+      if (currentModelId.trim()) {
+        return currentModelId
+      }
+      return defaultModelId
+    })
+  }, [defaultModelId])
+
+  useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) {
       return
@@ -752,7 +761,7 @@ export function AgentChatPanel({
       JSON.stringify({
         surface,
         client_id: clientId,
-        assistant_model_id: modelId.trim() && modelId.trim() !== defaultModelId.trim() ? modelId.trim() : undefined,
+        assistant_model_id: modelId.trim() || undefined,
       }),
     )
 

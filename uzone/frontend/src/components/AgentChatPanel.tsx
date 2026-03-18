@@ -633,7 +633,7 @@ export function AgentChatPanel({
   agentId: string
   backendBase: string
   customerName: string
-  clientId: string
+  clientId: string | null
   defaultModelId?: string
   surface: string
   title: string
@@ -706,6 +706,11 @@ export function AgentChatPanel({
   const sendMessage = async () => {
     const trimmed = input.trim()
     if (!trimmed || isStreaming) {
+      return
+    }
+
+    if (!clientId || !clientId.trim()) {
+      setComposerError("Tenant client configuration is missing for this assistant. Reload the page after selecting a jurisdiction or fixing tenant config.")
       return
     }
 

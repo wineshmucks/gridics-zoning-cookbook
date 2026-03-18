@@ -603,18 +603,25 @@ main {
 }
 
 .jurisdiction-picker-search-field {
-  position: relative;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: white;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .jurisdiction-picker-search-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
   width: 18px;
   height: 18px;
+  flex: 0 0 18px;
   color: var(--text-secondary);
-  transform: translateY(-50%);
   pointer-events: none;
 }
 
@@ -623,19 +630,38 @@ main {
   height: 100%;
 }
 
-.jurisdiction-picker-search input {
-  height: 52px;
-  padding-left: 42px;
+.jurisdiction-picker-search-input {
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
 }
 
-.jurisdiction-picker-search input::placeholder {
+.jurisdiction-picker-search-input::-webkit-search-decoration,
+.jurisdiction-picker-search-input::-webkit-search-cancel-button,
+.jurisdiction-picker-search-input::-webkit-search-results-button,
+.jurisdiction-picker-search-input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.jurisdiction-picker-search-input::placeholder {
   color: #7d8796;
 }
 
-.jurisdiction-picker-search input:focus-visible {
-  outline: 3px solid rgba(55, 124, 54, 0.2);
-  outline-offset: 2px;
-  border-color: rgba(55, 124, 54, 0.35);
+.jurisdiction-picker-search-field:focus-within {
+  border-color: rgba(55, 124, 54, 0.4);
+  box-shadow:
+    0 0 0 3px rgba(55, 124, 54, 0.14),
+    0 8px 20px rgba(55, 124, 54, 0.08);
+}
+
+.jurisdiction-picker-search-input:focus-visible {
+  outline: none;
 }
 
 .jurisdiction-picker-search-note {

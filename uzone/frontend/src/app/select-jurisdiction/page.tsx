@@ -1,4 +1,4 @@
-import { CustomerPickerClient } from '../../components/CustomerPickerClient'
+import { JurisdictionPickerClient } from '../../components/JurisdictionPickerClient'
 import { buildServerBackendApiUrl } from '../../lib/backend'
 import { getClerkManagementClient } from '../../lib/clerk'
 
@@ -47,7 +47,7 @@ async function loadClerkOrganizationIds() {
   }
 }
 
-export default async function SelectCustomerPage({ searchParams }: PageProps) {
+export default async function SelectJurisdictionPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const requestedReturnTo = Array.isArray(resolvedSearchParams.returnTo)
     ? resolvedSearchParams.returnTo[0] || '/'
@@ -75,7 +75,7 @@ export default async function SelectCustomerPage({ searchParams }: PageProps) {
         </div>
 
         {visibleCustomers.length > 0 ? (
-          <CustomerPickerClient customers={visibleCustomers} returnTo={returnTo} />
+          <JurisdictionPickerClient customers={visibleCustomers} returnTo={returnTo} />
         ) : (
           <section className="card jurisdiction-picker-empty">
             <h2 className="section-title">No Jurisdictions Available</h2>

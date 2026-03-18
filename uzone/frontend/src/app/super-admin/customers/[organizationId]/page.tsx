@@ -27,56 +27,64 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
   }
 
   const { organizationId } = await params
+  const tenantRecord = await fetchCustomerRecord(organizationId)
   const client = await getClerkManagementClient()
-  const organizations = await client.organizations.getOrganizationList({
-    includeMembersCount: true,
-    limit: 100,
-  })
-  const organization = organizations.data.find((item) => item.id === organizationId)
+  const organization = tenantRecord?.clerk_organization_id
+    ? await client.organizations
+        .getOrganization({ organizationId: tenantRecord.clerk_organization_id })
+        .catch(() => null)
+    : await client.organizations.getOrganization({ organizationId }).catch(() => null)
 
-  if (!organization) {
+  if (!tenantRecord && !organization) {
     notFound()
   }
 
-  const [membershipResponse, invitationResponse] = await Promise.all([
-    client.organizations.getOrganizationMembershipList({
-      organizationId,
-      role: ['org:admin'],
-      limit: 100,
-    }),
-    client.organizations.getOrganizationInvitationList({
-      organizationId,
-      limit: 100,
-    }),
-  ])
-
-  const adminMembers = membershipResponse.data.map((membership) => ({
-    userId: membership.publicUserData?.userId || membership.id,
-    identifier: membership.publicUserData?.identifier || 'Unknown user',
-    name:
-      [membership.publicUserData?.firstName, membership.publicUserData?.lastName]
-        .filter(Boolean)
-        .join(' ') || membership.publicUserData?.identifier || 'Unknown user',
-    role: membership.role,
-  }))
-
-  const pendingInvites = invitationResponse.data
-    .filter((invitation) => invitation.role === 'org:admin' && invitation.status === 'pending')
-    .map((invitation) => ({
-      id: invitation.id,
-      emailAddress: invitation.emailAddress,
-      role: invitation.role,
-      status: invitation.status || 'pending',
-    }))
-  const tenantRecord = await fetchCustomerRecord(organizationId)
+  const [adminMembers, pendingInvites] = organization
+    ? await Promise.all([
+        client.organizations
+          .getOrganizationMembershipList({
+            organizationId: organization.id,
+            role: ['org:admin'],
+            limit: 100,
+          })
+          .then((membershipResponse) =>
+            membershipResponse.data.map((membership) => ({
+              userId: membership.publicUserData?.userId || membership.id,
+              identifier: membership.publicUserData?.identifier || 'Unknown user',
+              name:
+                [membership.publicUserData?.firstName, membership.publicUserData?.lastName]
+                  .filter(Boolean)
+                  .join(' ') || membership.publicUserData?.identifier || 'Unknown user',
+              role: membership.role,
+            })),
+          ),
+        client.organizations
+          .getOrganizationInvitationList({
+            organizationId: organization.id,
+            limit: 100,
+          })
+          .then((invitationResponse) =>
+            invitationResponse.data
+              .filter((invitation) => invitation.role === 'org:admin' && invitation.status === 'pending')
+              .map((invitation) => ({
+                id: invitation.id,
+                emailAddress: invitation.emailAddress,
+                role: invitation.role,
+                status: invitation.status || 'pending',
+              })),
+          ),
+      ])
+    : [[], []]
 
   return (
     <SuperAdminCustomerManageClient
       customer={{
-        id: organization.id,
-        name: organization.name,
-        slug: organization.slug,
-        customerId: organization.id,
+        id: organizationId,
+        name: tenantRecord?.city_name || organization?.name || organizationId,
+        departmentName: tenantRecord?.department_name || null,
+        clerkOrganizationId: tenantRecord?.clerk_organization_id || organization?.id || organizationId,
+        slug: organization?.slug || null,
+        customerId: organization?.id || tenantRecord?.clerk_organization_id || null,
         isActive: tenantRecord?.is_active ?? null,
       }}
       adminMembers={adminMembers}

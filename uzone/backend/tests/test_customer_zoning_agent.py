@@ -32,10 +32,10 @@ def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> No
     assert kwargs["session_state"] == {"active_property_context": None}
     assert kwargs["add_session_state_to_context"] is True
     assert kwargs["add_history_to_context"] is True
-    assert kwargs["num_history_runs"] == 3
-    assert kwargs["max_tool_calls_from_history"] == 2
+    assert kwargs["num_history_runs"] == 1
+    assert kwargs["max_tool_calls_from_history"] == 1
     assert kwargs["enable_agentic_state"] is False
-    assert kwargs["compress_tool_results"] is False
+    assert kwargs["compress_tool_results"] is True
     assert kwargs["tool_call_limit"] == 3
     assert kwargs["use_instruction_tags"] is True
     assert "Gridics parcel data" in kwargs["description"]

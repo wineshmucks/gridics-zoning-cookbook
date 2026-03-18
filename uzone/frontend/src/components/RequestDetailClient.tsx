@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
-import { API_BASE } from '../lib/api'
+import { buildApiUrl } from '../lib/api'
 import { ErrorCard, LoadingCard } from './RemoteState'
 
 type RequestRecord = {
@@ -54,8 +54,8 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
     let active = true
 
     Promise.all([
-      fetch(`${API_BASE}/api/requests/${encodeURIComponent(requestId)}`, { cache: 'no-store' }),
-      fetch(`${API_BASE}/api/requests/${encodeURIComponent(requestId)}/status-events`, {
+      fetch(buildApiUrl(`/api/requests/${encodeURIComponent(requestId)}`), { cache: 'no-store' }),
+      fetch(buildApiUrl(`/api/requests/${encodeURIComponent(requestId)}/status-events`), {
         cache: 'no-store',
       }),
     ])
@@ -112,7 +112,7 @@ export function RequestDetailClient({ requestId }: { requestId: string }) {
             {request.final_letter_version_id ? (
               <a
                 className="button"
-                href={`${API_BASE}/api/documents/${request.final_letter_version_id}/download`}
+                href={buildApiUrl(`/api/documents/${request.final_letter_version_id}/download`)}
                 target="_blank"
                 rel="noreferrer"
               >

@@ -5,7 +5,7 @@ import { useAuth } from '@clerk/nextjs'
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-import { API_BASE, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
+import { buildApiUrl, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
 import { ErrorCard, LoadingCard } from './RemoteState'
 
 type FeeItem = {
@@ -194,7 +194,7 @@ function IntakeFlow({
   useEffect(() => {
     let active = true
 
-    fetch(`${API_BASE}/api/admin/fees?client_id=${encodeURIComponent(tenantClientId)}`, {
+    fetch(buildApiUrl(`/api/admin/fees?client_id=${encodeURIComponent(tenantClientId)}`), {
       cache: 'no-store',
     })
       .then(async (feeResponse) => {
@@ -897,7 +897,7 @@ function LocalRequestIntake({
   useEffect(() => {
     let active = true
 
-    fetch(`${API_BASE}/api/dev/identities`, { cache: 'no-store' })
+    fetch(buildApiUrl('/api/dev/identities'), { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: DevIdentities | null) => {
         if (!active) {

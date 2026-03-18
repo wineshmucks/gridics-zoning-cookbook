@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useAuth } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 
-import { API_BASE, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
+import { buildApiUrl, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
 import { ErrorCard, LoadingCard } from './RemoteState'
 
 type RequestRow = {
@@ -102,20 +102,20 @@ function LocalAccountRequests() {
   const [localUserId, setLocalUserId] = useState<string | null>(null)
 
   async function refresh() {
-    const response = await fetch(`${API_BASE}/api/requests`, { cache: 'no-store' })
+    const response = await fetch(buildApiUrl('/api/requests'), { cache: 'no-store' })
     setRequests(response.ok ? ((await response.json()) as RequestRow[]) : [])
   }
 
   useEffect(() => {
     let active = true
-    fetch(`${API_BASE}/api/requests`, { cache: 'no-store' })
+    fetch(buildApiUrl('/api/requests'), { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: RequestRow[] | null) => {
         if (active) {
           setRequests(data || [])
         }
       })
-    fetch(`${API_BASE}/api/dev/identities`, { cache: 'no-store' })
+    fetch(buildApiUrl('/api/dev/identities'), { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: DevIdentities | null) => {
         if (active) {

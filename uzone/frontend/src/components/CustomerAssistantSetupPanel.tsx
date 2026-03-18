@@ -11,7 +11,7 @@ import {
   type CustomerZoningKnowledgeMutationState,
   type CustomerZoningKnowledgeStatus,
 } from '../app/admin/actions'
-import { API_BASE } from '../lib/api'
+import { buildApiUrl } from '../lib/api'
 
 type SelectedCustomer = {
   id: string
@@ -67,7 +67,7 @@ export function CustomerAssistantSetupPanel({
     const loadStatus = async () => {
       try {
         const response = await fetch(
-          `${API_BASE}/api/admin/clients/${customer.id}/zoning-knowledge`,
+          buildApiUrl(`/api/admin/clients/${customer.id}/zoning-knowledge`),
           { cache: 'no-store' },
         )
         if (!response.ok) {
@@ -172,6 +172,10 @@ export function CustomerAssistantSetupPanel({
           ) : (
             <div style={{ color: 'var(--muted)' }}>No zoning knowledge ingestion has run yet.</div>
           )}
+
+          {latestRun?.status === 'failed' && latestRun.error_message ? (
+            <div className="status-banner status-banner-error">{latestRun.error_message}</div>
+          ) : null}
 
           {zoningRunActive ? (
             <div className="status-banner status-banner-success">

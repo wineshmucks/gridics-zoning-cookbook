@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import type { ReactNode } from 'react'
 
+import { fetchCustomerRecord } from '../../../../app/admin/actions'
 import { SuperAdminCustomerSidebar } from '../../../../components/SuperAdminCustomerSidebar'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
@@ -28,14 +29,15 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
   }
 
   const { organizationId } = await params
+  const tenantRecord = await fetchCustomerRecord(organizationId)
   const client = await getClerkManagementClient()
-  const organizations = await client.organizations.getOrganizationList({
-    includeMembersCount: true,
-    limit: 100,
-  })
-  const organization = organizations.data.find((item) => item.id === organizationId)
+  const organization = tenantRecord?.clerk_organization_id
+    ? await client.organizations
+        .getOrganization({ organizationId: tenantRecord.clerk_organization_id })
+        .catch(() => null)
+    : await client.organizations.getOrganization({ organizationId }).catch(() => null)
 
-  if (!organization) {
+  if (!tenantRecord && !organization) {
     notFound()
   }
 
@@ -44,10 +46,10 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
       <div className="super-admin-layout">
         <SuperAdminCustomerSidebar
           customer={{
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-            customerId: organization.id,
+            id: organizationId,
+            name: tenantRecord?.city_name || organization?.name || organizationId,
+            slug: organization?.slug || null,
+            customerId: organization?.id || tenantRecord?.clerk_organization_id || organizationId,
           }}
         />
         <div className="super-admin-content">{children}</div>

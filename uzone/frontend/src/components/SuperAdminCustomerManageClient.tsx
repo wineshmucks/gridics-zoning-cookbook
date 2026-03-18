@@ -7,6 +7,7 @@ import {
   deleteCustomerAction,
   inviteClientAdminAction,
   removeClientAdminAction,
+  saveCustomerGeneralSettingsAction,
   setCustomerActiveStateAction,
   type CustomerMutationState,
   type InviteAdminState,
@@ -31,6 +32,8 @@ type PendingInvite = {
 type SelectedCustomer = {
   id: string
   name: string
+  departmentName: string | null
+  clerkOrganizationId: string
   slug: string | null
   customerId: string | null
   isActive: boolean | null
@@ -72,6 +75,10 @@ export function SuperAdminCustomerManageClient({
     setCustomerActiveStateAction,
     initialCustomerMutationState,
   )
+  const [generalState, generalAction, generalPending] = useActionState(
+    saveCustomerGeneralSettingsAction,
+    initialCustomerMutationState,
+  )
   const [deleteState, deleteAction, deletePending] = useActionState(
     deleteCustomerAction,
     initialCustomerMutationState,
@@ -81,12 +88,18 @@ export function SuperAdminCustomerManageClient({
   const activeSection = searchParams.get('section') === 'admin-users' ? 'admin-users' : 'general'
 
   useEffect(() => {
-    if (!inviteState.success && !removeState.success && !statusState.success) {
+    if (generalState.redirectPath) {
+      router.push(generalState.redirectPath)
+      router.refresh()
+      return
+    }
+
+    if (!inviteState.success && !removeState.success && !statusState.success && !generalState.success) {
       return
     }
 
     router.refresh()
-  }, [inviteState.success, removeState.success, router, statusState.success])
+  }, [generalState.redirectPath, generalState.success, inviteState.success, removeState.success, router, statusState.success])
 
   useEffect(() => {
     if (!deleteState.success) {
@@ -123,34 +136,62 @@ export function SuperAdminCustomerManageClient({
             <div style={{ color: 'var(--muted)' }}>
               Jurisdiction details and lifecycle controls for {customer.name}.
             </div>
-            <dl className="detail-list">
-              <div>
-                <dt>Jurisdiction name</dt>
-                <dd>{customer.name}</dd>
-              </div>
-              <div>
-                <dt>Organization ID</dt>
-                <dd>{customer.customerId || 'Organization ID unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Slug</dt>
-                <dd>{customer.slug || 'No slug configured'}</dd>
-              </div>
-              <div>
-                <dt>Admin users</dt>
-                <dd>{adminMembers.length}</dd>
-              </div>
-              <div>
-                <dt>Pending invites</dt>
-                <dd>{pendingInvites.length}</dd>
-              </div>
-              <div>
-                <dt>Current status</dt>
-                <dd>
-                  <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
-                </dd>
-              </div>
-            </dl>
+            <form action={generalAction} className="admin-form">
+              <input type="hidden" name="organizationId" value={customer.id} />
+              <label className="field">
+                <span>Jurisdiction name</span>
+                <input name="cityName" defaultValue={customer.name} required />
+              </label>
+              <label className="field">
+                <span>Department name</span>
+                <input
+                  name="departmentName"
+                  defaultValue={customer.departmentName || 'Planning & Zoning Department'}
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>Clerk organization ID</span>
+                <input name="clerkOrganizationId" defaultValue={customer.clerkOrganizationId} required />
+              </label>
+              <label className="field">
+                <span>Clerk slug</span>
+                <input name="clerkSlug" defaultValue={customer.slug || ''} placeholder="miami-planning" />
+              </label>
+              <dl className="detail-list">
+                <div>
+                  <dt>Organization ID</dt>
+                  <dd>{customer.customerId || 'Organization ID unavailable'}</dd>
+                </div>
+                <div>
+                  <dt>Slug</dt>
+                  <dd>{customer.slug || 'No slug configured'}</dd>
+                </div>
+                <div>
+                  <dt>Admin users</dt>
+                  <dd>{adminMembers.length}</dd>
+                </div>
+                <div>
+                  <dt>Pending invites</dt>
+                  <dd>{pendingInvites.length}</dd>
+                </div>
+                <div>
+                  <dt>Current status</dt>
+                  <dd>
+                    <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
+                  </dd>
+                </div>
+              </dl>
+              <button className="button" type="submit" disabled={generalPending}>
+                {generalPending ? 'Saving…' : 'Save Details'}
+              </button>
+            </form>
+            {generalState.error ? (
+              <div className="status-banner status-banner-error">{generalState.error}</div>
+            ) : null}
+            {generalState.success ? (
+              <div className="status-banner status-banner-success">{generalState.success}</div>
+            ) : null}
           </div>
 
           <div className="admin-list">

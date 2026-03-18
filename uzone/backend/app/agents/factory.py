@@ -29,6 +29,9 @@ def _get_agent_model_api_key(provider: str) -> str | None:
     if provider == "openai":
         return os.getenv("OPENAI_API_KEY")
 
+    if provider == "groq":
+        return os.getenv("GROQ_API_KEY")
+
     return None
 
 
@@ -77,7 +80,18 @@ def build_agent_model(*, model_id_override: str | None = None, max_tokens: int =
             base_url=settings.zoning_agent_llm_base_url,
         )
 
+    if provider == "groq":
+        if not api_key:
+            raise RuntimeError("Set UZONE_ZONING_AGENT_LLM_API_KEY or GROQ_API_KEY for the Groq zoning agent.")
+        from agno.models.groq import Groq
+
+        return build_with_supported_kwargs(
+            Groq,
+            id=model_id,
+            api_key=api_key,
+        )
+
     raise RuntimeError(
         f"Unsupported zoning agent LLM provider '{settings.zoning_agent_llm_provider}'. "
-        "Supported providers: gemini, openrouter, openai."
+        "Supported providers: gemini, openrouter, openai, groq."
     )

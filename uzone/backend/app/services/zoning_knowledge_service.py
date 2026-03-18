@@ -777,6 +777,45 @@ class RateLimitedEmbedder:
         return getattr(self.embedder, name)
 
 
+class ValidatingEmbedder:
+    def __init__(self, embedder, *, dimensions: int, label: str):
+        self.embedder = embedder
+        self.dimensions = dimensions
+        self.label = label
+
+    def _validate_vector(self, vector: list[float]) -> list[float]:
+        if len(vector) != self.dimensions:
+            raise ValueError(
+                f"{self.label} returned {len(vector)} dimensions; expected {self.dimensions}."
+            )
+        return vector
+
+    def get_embedding(self, text: str):
+        return self._validate_vector(self.embedder.get_embedding(text))
+
+    def get_embedding_and_usage(self, text: str):
+        vector, usage = self.embedder.get_embedding_and_usage(text)
+        return self._validate_vector(vector), usage
+
+    def get_embeddings_batch_and_usage(self, texts: list[str]):
+        vectors, usages = self.embedder.get_embeddings_batch_and_usage(texts)
+        return [self._validate_vector(vector) for vector in vectors], usages
+
+    async def async_get_embedding(self, text: str):
+        return self._validate_vector(await self.embedder.async_get_embedding(text))
+
+    async def async_get_embedding_and_usage(self, text: str):
+        vector, usage = await self.embedder.async_get_embedding_and_usage(text)
+        return self._validate_vector(vector), usage
+
+    async def async_get_embeddings_batch_and_usage(self, texts: list[str]):
+        vectors, usages = await self.embedder.async_get_embeddings_batch_and_usage(texts)
+        return [self._validate_vector(vector) for vector in vectors], usages
+
+    def __getattr__(self, name: str):
+        return getattr(self.embedder, name)
+
+
 def _maybe_rate_limit_embedder(embedder, *, provider: str, model_id: str):
     requests_per_minute = settings.zoning_embedder_requests_per_minute
     if requests_per_minute <= 0:
@@ -799,15 +838,9 @@ def _build_embedder_pair():
             raise ValueError(
                 "Set UZONE_ZONING_EMBEDDER_API_KEY or GOOGLE_API_KEY for the Gemini zoning embedder."
             )
-        try:
-            from agno.knowledge.embedder.google import GeminiEmbedder
-        except ImportError:
-            try:
-                from agno.embedder.google import GeminiEmbedder
-            except ImportError:
-                GeminiEmbedder = _GeminiGenAIEmbedder
-
-        query_embedder = GeminiEmbedder(
+        # Use the direct google-genai adapter here because some Agno Gemini versions
+        # silently return empty vectors on response parsing failures.
+        query_embedder = _GeminiGenAIEmbedder(
             dimensions=dimensions,
             enable_batch=True,
             batch_size=32,
@@ -815,7 +848,7 @@ def _build_embedder_pair():
             task_type="RETRIEVAL_QUERY",
             api_key=api_key,
         )
-        document_embedder = GeminiEmbedder(
+        document_embedder = _GeminiGenAIEmbedder(
             dimensions=dimensions,
             enable_batch=True,
             batch_size=32,
@@ -824,8 +857,16 @@ def _build_embedder_pair():
             api_key=api_key,
         )
         return (
-            _maybe_rate_limit_embedder(query_embedder, provider=provider, model_id=model_id),
-            _maybe_rate_limit_embedder(document_embedder, provider=provider, model_id=model_id),
+            _maybe_rate_limit_embedder(
+                ValidatingEmbedder(query_embedder, dimensions=dimensions, label=f"{provider} query embedder"),
+                provider=provider,
+                model_id=model_id,
+            ),
+            _maybe_rate_limit_embedder(
+                ValidatingEmbedder(document_embedder, dimensions=dimensions, label=f"{provider} document embedder"),
+                provider=provider,
+                model_id=model_id,
+            ),
         )
 
     if provider in {"openai", "openrouter"}:
@@ -859,8 +900,16 @@ def _build_embedder_pair():
         query_embedder = build_with_supported_kwargs(OpenAIEmbedder, **common_kwargs)
         document_embedder = build_with_supported_kwargs(OpenAIEmbedder, **common_kwargs)
         return (
-            _maybe_rate_limit_embedder(query_embedder, provider=provider, model_id=model_id),
-            _maybe_rate_limit_embedder(document_embedder, provider=provider, model_id=model_id),
+            _maybe_rate_limit_embedder(
+                ValidatingEmbedder(query_embedder, dimensions=dimensions, label=f"{provider} query embedder"),
+                provider=provider,
+                model_id=model_id,
+            ),
+            _maybe_rate_limit_embedder(
+                ValidatingEmbedder(document_embedder, dimensions=dimensions, label=f"{provider} document embedder"),
+                provider=provider,
+                model_id=model_id,
+            ),
         )
 
     raise ValueError(

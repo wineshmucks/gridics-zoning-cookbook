@@ -262,7 +262,7 @@ def resolve_tenant_public_config(
     if normalized_client_id:
         client = db.scalar(
             select(TenantClient).where(
-                TenantClient.client_id == normalized_client_id,
+                func.lower(TenantClient.client_id) == normalized_client_id,
                 TenantClient.is_active.is_(True),
             )
         )
@@ -271,7 +271,7 @@ def resolve_tenant_public_config(
         client = db.scalar(
             select(TenantClient).where(
                 (func.lower(TenantClient.clerk_organization_id) == normalized_organization_id_lower)
-                | (TenantClient.client_id == normalized_organization_id_lower),
+                | (func.lower(TenantClient.client_id) == normalized_organization_id_lower),
                 TenantClient.is_active.is_(True),
             )
         )

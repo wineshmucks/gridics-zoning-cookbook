@@ -48,6 +48,9 @@ export function SuperAdminCustomerList({
           </p>
         </div>
         <div className="button-row">
+          <Link href="/super-admin/gridics-debug" className="button secondary">
+            Gridics Debug
+          </Link>
           <Link href="/super-admin/assistant" className="button secondary">
             Open Assistant
           </Link>

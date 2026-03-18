@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+import { getServerBackendOrigin } from '../../lib/backend'
+import { getCurrentOrgId } from '../../lib/org-context'
 import { getClerkManagementClient } from '../../lib/clerk'
 import { getPermissionContext } from '../../lib/permissions'
 
@@ -25,6 +27,7 @@ export type RemoveAdminState = {
 export type CustomerMutationState = {
   error: string | null
   success: string | null
+  redirectPath?: string | null
 }
 
 export type CustomerRecord = {
@@ -84,6 +87,18 @@ export type CustomerZoningKnowledgeQueryState = {
   error: string | null
   success: string | null
   results: CustomerZoningKnowledgeQueryResult[]
+}
+
+export type SuperAdminGridicsDebugState = {
+  error: string | null
+  success: string | null
+  request: {
+    inputAddress: string
+    normalizedAddress: string | null
+    stateEnv: string | null
+    zipCode: string | null
+  } | null
+  response: unknown | null
 }
 
 export type AdminEmailTemplate = {
@@ -229,6 +244,7 @@ const initialMutationState: InviteAdminState = {
 const initialCustomerMutationState: CustomerMutationState = {
   error: null,
   success: null,
+  redirectPath: null,
 }
 
 const initialCustomerExperienceSettingsState: CustomerExperienceSettingsState = {
@@ -239,6 +255,13 @@ const initialCustomerExperienceSettingsState: CustomerExperienceSettingsState = 
 const initialCustomerZoningKnowledgeMutationState: CustomerZoningKnowledgeMutationState = {
   error: null,
   success: null,
+}
+
+const initialSuperAdminGridicsDebugState: SuperAdminGridicsDebugState = {
+  error: null,
+  success: null,
+  request: null,
+  response: null,
 }
 
 function buildEmptyCustomerZoningKnowledgeStatus(
@@ -260,22 +283,7 @@ function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
   }
 }
 
-function normalizeBackendOrigin(value: string | undefined): string {
-  if (value === undefined) {
-    return 'http://localhost:8000'
-  }
-
-  const trimmed = value.trim().replace(/\/+$/, '')
-  if (!trimmed || trimmed === '/api') {
-    return ''
-  }
-
-  return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed
-}
-
-const backendOrigin = normalizeBackendOrigin(
-  process.env.UZONE_API_BASE || process.env.NEXT_PUBLIC_UZONE_API_BASE,
-)
+const backendOrigin = getServerBackendOrigin()
 
 function buildBackendApiUrl(path: string): string {
   return `${backendOrigin}${path}`
@@ -310,6 +318,40 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase()
 }
 
+function standardizePropertyAddress(address: string) {
+  const withoutUnit = address.replace(
+    /\b(?:apt|apartment|unit|suite|ste|#)\s*[\w-]+\b/gi,
+    '',
+  )
+  return withoutUnit.replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim().replace(/,$/, '')
+}
+
+function inferStateEnvFromAddress(address: string) {
+  const match = address.match(/\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?$/i)
+  return match ? match[1].toLowerCase() : null
+}
+
+function inferZipFromAddress(address: string) {
+  const match = address.match(/\b(\d{5})(?:-\d{4})?\b/)
+  return match ? match[1] : null
+}
+
+function extractGridicsStreetAddress(address: string) {
+  const parts = address
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (parts.length >= 2) {
+    return parts[0]
+  }
+
+  return address
+    .replace(/\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?$/i, '')
+    .replace(/,\s*$/, '')
+    .trim()
+}
+
 async function getAdminScopedTarget() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
@@ -318,20 +360,124 @@ async function getAdminScopedTarget() {
     throw new Error('You need admin access for the selected jurisdiction organization.')
   }
 
-  const organizationId =
+  let organizationId =
     permissions.selectedAdminMembership?.organizationId ||
     permissions.currentClientMembership?.organizationId ||
     null
-  const clientId =
+  let clientId =
     permissions.selectedAdminMembership?.clientId ||
     permissions.currentClientId ||
     null
+
+  if (!organizationId) {
+    organizationId = await getCurrentOrgId()
+  }
+
+  if (!clientId && organizationId) {
+    const customerRecord = await fetchCustomerRecord(organizationId)
+    clientId = customerRecord?.client_id || organizationId
+  }
 
   if (!organizationId && !clientId) {
     throw new Error('Unable to resolve the current jurisdiction context.')
   }
 
   return { organizationId, clientId }
+}
+
+export async function runSuperAdminGridicsDebugAction(
+  _previousState: SuperAdminGridicsDebugState,
+  formData: FormData,
+): Promise<SuperAdminGridicsDebugState> {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    return {
+      ...initialSuperAdminGridicsDebugState,
+      error: 'Only super admins can use the Gridics debug tool.',
+    }
+  }
+
+  const inputAddress = String(formData.get('address') || '').trim()
+  if (!inputAddress) {
+    return {
+      ...initialSuperAdminGridicsDebugState,
+      error: 'A full property address is required.',
+    }
+  }
+
+  const normalizedAddress = standardizePropertyAddress(inputAddress)
+  const stateEnv = inferStateEnvFromAddress(normalizedAddress)
+  const zipCode = inferZipFromAddress(normalizedAddress)
+  const address = extractGridicsStreetAddress(normalizedAddress)
+
+  if (!stateEnv || !zipCode) {
+    return {
+      ...initialSuperAdminGridicsDebugState,
+      error: 'Include a full US address with state abbreviation and 5-digit ZIP code.',
+      request: {
+        inputAddress,
+        normalizedAddress,
+        stateEnv,
+        zipCode,
+      },
+    }
+  }
+
+  try {
+    const params = new URLSearchParams({
+      state_env: stateEnv,
+      address,
+      zipCode,
+    })
+    const response = await fetch(buildBackendApiUrl(`/api/gridics/property-record?${params.toString()}`), {
+      cache: 'no-store',
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const detail =
+        typeof payload?.detail === 'string'
+          ? payload.detail
+          : 'Unable to load the Gridics property record.'
+      return {
+        error: detail,
+        success: null,
+        request: {
+          inputAddress,
+          normalizedAddress: address,
+          stateEnv,
+          zipCode,
+        },
+        response: payload,
+      }
+    }
+
+    return {
+      error: null,
+      success: 'Gridics response loaded.',
+      request: {
+        inputAddress,
+        normalizedAddress: address,
+        stateEnv,
+        zipCode,
+      },
+      response: payload,
+    }
+  } catch (error) {
+    return {
+      error: getErrorMessage(error, 'Unable to load the Gridics property record.'),
+      success: null,
+      request: {
+        inputAddress,
+        normalizedAddress: address,
+        stateEnv,
+        zipCode,
+      },
+      response: null,
+    }
+  }
 }
 
 async function createTenantClientRecord(clientName: string, organizationId: string) {
@@ -357,6 +503,11 @@ async function createTenantClientRecord(clientName: string, organizationId: stri
 }
 
 async function ensureTenantClientRecord(organizationId: string) {
+  const existingRecord = await fetchCustomerRecord(organizationId)
+  if (existingRecord) {
+    return
+  }
+
   const client = await getClerkManagementClient()
   const organization = await client.organizations.getOrganization({ organizationId })
 
@@ -385,6 +536,34 @@ async function updateTenantClientStatus(organizationId: string, isActive: boolea
     const payload = await response.json().catch(() => null)
     throw new Error(
       typeof payload?.detail === 'string' ? payload.detail : 'Unable to update jurisdiction status.',
+    )
+  }
+}
+
+async function updateTenantClientGeneralDetails(
+  organizationId: string,
+  payload: {
+    cityName: string
+    departmentName: string
+    clerkOrganizationId: string
+  },
+) {
+  const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      city_name: payload.cityName,
+      department_name: payload.departmentName,
+      clerk_organization_id: payload.clerkOrganizationId,
+    }),
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to update jurisdiction details.',
     )
   }
 }
@@ -454,9 +633,9 @@ export async function saveCustomerExperienceSettingsAction(
   formData: FormData,
 ): Promise<CustomerExperienceSettingsState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return {
       ...initialCustomerExperienceSettingsState,
       error: 'Only super admins can update assistant settings.',
@@ -566,9 +745,9 @@ export async function ingestCustomerZoningKnowledgeAction(
   formData: FormData,
 ): Promise<CustomerZoningKnowledgeMutationState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { error: 'Only super admins can ingest zoning knowledge.', success: null }
   }
 
@@ -592,9 +771,9 @@ export async function reindexCustomerZoningKnowledgeAction(
   formData: FormData,
 ): Promise<CustomerZoningKnowledgeMutationState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { error: 'Only super admins can reindex zoning knowledge.', success: null }
   }
 
@@ -618,9 +797,9 @@ export async function queryCustomerZoningKnowledgeAction(
   formData: FormData,
 ): Promise<CustomerZoningKnowledgeQueryState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { error: 'Only super admins can query zoning knowledge.', success: null, results: [] }
   }
 
@@ -680,9 +859,9 @@ export async function provisionClientAction(
   formData: FormData,
 ): Promise<ProvisionClientState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { ...initialProvisionState, error: 'Only super admins can provision clients.' }
   }
 
@@ -727,9 +906,9 @@ export async function inviteClientAdminAction(
   formData: FormData,
 ): Promise<InviteAdminState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { ...initialMutationState, error: 'Only super admins can invite client admins.' }
   }
 
@@ -826,9 +1005,9 @@ export async function removeClientAdminAction(
   formData: FormData,
 ): Promise<RemoveAdminState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { error: 'Only super admins can remove client admins.', success: null }
   }
 
@@ -870,9 +1049,9 @@ export async function setCustomerActiveStateAction(
   formData: FormData,
 ): Promise<CustomerMutationState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { error: 'Only super admins can update jurisdiction status.', success: null }
   }
 
@@ -901,14 +1080,84 @@ export async function setCustomerActiveStateAction(
   }
 }
 
+export async function saveCustomerGeneralSettingsAction(
+  _previousState: CustomerMutationState,
+  formData: FormData,
+): Promise<CustomerMutationState> {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    return { error: 'Only super admins can update jurisdiction details.', success: null }
+  }
+
+  const organizationId = String(formData.get('organizationId') || '').trim()
+  const cityName = String(formData.get('cityName') || '').trim()
+  const departmentName = String(formData.get('departmentName') || '').trim()
+  const clerkOrganizationId = String(formData.get('clerkOrganizationId') || '').trim()
+  const clerkSlugRaw = String(formData.get('clerkSlug') || '').trim()
+  const clerkSlug = clerkSlugRaw || undefined
+
+  if (!organizationId) {
+    return { error: 'Organization is required.', success: null }
+  }
+
+  if (!cityName) {
+    return { error: 'Jurisdiction name is required.', success: null }
+  }
+
+  if (!departmentName) {
+    return { error: 'Department name is required.', success: null }
+  }
+
+  if (!clerkOrganizationId) {
+    return { error: 'Clerk organization ID is required.', success: null }
+  }
+
+  try {
+    await ensureTenantClientRecord(organizationId)
+    const client = await getClerkManagementClient()
+    await client.organizations.getOrganization({ organizationId: clerkOrganizationId })
+    await client.organizations.updateOrganization(clerkOrganizationId, {
+      name: cityName,
+      slug: clerkSlug,
+    })
+    await updateTenantClientGeneralDetails(organizationId, {
+      cityName,
+      departmentName,
+      clerkOrganizationId,
+    })
+    revalidatePath('/super-admin')
+    revalidatePath(`/super-admin/customers/${organizationId}`)
+    revalidatePath(`/super-admin/customers/${clerkOrganizationId}`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant-setup`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant`)
+    revalidatePath(`/super-admin/customers/${clerkOrganizationId}/assistant-setup`)
+    revalidatePath(`/super-admin/customers/${clerkOrganizationId}/assistant`)
+
+    return {
+      error: null,
+      success: `${cityName} details were saved.`,
+      redirectPath:
+        clerkOrganizationId !== organizationId ? `/super-admin/customers/${clerkOrganizationId}` : null,
+    }
+  } catch (error) {
+    return {
+      error: getErrorMessage(error, 'Unable to update jurisdiction details.'),
+      success: null,
+      redirectPath: null,
+    }
+  }
+}
+
 export async function deleteCustomerAction(
   _previousState: CustomerMutationState,
   formData: FormData,
 ): Promise<CustomerMutationState> {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-  const { role } = await getPermissionContext(clerkEnabled)
+  const permissions = await getPermissionContext(clerkEnabled)
 
-  if (role !== 'super_admin') {
+  if (!permissions.isSuperAdmin) {
     return { error: 'Only super admins can delete jurisdictions.', success: null }
   }
 

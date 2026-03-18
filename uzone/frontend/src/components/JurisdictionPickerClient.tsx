@@ -17,7 +17,7 @@ type Props = {
   returnTo: string
 }
 
-export function CustomerPickerClient({ customers, returnTo }: Props) {
+export function JurisdictionPickerClient({ customers, returnTo }: Props) {
   const [query, setQuery] = useState('')
 
   const filteredCustomers = useMemo(() => {
@@ -48,6 +48,7 @@ export function CustomerPickerClient({ customers, returnTo }: Props) {
               </svg>
             </span>
             <input
+              className="jurisdiction-picker-search-input"
               type="search"
               value={query}
               onChange={(event) => {

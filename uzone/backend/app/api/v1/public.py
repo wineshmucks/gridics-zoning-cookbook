@@ -7,10 +7,39 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.core.config import settings
 from app.db.models import TenantClient
-from app.services.clerk_service import clerk_organization_exists
+from app.services.clerk_service import clerk_organization_exists, get_clerk_organization
 from app.services.tenant_service import resolve_tenant_public_config, tenant_public_config_to_dict
 
 router = APIRouter()
+
+
+def _ensure_tenant_client_for_organization(db: Session, organization_id: str | None) -> TenantClient | None:
+    normalized_org_id = organization_id.strip() if organization_id else ""
+    if not normalized_org_id:
+        return None
+
+    existing = db.scalar(
+        select(TenantClient).where(TenantClient.clerk_organization_id == normalized_org_id)
+    )
+    if existing is not None:
+        return existing
+
+    organization = get_clerk_organization(normalized_org_id)
+    if not organization:
+        return None
+
+    organization_name = str(organization.get("name") or "").strip() or normalized_org_id
+    tenant_client = TenantClient(
+        client_id=normalized_org_id,
+        clerk_organization_id=normalized_org_id,
+        city_name=organization_name,
+        department_name=f"{organization_name} Planning & Zoning Department",
+        is_active=True,
+    )
+    db.add(tenant_client)
+    db.commit()
+    db.refresh(tenant_client)
+    return tenant_client
 
 
 @router.get("/client-config")
@@ -27,6 +56,15 @@ def get_client_config(
         organization_id=orgid,
         host=host or request.headers.get("host"),
     )
+    if resolved is None and orgid:
+        tenant_client = _ensure_tenant_client_for_organization(db, orgid)
+        if tenant_client is not None:
+            resolved = resolve_tenant_public_config(
+                db,
+                client_id=clientid,
+                organization_id=orgid,
+                host=host or request.headers.get("host"),
+            )
     if resolved is None:
         raise HTTPException(status_code=404, detail="Client configuration not found")
     return tenant_public_config_to_dict(resolved)

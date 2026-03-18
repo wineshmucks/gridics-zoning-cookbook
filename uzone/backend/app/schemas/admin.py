@@ -280,8 +280,11 @@ class TenantClientRead(BaseModel):
     updated_at: datetime
 
 
-class TenantClientStatusUpdate(BaseModel):
-    is_active: bool
+class TenantClientUpdate(BaseModel):
+    city_name: str | None = Field(default=None, min_length=1, max_length=255)
+    department_name: str | None = Field(default=None, min_length=1, max_length=255)
+    clerk_organization_id: str | None = Field(default=None, min_length=1, max_length=255)
+    is_active: bool | None = None
 
 
 class TenantExperienceSettingsRead(BaseModel):

@@ -100,3 +100,22 @@ def test_build_agent_model_rejects_missing_api_key(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
         build_agent_model()
+
+
+def test_build_agent_model_uses_groq(monkeypatch) -> None:
+    captured = {}
+
+    class FakeGroq:
+        def __init__(self, *, id=None, api_key=None):
+            captured["id"] = id
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr("agno.models.groq.Groq", FakeGroq)
+    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "groq")
+    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "llama3-8b-8192")
+    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "groq-key")
+
+    model = build_agent_model()
+
+    assert isinstance(model, FakeGroq)
+    assert captured == {"id": "llama3-8b-8192", "api_key": "groq-key"}

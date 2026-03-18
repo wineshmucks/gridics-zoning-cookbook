@@ -40,7 +40,7 @@ from app.schemas import (
     TenantExperienceSettingsRead,
     TenantExperienceSettingsUpdate,
     TenantClientRead,
-    TenantClientStatusUpdate,
+    TenantClientUpdate,
     ZoningKnowledgeIngestRequest,
     ZoningKnowledgeQueryRequest,
     ZoningKnowledgeQueryResponse,
@@ -226,13 +226,62 @@ def get_tenant_client(
 
 
 @router.patch("/clients/{organization_id}", response_model=TenantClientRead)
-def update_tenant_client_status(
+def update_tenant_client(
     organization_id: str,
-    payload: TenantClientStatusUpdate,
+    payload: TenantClientUpdate,
     db: Session = Depends(get_db),
 ) -> TenantClientRead:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
-    tenant_client.is_active = payload.is_active
+    if payload.city_name is not None:
+        city_name = payload.city_name.strip()
+        if not city_name:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="City name is required")
+        tenant_client.city_name = city_name
+
+    if payload.department_name is not None:
+        department_name = payload.department_name.strip()
+        if not department_name:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Department name is required",
+        )
+        tenant_client.department_name = department_name
+
+    if payload.clerk_organization_id is not None:
+        clerk_organization_id = payload.clerk_organization_id.strip()
+        if not clerk_organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Clerk organization ID is required",
+            )
+        existing_org = db.scalar(
+            select(TenantClient).where(
+                TenantClient.clerk_organization_id == clerk_organization_id,
+                TenantClient.id != tenant_client.id,
+            )
+        )
+        if existing_org is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Clerk organization is already linked to another tenant client",
+            )
+        tenant_client.clerk_organization_id = clerk_organization_id
+
+    if payload.is_active is not None:
+        tenant_client.is_active = payload.is_active
+
+    jurisdiction = None
+    if tenant_client.jurisdiction_id:
+        jurisdiction = db.get(Jurisdiction, tenant_client.jurisdiction_id)
+
+    if jurisdiction is not None:
+        if payload.city_name is not None:
+            jurisdiction.name = tenant_client.city_name
+        if payload.department_name is not None:
+            jurisdiction.department_name = tenant_client.department_name
+        if payload.is_active is not None:
+            jurisdiction.is_active = tenant_client.is_active
+
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()

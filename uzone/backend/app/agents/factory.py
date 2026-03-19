@@ -78,6 +78,7 @@ def build_agent_model(
     base_url: str | None = None,
     max_tokens: int = 4096,
     allow_env_fallback: bool = False,
+    allow_missing_api_key: bool = False,
 ):
     """Construct the Agno chat model configured for zoning chat agents."""
     
@@ -91,6 +92,9 @@ def build_agent_model(
         explicit_api_key=api_key,
         allow_env_fallback=allow_env_fallback,
     )
+    if not api_key and allow_missing_api_key:
+        api_key = "__tenant_api_key_required__"
+        api_key_source = "missing"
 
     if not active_model_id:
         raise RuntimeError(f"Model ID must be specified for provider '{active_provider}'.")
@@ -104,7 +108,7 @@ def build_agent_model(
         )
 
     if active_provider == "gemini":
-        if not api_key:
+        if not api_key and not allow_missing_api_key:
             raise missing_key_error("Gemini", "GOOGLE_API_KEY")
         from agno.models.google import Gemini
         return _attach_model_trace(
@@ -116,7 +120,7 @@ def build_agent_model(
         )
 
     if active_provider == "openrouter":
-        if not api_key:
+        if not api_key and not allow_missing_api_key:
             raise missing_key_error("OpenRouter", "OPENROUTER_API_KEY")
         from agno.models.openrouter import OpenRouter
         return _attach_model_trace(
@@ -134,7 +138,7 @@ def build_agent_model(
         )
 
     if active_provider == "openai":
-        if not api_key:
+        if not api_key and not allow_missing_api_key:
             raise missing_key_error("OpenAI", "OPENAI_API_KEY")
         from agno.models.openai import OpenAIChat
         return _attach_model_trace(
@@ -151,7 +155,7 @@ def build_agent_model(
         )
 
     if active_provider == "groq":
-        if not api_key:
+        if not api_key and not allow_missing_api_key:
             raise missing_key_error("Groq", "GROQ_API_KEY")
         from agno.models.groq import Groq
         return _attach_model_trace(

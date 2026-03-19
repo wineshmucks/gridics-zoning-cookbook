@@ -292,6 +292,10 @@ class TenantExperienceSettingsRead(BaseModel):
     zoning_code_url: str | None
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    raw_settings_json: dict | None = None
+    debug_received_assistant_provider_keys: dict[str, str | None] | None = None
+    debug_received_assistant_model_targets: dict[str, dict[str, str | None]] | None = None
+    debug_merged_settings_json: dict | None = None
 
 
 class TenantExperienceSettingsUpdate(BaseModel):

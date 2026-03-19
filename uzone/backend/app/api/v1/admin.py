@@ -332,6 +332,7 @@ def get_tenant_experience_settings_route(
         zoning_code_url=zoning_code_url,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
     )
 
 
@@ -343,13 +344,14 @@ def update_tenant_experience_settings(
 ) -> TenantExperienceSettingsRead:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     agent_url, _ = get_tenant_experience_settings(tenant_client.settings_json)
-    tenant_client.settings_json = merge_tenant_experience_settings(
+    merged_settings = merge_tenant_experience_settings(
         tenant_client.settings_json,
         agent_url=agent_url,
         zoning_code_url=payload.zoning_code_url.strip() if payload.zoning_code_url else None,
         assistant_provider_keys=payload.assistant_provider_keys,
         assistant_model_targets=payload.assistant_model_targets,
     )
+    tenant_client.settings_json = merged_settings
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()
@@ -359,6 +361,10 @@ def update_tenant_experience_settings(
         zoning_code_url=zoning_code_url,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
+        debug_received_assistant_provider_keys=payload.assistant_provider_keys,
+        debug_received_assistant_model_targets=payload.assistant_model_targets,
+        debug_merged_settings_json=merged_settings,
     )
 
 

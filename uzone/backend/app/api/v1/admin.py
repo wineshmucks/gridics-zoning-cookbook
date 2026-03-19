@@ -53,6 +53,7 @@ from app.services.fee_service import ensure_active_fee_schedule_for_tenant, upda
 from app.services.tenant_service import (
     get_home_page_content_record,
     get_home_page_content_payload,
+    get_tenant_assistant_settings,
     get_tenant_experience_settings,
     has_home_page_content_storage,
     invalidate_tenant_cache,
@@ -232,6 +233,26 @@ def update_tenant_client(
     db: Session = Depends(get_db),
 ) -> TenantClientRead:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    if payload.client_id is not None:
+        client_id = payload.client_id.strip()
+        if not client_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Client ID is required",
+            )
+        existing_client = db.scalar(
+            select(TenantClient).where(
+                TenantClient.client_id == client_id,
+                TenantClient.id != tenant_client.id,
+            )
+        )
+        if existing_client is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Client ID already exists",
+            )
+        tenant_client.client_id = client_id
+
     if payload.city_name is not None:
         city_name = payload.city_name.strip()
         if not city_name:
@@ -306,7 +327,12 @@ def get_tenant_experience_settings_route(
 ) -> TenantExperienceSettingsRead:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
-    return TenantExperienceSettingsRead(zoning_code_url=zoning_code_url)
+    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    return TenantExperienceSettingsRead(
+        zoning_code_url=zoning_code_url,
+        assistant_provider_keys=assistant_provider_keys,
+        assistant_model_targets=assistant_model_targets,
+    )
 
 
 @router.put("/clients/{organization_id}/experience-settings", response_model=TenantExperienceSettingsRead)
@@ -321,12 +347,19 @@ def update_tenant_experience_settings(
         tenant_client.settings_json,
         agent_url=agent_url,
         zoning_code_url=payload.zoning_code_url.strip() if payload.zoning_code_url else None,
+        assistant_provider_keys=payload.assistant_provider_keys,
+        assistant_model_targets=payload.assistant_model_targets,
     )
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
-    return TenantExperienceSettingsRead(zoning_code_url=zoning_code_url)
+    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    return TenantExperienceSettingsRead(
+        zoning_code_url=zoning_code_url,
+        assistant_provider_keys=assistant_provider_keys,
+        assistant_model_targets=assistant_model_targets,
+    )
 
 
 @router.get("/clients/{organization_id}/zoning-knowledge", response_model=ZoningKnowledgeStatusRead)

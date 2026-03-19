@@ -41,10 +41,11 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
             "Rebuild the backend image so the current Python dependencies are installed."
         ) from exc
 
-    from app.agents.registry import ALL_AGENTS
+    from app.agents.registry import ALL_AGENTS, ALL_TEAMS
 
     agent_os = AgentOS(
         agents=ALL_AGENTS,
+        teams=ALL_TEAMS,
         db=_build_agent_os_db(),
         base_app=base_app,
         id="uzone-agent-os",
@@ -65,6 +66,16 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
                 request.scope["raw_path"] = rewritten.encode()
         elif path.startswith("/api/agents"):
             rewritten = path[4:]
+            request.scope["path"] = rewritten
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = rewritten.encode()
+        elif path.startswith("/agents/customer-zoning-agent"):
+            rewritten = path.replace("/agents/customer-zoning-agent", "/teams/customer-zoning-agent", 1)
+            request.scope["path"] = rewritten
+            if request.scope.get("raw_path") is not None:
+                request.scope["raw_path"] = rewritten.encode()
+        elif path.startswith("/api/agents/customer-zoning-agent"):
+            rewritten = path.replace("/api/agents/customer-zoning-agent", "/teams/customer-zoning-agent", 1)
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()

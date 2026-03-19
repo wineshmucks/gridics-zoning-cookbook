@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UZONE_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TF_DIR="${SCRIPT_DIR}/terraform"
-ENV_FILE="${ENV_FILE:-${UZONE_DIR}/.env}"
+ENV_FILE="${ENV_FILE:-${UZONE_DIR}/.env-deploy}"
 
 AWS_REGION="${AWS_REGION:-${UZONE_AWS_REGION:-us-east-1}}"
 PROJECT="${PROJECT:-uzone}"
@@ -124,6 +124,7 @@ $(emit_kv_if_set "GRIDICS_CLERK_ORGANIZATION_SLUG" "${GRIDICS_CLERK_ORGANIZATION
 }
 
 backend_secret_arns = {
+$(emit_secret_arn_if_set "CLERK_SECRET_KEY" "uzone/clerk-secret" "${CLERK_SECRET_KEY:-}")
 $(emit_secret_arn_if_set "UZONE_STRIPE_SECRET_KEY" "uzone/stripe-secret" "${UZONE_STRIPE_SECRET_KEY:-}")
 $(emit_secret_arn_if_set "UZONE_STRIPE_WEBHOOK_SECRET" "uzone/stripe-webhook" "${UZONE_STRIPE_WEBHOOK_SECRET:-}")
 $(emit_secret_arn_if_set "UZONE_RESEND_API_KEY" "uzone/resend-api-key" "${UZONE_RESEND_API_KEY:-}")

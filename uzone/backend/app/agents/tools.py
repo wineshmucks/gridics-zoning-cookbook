@@ -12,6 +12,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.schemas.gridics import GridicsBuilding, GridicsDataRow, GridicsResponse
+
 
 _STATE_MAP = {
     "AL": "al",
@@ -66,6 +68,15 @@ _STATE_MAP = {
     "WY": "wy",
     "DC": "dc",
 }
+
+_TYPOLOGY_MAP = {
+    1: "Single-Family Residential",
+    2: "Duplex",
+    3: "Multi-Family",
+    4: "Commercial",
+    5: "Industrial",
+}
+
 _GRIDICS_BASE_URL = os.getenv("GRIDICS_BASE_URL", "https://api.gridics.com/v1")
 _GRIDICS_TIMEOUT_SECONDS = int(os.getenv("GRIDICS_TIMEOUT_SECONDS", "20"))
 _STREET_SUFFIX_PATTERN = re.compile(
@@ -93,6 +104,22 @@ _FOLLOW_UP_PROPERTY_PATTERN = re.compile(
 )
 _ANALYZE_RETRY_ATTEMPTS = max(1, int(os.getenv("UZONE_ANALYZE_RETRY_ATTEMPTS", "2")))
 _ANALYZE_RETRY_DELAY_SECONDS = max(0.0, float(os.getenv("UZONE_ANALYZE_RETRY_DELAY_SECONDS", "0.35")))
+
+
+@dataclass
+class _ResolvedAddress:
+    question_type: str
+    provided_address: str | None
+    detected_address: str | None
+    standardized_address: str | None
+    state_env: str | None
+    zip_code: str | None
+    address_source: str | None
+    reused_active_property: bool
+
+    @property
+    def lookup_ready(self) -> bool:
+        return bool(self.standardized_address and self.state_env and self.zip_code)
 
 
 @dataclass
@@ -163,64 +190,12 @@ def _get_gridics_api_key() -> str:
     return key
 
 
-def _request_classification_payload(question_type: str, routing_reason: str) -> dict[str, str]:
-    return {
-        "type": question_type,
-        "label": "specific address" if question_type == "specific_address" else "general zoning",
-        "reason": routing_reason,
-    }
-
-
-def _address_resolution_payload(
-    *,
-    detected_address: str | None,
-    standardized_address: str | None,
-    state_env: str | None,
-    zip_code: str | None,
-    address_source: str | None,
-) -> dict[str, Any]:
-    return {
-        "input_address": detected_address,
-        "standardized_address": standardized_address,
-        "resolved_state_env": state_env,
-        "resolved_zip_code": zip_code,
-        "address_source": address_source,
-        "lookup_ready": bool(standardized_address and state_env and zip_code),
-    }
-
-
-def _follow_up_context_payload(
-    *,
-    question_type: str,
-    standardized_address: str | None = None,
-    state_env: str | None = None,
-    zip_code: str | None = None,
-    zoning_summary: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    if question_type != "specific_address":
-        return {
-            "context_type": "general_zoning",
-            "active_location": None,
-            "reuse_for_follow_ups": False,
-            "guidance": "Do not assume a property context for follow-up questions unless the user provides a specific address.",
-        }
-
-    constraints = zoning_summary.get("constraints") if isinstance(zoning_summary, dict) else None
-    return {
-        "context_type": "specific_address",
-        "active_location": {
-            "standardized_address": standardized_address,
-            "state_env": state_env,
-            "zip_code": zip_code,
-            "zone_combination_name": zoning_summary.get("zone_combination_name") if zoning_summary else None,
-            "typology": zoning_summary.get("typology") if zoning_summary else None,
-            "constraints": constraints,
-        },
-        "reuse_for_follow_ups": True,
-        "guidance": (
-            "Use this property as the default context for follow-up zoning questions until the user supplies a different address."
-        ),
-    }
+def _build_gridics_client() -> _GridicsClient:
+    return _GridicsClient(
+        api_key=_get_gridics_api_key(),
+        base_url=_GRIDICS_BASE_URL,
+        timeout_seconds=_GRIDICS_TIMEOUT_SECONDS,
+    )
 
 
 def _resolve_client_id(client_id: str | None, run_context: Any = None) -> str:
@@ -256,9 +231,7 @@ def _extract_address_from_query(query: str) -> str | None:
 
 
 def _classify_question(query: str, address: str | None = None) -> str:
-    if address:
-        return "specific_address"
-    if _extract_address_from_query(query):
+    if address or _extract_address_from_query(query):
         return "specific_address"
     return "general_zoning"
 
@@ -307,7 +280,7 @@ def _should_reuse_active_property(query: str, active_context: dict[str, Any] | N
     if _FOLLOW_UP_PROPERTY_PATTERN.search(normalized_query):
         return True
 
-    if any(
+    return any(
         phrase in normalized_query
         for phrase in (
             "what can be built",
@@ -321,17 +294,6 @@ def _should_reuse_active_property(query: str, active_context: dict[str, Any] | N
             "how many units",
             "is it zoned",
         )
-    ):
-        return True
-
-    return False
-
-
-def _build_gridics_client():
-    return _GridicsClient(
-        api_key=_get_gridics_api_key(),
-        base_url=_GRIDICS_BASE_URL,
-        timeout_seconds=_GRIDICS_TIMEOUT_SECONDS,
     )
 
 
@@ -368,102 +330,166 @@ def _normalize_zip_code(zip_code: str | int | None) -> str | None:
     return None
 
 
-def _extract_gridics_zoning_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    def normalize_key(key: str) -> str:
-        return re.sub(r"[^a-z0-9]", "", key.lower())
+def _request_classification_payload(question_type: str, routing_reason: str) -> dict[str, str]:
+    return {
+        "type": question_type,
+        "label": "specific address" if question_type == "specific_address" else "general zoning",
+        "reason": routing_reason,
+    }
 
-    def deep_find_keys(obj: Any, target_keys: set[str]) -> list[Any]:
-        matches: list[Any] = []
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if normalize_key(key) in target_keys:
-                    matches.append(value)
-                matches.extend(deep_find_keys(value, target_keys))
-        elif isinstance(obj, list):
-            for item in obj:
-                matches.extend(deep_find_keys(item, target_keys))
-        return matches
 
-    def first_non_empty(values: list[Any]) -> Any:
-        for value in values:
-            if value is None:
-                continue
-            if isinstance(value, str) and not value.strip():
-                continue
-            return value
+def _address_resolution_payload(resolution: _ResolvedAddress) -> dict[str, Any]:
+    return {
+        "input_address": resolution.detected_address,
+        "standardized_address": resolution.standardized_address,
+        "resolved_state_env": resolution.state_env,
+        "resolved_zip_code": resolution.zip_code,
+        "address_source": resolution.address_source,
+        "lookup_ready": resolution.lookup_ready,
+    }
+
+
+def _follow_up_context_payload(
+    *,
+    question_type: str,
+    standardized_address: str | None = None,
+    state_env: str | None = None,
+    zip_code: str | None = None,
+    zoning_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if question_type != "specific_address":
+        return {
+            "context_type": "general_zoning",
+            "active_location": None,
+            "reuse_for_follow_ups": False,
+            "guidance": "Do not assume a property context for follow-up questions unless the user provides a specific address.",
+        }
+
+    constraints = zoning_summary.get("constraints") if isinstance(zoning_summary, dict) else None
+    return {
+        "context_type": "specific_address",
+        "active_location": {
+            "standardized_address": standardized_address,
+            "state_env": state_env,
+            "zip_code": zip_code,
+            "zone_combination_name": zoning_summary.get("zone_combination_name") if zoning_summary else None,
+            "typology": zoning_summary.get("typology") if zoning_summary else None,
+            "constraints": constraints,
+        },
+        "reuse_for_follow_ups": True,
+        "guidance": "Use this property as the default context for follow-up zoning questions until the user supplies a different address.",
+    }
+
+
+def _format_typology(typology: str | int | None) -> str | None:
+    if typology is None:
         return None
+    if isinstance(typology, int):
+        return f"{typology} - {_TYPOLOGY_MAP.get(typology, 'Other')}"
+    return str(typology)
 
-    def safe_float(value: Any) -> float | None:
+
+def _first_numeric(values: list[Any]) -> float | None:
+    for value in values:
         if value is None:
-            return None
+            continue
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, str):
             match = re.search(r"-?\d+(?:\.\d+)?", value.replace(",", ""))
             if match:
                 return float(match.group(0))
-        return None
+        if isinstance(value, list):
+            nested = _first_numeric(value)
+            if nested is not None:
+                return nested
+    return None
 
-    def flatten_messages(value: Any) -> list[str]:
-        out: list[str] = []
-        if isinstance(value, str):
-            if value.strip():
-                out.append(value.strip())
-        elif isinstance(value, list):
-            for item in value:
-                out.extend(flatten_messages(item))
-        elif isinstance(value, dict):
-            for item in value.values():
-                out.extend(flatten_messages(item))
-        return out
 
-    zone = first_non_empty(deep_find_keys(payload, {"zonecombinationname", "zone", "zonename", "subzone"}))
-    typology = first_non_empty(deep_find_keys(payload, {"typology", "buildingtypology", "type"}))
-    
-    # --- NEW: Map Typology to Human-Readable String ---
-    if isinstance(typology, int):
-        typology_map = {1: "Single-Family Residential", 2: "Duplex", 3: "Multi-Family", 4: "Commercial", 5: "Industrial"}
-        typology = f"{typology} - {typology_map.get(typology, 'Other')}"
-    # --------------------------------------------------
+def _flatten_messages(value: Any) -> list[str]:
+    out: list[str] = []
+    if isinstance(value, str):
+        if value.strip():
+            out.append(value.strip())
+    elif isinstance(value, list):
+        for item in value:
+            out.extend(_flatten_messages(item))
+    elif isinstance(value, dict):
+        for item in value.values():
+            out.extend(_flatten_messages(item))
+    return out
 
-    calc_status = first_non_empty(
-        deep_find_keys(payload, {"calculationstatus", "calculationstatusmessage", "status"})
-    )    
 
-    notes_values = deep_find_keys(payload, {"notifications", "messages", "warnings", "notes"})
+def _extract_gridics_notes(raw_payload: dict[str, Any]) -> list[str]:
     notes: list[str] = []
-    for value in notes_values:
-        notes.extend(flatten_messages(value))
 
-    max_far = safe_float(first_non_empty(deep_find_keys(payload, {"maxfar", "farmax", "allowablefar", "far"})))
-    max_units = safe_float(
-        first_non_empty(deep_find_keys(payload, {"maxunits", "dwellingunitsmax", "maximumunits"}))
-    )
-    max_height = safe_float(
-        first_non_empty(deep_find_keys(payload, {"maxheight", "maximumheight", "maxheightft"}))
-    )
-    front_setback = safe_float(
-        first_non_empty(deep_find_keys(payload, {"frontsetback", "frontsetbackft", "setbackfront"}))
-    )
-    side_setback = safe_float(
-        first_non_empty(deep_find_keys(payload, {"sidesetback", "sidesetbackft", "setbackside"}))
-    )
-    rear_setback = safe_float(
-        first_non_empty(deep_find_keys(payload, {"rearsetback", "rearsetbackft", "setbackrear"}))
-    )
+    def walk(obj: Any) -> None:
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key.lower() in {"notifications", "messages", "warnings", "notes"}:
+                    notes.extend(_flatten_messages(value))
+                walk(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+
+    walk(raw_payload)
+    return notes
+
+
+def _extract_gridics_record(payload: dict[str, Any]) -> tuple[GridicsDataRow, GridicsBuilding]:
+    parsed = GridicsResponse.model_validate(payload)
+    if not parsed.data:
+        raise ValueError("Gridics could not resolve the address. No data rows returned.")
+
+    data_row = parsed.data[0]
+    if not data_row.Buildings:
+        raise ValueError(f"Gridics found the parcel for '{data_row.Address}' but no zoning/building data was attached.")
+
+    return data_row, data_row.Buildings[0]
+
+
+def _extract_gridics_zoning_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    data_row, building = _extract_gridics_record(payload)
+    envelope = building.Envelope
 
     return {
-        "zone_combination_name": zone,
-        "typology": typology,
-        "calculation_status": calc_status,
-        "notes": notes,
+        "resolved_address": data_row.Address,
+        "zone_combination_name": building.ZoningAllowance.ZoneCombinationName,
+        "typology": _format_typology(building.ZoningAllowance.BuildingTypologyId),
+        "calculation_status": data_row.CalculationStatus,
+        "notes": _extract_gridics_notes(payload),
+        "overlays": [overlay.Name for overlay in building.Overlays],
+        "uses": [
+            {
+                "allowance": use.AllowedUsesName,
+                "label": use.CalibrationUsesLabel,
+                "type_name": use.TypeName,
+            }
+            for use in building.Uses
+        ],
+        "envelope_metrics": {
+            "lot_area_sqft": envelope.LotAreaFeet,
+            "lot_area_acres": envelope.LotAreaAcres,
+            "max_density_units": envelope.DensityUnits,
+            "max_height_stories": envelope.TotalBuidingHeight,
+            "max_building_area_sqft": envelope.MaxBuildingAreaAllowed,
+            "effective_lot_coverage": envelope.EffectiveLotCoverage,
+        },
         "constraints": {
-            "max_far": max_far,
-            "max_units": max_units,
-            "max_height_ft": max_height,
-            "front_setback_ft": front_setback,
-            "side_setback_ft": side_setback,
-            "rear_setback_ft": rear_setback,
+            "max_far": _first_numeric([envelope.FloorAreaRatio, envelope.FloorAreaRatioCapacity]),
+            "max_units": _first_numeric([envelope.DensityUnits]),
+            "max_height_ft": _first_numeric([envelope.TotalBuildingHeightFeet, envelope.TotalBuidingHeight]),
+            "front_setback_ft": _first_numeric(
+                [
+                    envelope.EffectivePFrontSetbackPrincipal,
+                    envelope.EffectivePFrontSetbackSecondary,
+                    building.CalibrationGeneral.PFrontSetbackPrincipalMax,
+                    building.CalibrationGeneral.PFrontSetbackSecondaryMax,
+                ]
+            ),
+            "side_setback_ft": _first_numeric([envelope.EffectivePSideSetback, building.CalibrationGeneral.PSideSetbackMax]),
+            "rear_setback_ft": _first_numeric([envelope.EffectivePRearSetback, building.CalibrationGeneral.PRearSetbackMax]),
         },
     }
 
@@ -486,10 +512,10 @@ def _build_memo_context(
     zoning_summary: dict[str, Any],
 ) -> dict[str, Any]:
     constraints = zoning_summary.get("constraints") or {}
-    resolved_address = standardized_address
+    resolved_address = zoning_summary.get("resolved_address") or standardized_address
     address_suffix = f"{state_env.upper()} {zip_code}"
-    if not standardized_address.upper().endswith(address_suffix):
-        resolved_address = f"{standardized_address}, {address_suffix}"
+    if not str(resolved_address).upper().endswith(address_suffix):
+        resolved_address = f"{resolved_address}, {address_suffix}"
     return {
         "resolved_address": resolved_address,
         "zone_classification": zoning_summary.get("zone_combination_name"),
@@ -510,182 +536,26 @@ def _build_memo_context(
         ),
     }
 
+
 def _clean_knowledge_results(knowledge_dict: dict | None) -> list[dict]:
-    """Flattens and trims knowledge results to reduce LLM noise."""
+    """Flatten and trim knowledge results to reduce LLM noise."""
     if not knowledge_dict or not knowledge_dict.get("results"):
         return []
-    
-    cleaned = []
-    for r in knowledge_dict["results"]:
-        # Skip weak matches to avoid hallucinatory context
-        if r.get("meta_data", {}).get("similarity_score", 1.0) < 0.15:
+
+    cleaned: list[dict[str, Any]] = []
+    for result in knowledge_dict["results"]:
+        meta_data = result.get("meta_data", {})
+        if meta_data.get("similarity_score", 1.0) < 0.15:
             continue
-            
-        cleaned.append({
-            "section_title": r.get("meta_data", {}).get("section_title"),
-            # Ensure we grab the direct anchor link (section_key) so the URL jumps right to the rule
-            "source_url": r.get("meta_data", {}).get("section_key", r.get("meta_data", {}).get("source_url")),
-            "content": r.get("content", "")[:1500]  # Cap length to save context window
-        })
+        cleaned.append(
+            {
+                "section_title": meta_data.get("section_title"),
+                "source_url": meta_data.get("section_key", meta_data.get("source_url")),
+                "content": result.get("content", "")[:1500],
+            }
+        )
     return cleaned
 
-
-def _analyze_customer_zoning_request_once(
-    query: str,
-    address: str | None = None,
-    state_env: str | None = None,
-    zip_code: str | int | None = None,
-    knowledge_limit: int = 5,
-    client_id: str | None = None,
-    run_context: Any = None,
-    gridics_client: _GridicsClient | None = None,
-) -> dict:
-    """Route a zoning question to either general knowledge or an address-aware Gridics workflow."""
-    question = query.strip()
-    if not question:
-        raise ValueError("Query text is required.")
-
-    resolved_client_id = _resolve_client_id(client_id, run_context)
-    provided_address = address.strip() if isinstance(address, str) and address.strip() else None
-    extracted_address = None if provided_address else _extract_address_from_query(question)
-    active_property_context = _get_active_property_context(run_context)
-    reused_active_property = False
-    resolved_address = provided_address or extracted_address
-    
-    if not resolved_address and _should_reuse_active_property(question, active_property_context):
-        resolved_address = str(active_property_context.get("standardized_address") or "").strip() or None
-        reused_active_property = bool(resolved_address)
-    
-    question_type = _classify_question(question, resolved_address)
-
-    # --- RETURN BLOCK 1: General Zoning ---
-    if question_type == "general_zoning":
-        return {
-            "routing_reason": "No property address was detected, handling as general zoning.",
-            "regulatory_knowledge": _clean_knowledge_results(
-                query_customer_zoning_code(
-                    query=question,
-                    limit=knowledge_limit,
-                    client_id=resolved_client_id,
-                )
-            ),
-        }
-
-    standardized_address = _standardize_address(resolved_address or "")
-    resolved_state_env = (
-        state_env.strip().lower()
-        if isinstance(state_env, str) and state_env.strip()
-        else (
-            str(active_property_context.get("state_env")).strip().lower()
-            if reused_active_property and active_property_context and active_property_context.get("state_env")
-            else _infer_state_env(standardized_address)
-        )
-    )
-    normalized_zip_code = _normalize_zip_code(zip_code)
-    resolved_zip_code = (
-        normalized_zip_code
-        if normalized_zip_code
-        else (
-            str(active_property_context.get("zip_code")).strip()
-            if reused_active_property and active_property_context and active_property_context.get("zip_code")
-            else _infer_zip(standardized_address)
-        )
-    )
-
-    # --- RETURN BLOCK 2: Missing Address Info ---
-    if not resolved_state_env or not resolved_zip_code:
-        return {
-            "needs_address_clarification": True,
-            "clarification_prompt": "Please provide the full property address, including state and ZIP code.",
-            "detected_address": resolved_address,
-        }
-
-    client = gridics_client or _build_gridics_client()
-    property_record = client.get_property_record(
-        state_env=resolved_state_env,
-        address=standardized_address,
-        zip_code=resolved_zip_code,
-    )
-    zoning_summary = _extract_gridics_zoning_summary(property_record)
-
-    # Convert typology integer to a human-readable string for the LLM
-    raw_typology = zoning_summary.get("typology")
-    if isinstance(raw_typology, int):
-        typology_map = {1: "Single-Family Residential", 2: "Duplex", 3: "Multi-Family", 4: "Commercial", 5: "Industrial"}
-        zoning_summary["typology"] = f"{raw_typology} - {typology_map.get(raw_typology, 'Other')}"
-
-    # 1. Primary Knowledge Lookup
-    knowledge_query = _build_augmented_knowledge_query(
-        query=question,
-        standardized_address=standardized_address,
-        zoning_summary=zoning_summary,
-    )
-    primary_knowledge = query_customer_zoning_code(
-        query=knowledge_query,
-        limit=knowledge_limit,
-        client_id=resolved_client_id,
-    )
-    
-    # 2. Constraints Knowledge Lookup (Always run if constraints are missing, regardless of primary results)
-    constraints_knowledge = (
-        query_customer_zoning_code(
-            query=_build_constraints_knowledge_query(
-                query=question,
-                standardized_address=standardized_address,
-                zoning_summary=zoning_summary,
-            ),
-            limit=knowledge_limit,
-            client_id=resolved_client_id,
-        )
-        if _needs_constraints_lookup(zoning_summary) 
-        else None
-    )
-
-    # 3. Proactive Allowed Uses Lookup (To help Lite models that won't follow up on their own)
-    zone_name = zoning_summary.get('zone_combination_name') or "specified"
-    uses_query = f"What are the permitted, conditional, and restricted uses for the {zone_name} zoning district?"
-    uses_knowledge = query_customer_zoning_code(
-        query=uses_query,
-        limit=3,  # Keeping this smaller saves context window space
-        client_id=resolved_client_id,
-    )
-
-    _set_active_property_context(
-        run_context,
-        standardized_address=standardized_address,
-        state_env=resolved_state_env,
-        zip_code=resolved_zip_code,
-        zoning_summary=zoning_summary,
-    )
-
-    routing_reason = (
-        "Reused active property context from session." if reused_active_property 
-        else "Enriched with parcel-specific Gridics zoning data."
-    )
-
-    memo_data = _build_memo_context(
-        standardized_address=standardized_address,
-        state_env=resolved_state_env,
-        zip_code=resolved_zip_code,
-        zoning_summary=zoning_summary,
-    )
-
-    # --- RETURN BLOCK 3: Full Success ---
-    return {
-        "routing_reason": routing_reason,
-        "property_profile": {
-            "address": memo_data["resolved_address"],
-            "zone_classification": memo_data["zone_classification"],
-            "typology": memo_data["typology"],
-            "calculation_status": zoning_summary.get("calculation_status"),
-        },
-        "dimensional_standards": memo_data["dimensional_standards"],
-        "critical_notes": memo_data["gridics_system_notes"],
-        "regulatory_knowledge": _clean_knowledge_results(primary_knowledge),
-        "constraints_knowledge": _clean_knowledge_results(constraints_knowledge) if constraints_knowledge else None,
-        "uses_knowledge": _clean_knowledge_results(uses_knowledge),  # NEW: Automatically providing uses!
-        "agent_directives": memo_data["agent_directives"]
-    }
 
 def _build_augmented_knowledge_query(
     *,
@@ -754,6 +624,74 @@ def _build_constraints_knowledge_query(
     )
 
 
+def _resolve_address_context(
+    *,
+    query: str,
+    address: str | None,
+    state_env: str | None,
+    zip_code: str | int | None,
+    run_context: Any,
+) -> _ResolvedAddress:
+    question = query.strip()
+    if not question:
+        raise ValueError("Query text is required.")
+
+    provided_address = address.strip() if isinstance(address, str) and address.strip() else None
+    extracted_address = None if provided_address else _extract_address_from_query(question)
+    active_property_context = _get_active_property_context(run_context)
+    resolved_address = provided_address or extracted_address
+    reused_active_property = False
+
+    if not resolved_address and _should_reuse_active_property(question, active_property_context):
+        resolved_address = str(active_property_context.get("standardized_address") or "").strip() or None
+        reused_active_property = bool(resolved_address)
+
+    question_type = _classify_question(question, resolved_address)
+    if question_type != "specific_address":
+        return _ResolvedAddress(
+            question_type=question_type,
+            provided_address=provided_address,
+            detected_address=None,
+            standardized_address=None,
+            state_env=None,
+            zip_code=None,
+            address_source=None,
+            reused_active_property=reused_active_property,
+        )
+
+    standardized_address = _standardize_address(resolved_address or "")
+    resolved_state_env = (
+        state_env.strip().lower()
+        if isinstance(state_env, str) and state_env.strip()
+        else (
+            str(active_property_context.get("state_env")).strip().lower()
+            if reused_active_property and active_property_context and active_property_context.get("state_env")
+            else _infer_state_env(standardized_address)
+        )
+    )
+    normalized_zip_code = _normalize_zip_code(zip_code)
+    resolved_zip_code = (
+        normalized_zip_code
+        if normalized_zip_code
+        else (
+            str(active_property_context.get("zip_code")).strip()
+            if reused_active_property and active_property_context and active_property_context.get("zip_code")
+            else _infer_zip(standardized_address)
+        )
+    )
+
+    return _ResolvedAddress(
+        question_type=question_type,
+        provided_address=provided_address,
+        detected_address=resolved_address,
+        standardized_address=standardized_address,
+        state_env=resolved_state_env,
+        zip_code=resolved_zip_code,
+        address_source="argument" if provided_address else ("session" if reused_active_property else "query"),
+        reused_active_property=reused_active_property,
+    )
+
+
 def _summarize_attempt_failure(
     *,
     attempt: int,
@@ -804,24 +742,157 @@ def query_customer_zoning_code(
         return query_customer_zoning_knowledge(db, tenant_client, query=query, limit=limit)
 
 
-def _clean_knowledge_results(knowledge_dict: dict | None) -> list[dict]:
-    """Flattens and trims knowledge results to reduce LLM noise."""
-    if not knowledge_dict or not knowledge_dict.get("results"):
-        return []
-    
-    cleaned = []
-    for r in knowledge_dict["results"]:
-        # Skip weak matches to avoid hallucinatory context
-        if r.get("meta_data", {}).get("similarity_score", 1.0) < 0.15:
-            continue
-            
-        cleaned.append({
-            "section_title": r.get("meta_data", {}).get("section_title"),
-            # Make sure this looks for section_key first!
-            "source_url": r.get("meta_data", {}).get("section_key", r.get("meta_data", {}).get("source_url")),
-            "content": r.get("content", "")[:1500]
-        })
-    return cleaned
+def _analyze_customer_zoning_request_once(
+    *,
+    query: str,
+    knowledge_limit: int,
+    resolved_client_id: str,
+    resolution: _ResolvedAddress,
+    run_context: Any,
+    gridics_client: _GridicsClient | None,
+) -> dict[str, Any]:
+    question = query.strip()
+
+    if resolution.question_type == "general_zoning":
+        routing_reason = "No property address was detected, so the request was handled as a general zoning question."
+        knowledge = query_customer_zoning_code(
+            query=question,
+            limit=knowledge_limit,
+            client_id=resolved_client_id,
+        )
+        return {
+            "question_type": "general_zoning",
+            "routing_reason": "No property address was detected, handling as general zoning.",
+            "request_classification": _request_classification_payload("general_zoning", routing_reason),
+            "follow_up_context": _follow_up_context_payload(question_type="general_zoning"),
+            "knowledge": knowledge,
+            "regulatory_knowledge": _clean_knowledge_results(knowledge),
+        }
+
+    address_context = {
+        "address_source": resolution.address_source,
+        "detected_address": resolution.detected_address,
+        "standardized_address": resolution.standardized_address,
+        "state_env": resolution.state_env,
+        "zip_code": resolution.zip_code,
+    }
+    address_resolution = _address_resolution_payload(resolution)
+
+    if not resolution.lookup_ready:
+        routing_reason = "A property address was detected, but it was missing enough location detail for a Gridics lookup."
+        return {
+            "question_type": "specific_address",
+            "needs_address_clarification": True,
+            "clarification_prompt": "Please provide the full property address, including state and ZIP code.",
+            "detected_address": resolution.detected_address,
+            "routing_reason": routing_reason,
+            "request_classification": _request_classification_payload("specific_address", routing_reason),
+            "address_context": address_context,
+            "address_resolution": address_resolution,
+            "follow_up_context": _follow_up_context_payload(
+                question_type="specific_address",
+                standardized_address=resolution.standardized_address,
+                state_env=resolution.state_env,
+                zip_code=resolution.zip_code,
+                zoning_summary=None,
+            ),
+        }
+
+    client = gridics_client or _build_gridics_client()
+    property_record = client.get_property_record(
+        state_env=resolution.state_env or "",
+        address=resolution.standardized_address or "",
+        zip_code=resolution.zip_code or "",
+    )
+    zoning_summary = _extract_gridics_zoning_summary(property_record)
+
+    knowledge_query = _build_augmented_knowledge_query(
+        query=question,
+        standardized_address=resolution.standardized_address or "",
+        zoning_summary=zoning_summary,
+    )
+    primary_knowledge = query_customer_zoning_code(
+        query=knowledge_query,
+        limit=knowledge_limit,
+        client_id=resolved_client_id,
+    )
+
+    constraints_knowledge = None
+    cleaned_primary_knowledge = _clean_knowledge_results(primary_knowledge)
+    if _needs_constraints_lookup(zoning_summary) or not cleaned_primary_knowledge:
+        constraints_knowledge = query_customer_zoning_code(
+            query=_build_constraints_knowledge_query(
+                query=question,
+                standardized_address=resolution.standardized_address or "",
+                zoning_summary=zoning_summary,
+            ),
+            limit=knowledge_limit,
+            client_id=resolved_client_id,
+        )
+
+    zone_name = zoning_summary.get("zone_combination_name") or "specified"
+    uses_query = f"What are the permitted, conditional, and restricted uses for the {zone_name} zoning district?"
+    uses_knowledge = query_customer_zoning_code(
+        query=uses_query,
+        limit=3,
+        client_id=resolved_client_id,
+    )
+
+    _set_active_property_context(
+        run_context,
+        standardized_address=resolution.standardized_address or "",
+        state_env=resolution.state_env or "",
+        zip_code=resolution.zip_code or "",
+        zoning_summary=zoning_summary,
+    )
+
+    memo_context = _build_memo_context(
+        standardized_address=resolution.standardized_address or "",
+        state_env=resolution.state_env or "",
+        zip_code=resolution.zip_code or "",
+        zoning_summary=zoning_summary,
+    )
+
+    routing_reason = (
+        "Reused active property context from session."
+        if resolution.reused_active_property
+        else "Enriched with parcel-specific Gridics zoning data."
+    )
+    request_reason = (
+        "Reused the active property context from the session for this follow-up question."
+        if resolution.reused_active_property
+        else "A property address was detected, so the request was enriched with parcel-specific Gridics zoning data."
+    )
+
+    return {
+        "question_type": "specific_address",
+        "routing_reason": routing_reason,
+        "request_classification": _request_classification_payload("specific_address", request_reason),
+        "address_context": address_context,
+        "address_resolution": address_resolution,
+        "follow_up_context": _follow_up_context_payload(
+            question_type="specific_address",
+            standardized_address=resolution.standardized_address,
+            state_env=resolution.state_env,
+            zip_code=resolution.zip_code,
+            zoning_summary=zoning_summary,
+        ),
+        "gridics": zoning_summary,
+        "memo_context": memo_context,
+        "property_profile": {
+            "address": memo_context["resolved_address"],
+            "zone_classification": memo_context["zone_classification"],
+            "typology": memo_context["typology"],
+            "calculation_status": zoning_summary.get("calculation_status"),
+        },
+        "dimensional_standards": memo_context["dimensional_standards"],
+        "critical_notes": memo_context["gridics_system_notes"],
+        "knowledge": primary_knowledge,
+        "regulatory_knowledge": cleaned_primary_knowledge,
+        "constraints_knowledge": {"results": _clean_knowledge_results(constraints_knowledge)} if constraints_knowledge else None,
+        "uses_knowledge": {"results": _clean_knowledge_results(uses_knowledge)},
+        "agent_directives": memo_context["agent_directives"],
+    }
 
 
 def analyze_customer_zoning_request(
@@ -834,93 +905,51 @@ def analyze_customer_zoning_request(
     run_context: Any = None,
 ) -> dict:
     """
-    Analyzes a zoning query for a specific address using Gridics property data.
-    
-    Returns a clean dictionary containing the resolved address, zoning district,
-    dimensional constraints (FAR, height, setbacks), relevant code snippets,
-    and flags indicating if more address clarification is needed.
+    Analyze a tenant-scoped zoning request using customer knowledge and Gridics data.
+
+    The tool returns a structured dictionary suitable for downstream agent use, including
+    address resolution, parcel context, memo-friendly summaries, and trimmed knowledge hits.
     """
     failures: list[dict[str, Any]] = []
 
     for attempt in range(1, _ANALYZE_RETRY_ATTEMPTS + 1):
         stage = "initializing"
         resolved_client_id: str | None = None
-        question_type: str | None = None
-        address_context: dict[str, Any] | None = None
+        resolution: _ResolvedAddress | None = None
         client: _GridicsClient | None = None
 
         try:
-            question = query.strip()
-            if not question:
-                raise ValueError("Query text is required.")
-
             stage = "resolving_client_id"
             resolved_client_id = _resolve_client_id(client_id, run_context)
 
-            provided_address = address.strip() if isinstance(address, str) and address.strip() else None
-            extracted_address = None if provided_address else _extract_address_from_query(question)
-            active_property_context = _get_active_property_context(run_context)
-            reused_active_property = False
-            resolved_address = provided_address or extracted_address
-            if not resolved_address and _should_reuse_active_property(question, active_property_context):
-                resolved_address = str(active_property_context.get("standardized_address") or "").strip() or None
-                reused_active_property = bool(resolved_address)
-            question_type = _classify_question(question, resolved_address)
-
-            if question_type == "specific_address":
-                standardized_address = _standardize_address(resolved_address or "")
-                resolved_state_env = (
-                    state_env.strip().lower()
-                    if isinstance(state_env, str) and state_env.strip()
-                    else (
-                        str(active_property_context.get("state_env")).strip().lower()
-                        if reused_active_property and active_property_context and active_property_context.get("state_env")
-                        else _infer_state_env(standardized_address)
-                    )
-                )
-                normalized_zip_code = _normalize_zip_code(zip_code)
-                resolved_zip_code = (
-                    normalized_zip_code
-                    if normalized_zip_code
-                    else (
-                        str(active_property_context.get("zip_code")).strip()
-                        if reused_active_property and active_property_context and active_property_context.get("zip_code")
-                        else _infer_zip(standardized_address)
-                    )
-                )
-                address_context = {
-                    "address_source": "argument" if provided_address else ("session" if reused_active_property else "query"),
-                    "detected_address": resolved_address,
-                    "standardized_address": standardized_address,
-                    "state_env": resolved_state_env,
-                    "zip_code": resolved_zip_code,
-                }
-
-                if question_type == "specific_address" and address_context:
-                    lookup_ready = bool(address_context.get("standardized_address") and resolved_state_env and resolved_zip_code)
-                else:
-                    lookup_ready = False
-
-                if lookup_ready:
-                    client = _build_gridics_client()
-
-                stage = "analyzing_request"
-            
-            # Call the inner function which now returns our LLM-friendly dict
-            result = _analyze_customer_zoning_request_once(
+            resolution = _resolve_address_context(
                 query=query,
                 address=address,
                 state_env=state_env,
                 zip_code=zip_code,
+                run_context=run_context,
+            )
+
+            if resolution.question_type == "specific_address" and resolution.lookup_ready:
+                client = _build_gridics_client()
+
+            stage = "analyzing_request"
+            result = _analyze_customer_zoning_request_once(
+                query=query,
                 knowledge_limit=knowledge_limit,
-                client_id=client_id,
+                resolved_client_id=resolved_client_id,
+                resolution=resolution,
                 run_context=run_context,
                 gridics_client=client,
             )
-            
-            # We explicitly removed the `retry_debug` payload mutation here
-            # so the LLM doesn't get confused by internal HTTP retries.
-            
+
+            if failures:
+                result["retry_debug"] = {
+                    "recovered": True,
+                    "attempts": attempt,
+                    "failed_attempts": failures,
+                }
+
             return result
 
         except Exception as exc:
@@ -930,8 +959,18 @@ def analyze_customer_zoning_request(
                 error=exc,
                 query=query,
                 client_id=resolved_client_id,
-                question_type=question_type,
-                address_context=address_context,
+                question_type=resolution.question_type if resolution else None,
+                address_context=(
+                    {
+                        "address_source": resolution.address_source,
+                        "detected_address": resolution.detected_address,
+                        "standardized_address": resolution.standardized_address,
+                        "state_env": resolution.state_env,
+                        "zip_code": resolution.zip_code,
+                    }
+                    if resolution and resolution.question_type == "specific_address"
+                    else None
+                ),
                 gridics_call_log=client.call_log if client is not None else None,
             )
             failures.append(failure)

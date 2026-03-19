@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.core.config import settings
 from app.db.models import TenantClient
-from app.services.clerk_service import clerk_organization_exists, get_clerk_organization
+from app.services.clerk_service import get_clerk_organization
 from app.services.tenant_service import resolve_tenant_public_config, tenant_public_config_to_dict
 
 router = APIRouter()
@@ -86,20 +86,22 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
 
     results: list[dict] = []
     for customer in customers:
+        customer_client_id = customer.client_id.strip() if customer.client_id else None
         customer_org_id = customer.clerk_organization_id.strip() if customer.clerk_organization_id else None
         customer_org_id_lower = customer_org_id.lower() if customer_org_id else None
-        if customer.client_id.strip().lower() == "gridics":
+        customer_client_id_lower = customer_client_id.lower() if customer_client_id else None
+        public_org_id = customer_client_id or customer_org_id
+
+        if customer_client_id_lower == "gridics":
             continue
-        if not customer_org_id:
+        if not public_org_id:
             continue
         if gridics_org_id and customer_org_id_lower == gridics_org_id:
-            continue
-        if not clerk_organization_exists(customer_org_id):
             continue
 
         results.append(
             {
-                "orgid": customer_org_id,
+                "orgid": public_org_id,
                 "client_id": customer.client_id,
                 "city_name": customer.city_name,
                 "department_name": customer.department_name,

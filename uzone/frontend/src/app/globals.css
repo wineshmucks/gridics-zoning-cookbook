@@ -3007,6 +3007,12 @@ main {
   background: #fff;
 }
 
+.assistant-model-trigger.is-override {
+  border-color: rgba(180, 83, 9, 0.32);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.96) 0%, rgba(254, 243, 199, 0.92) 100%);
+  color: #92400e;
+}
+
 .assistant-model-trigger:focus-visible {
   outline: 2px solid rgba(31, 95, 42, 0.16);
   outline-offset: 2px;
@@ -3023,6 +3029,11 @@ main {
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.16);
   color: #475569;
+}
+
+.assistant-model-trigger.is-override .assistant-model-trigger-status {
+  background: rgba(180, 83, 9, 0.12);
+  color: #92400e;
 }
 
 .assistant-model-popover {
@@ -3313,6 +3324,37 @@ main {
   color: #64748b;
 }
 
+.assistant-model-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 7px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.assistant-model-banner code {
+  font-size: 0.95em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.assistant-model-banner.is-override {
+  border-color: rgba(180, 83, 9, 0.26);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.94) 0%, rgba(254, 243, 199, 0.88) 100%);
+  color: #92400e;
+}
+
+.assistant-model-banner.is-override code {
+  background: rgba(180, 83, 9, 0.12);
+}
+
 .assistant-ui-send-button {
   position: absolute;
   right: 8px;
@@ -3597,6 +3639,58 @@ main {
 .assistant-setup-meta {
   display: grid;
   gap: 12px;
+}
+
+.assistant-target-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.assistant-target-card-header {
+  display: grid;
+  gap: 4px;
+}
+
+.assistant-target-card-header strong {
+  color: #0f172a;
+}
+
+.assistant-target-card-header span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.assistant-target-card-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.assistant-settings-debug {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.assistant-settings-debug strong {
+  color: #0f172a;
+}
+
+.assistant-settings-debug pre {
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 900px) {

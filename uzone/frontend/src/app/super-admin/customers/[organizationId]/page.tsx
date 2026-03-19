@@ -80,6 +80,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
     <SuperAdminCustomerManageClient
       customer={{
         id: organizationId,
+        clientId: tenantRecord?.client_id || organizationId,
         name: tenantRecord?.city_name || organization?.name || organizationId,
         departmentName: tenantRecord?.department_name || null,
         clerkOrganizationId: tenantRecord?.clerk_organization_id || organization?.id || organizationId,

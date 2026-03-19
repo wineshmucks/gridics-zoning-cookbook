@@ -33,6 +33,43 @@ class TenantPublicConfig:
 
 AGENT_URL_SETTING_KEY = "agent_url"
 ZONING_CODE_URL_SETTING_KEY = "zoning_code_url"
+ASSISTANT_PROVIDER_KEYS_SETTING_KEY = "assistant_provider_keys"
+ASSISTANT_MODEL_TARGETS_SETTING_KEY = "assistant_model_targets"
+SUPPORTED_ASSISTANT_PROVIDERS = ("gemini", "openrouter", "openai", "groq")
+
+
+def _normalize_assistant_provider_keys(value: object) -> dict[str, str | None]:
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: dict[str, str | None] = {}
+    for provider in SUPPORTED_ASSISTANT_PROVIDERS:
+        raw = value.get(provider)
+        if isinstance(raw, str):
+            stripped = raw.strip()
+            normalized[provider] = stripped or None
+        elif raw is None:
+            normalized[provider] = None
+    return normalized
+
+
+def _normalize_assistant_model_targets(value: object) -> dict[str, dict[str, str | None]]:
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: dict[str, dict[str, str | None]] = {}
+    for target_id, raw_target in value.items():
+        if not isinstance(target_id, str) or not isinstance(raw_target, dict):
+            continue
+        provider = raw_target.get("provider")
+        model_id = raw_target.get("model_id")
+        base_url = raw_target.get("base_url")
+        normalized[target_id] = {
+            "provider": provider.strip().lower() if isinstance(provider, str) and provider.strip() else None,
+            "model_id": model_id.strip() if isinstance(model_id, str) and model_id.strip() else None,
+            "base_url": base_url.strip() if isinstance(base_url, str) and base_url.strip() else None,
+        }
+    return normalized
 
 def normalize_hostname(host: str | None) -> str | None:
     if not host:
@@ -66,11 +103,29 @@ def get_tenant_experience_settings(settings_json: dict | None) -> tuple[str | No
     )
 
 
+def get_tenant_assistant_settings(
+    settings_json: dict | None,
+) -> tuple[dict[str, str | None], dict[str, dict[str, str | None]]]:
+    if not isinstance(settings_json, dict):
+        return (
+            {provider: None for provider in SUPPORTED_ASSISTANT_PROVIDERS},
+            {},
+        )
+
+    provider_keys = _normalize_assistant_provider_keys(settings_json.get(ASSISTANT_PROVIDER_KEYS_SETTING_KEY))
+    for provider in SUPPORTED_ASSISTANT_PROVIDERS:
+        provider_keys.setdefault(provider, None)
+    model_targets = _normalize_assistant_model_targets(settings_json.get(ASSISTANT_MODEL_TARGETS_SETTING_KEY))
+    return provider_keys, model_targets
+
+
 def merge_tenant_experience_settings(
     existing_settings: dict | None,
     *,
     agent_url: str | None,
     zoning_code_url: str | None,
+    assistant_provider_keys: dict[str, str | None] | None = None,
+    assistant_model_targets: dict[str, dict[str, str | None]] | None = None,
 ) -> dict:
     next_settings = dict(existing_settings) if isinstance(existing_settings, dict) else {}
 
@@ -83,6 +138,23 @@ def merge_tenant_experience_settings(
         next_settings[ZONING_CODE_URL_SETTING_KEY] = zoning_code_url
     else:
         next_settings.pop(ZONING_CODE_URL_SETTING_KEY, None)
+
+    if assistant_provider_keys is not None:
+        normalized_provider_keys = _normalize_assistant_provider_keys(assistant_provider_keys)
+        if any(value for value in normalized_provider_keys.values()):
+            next_settings[ASSISTANT_PROVIDER_KEYS_SETTING_KEY] = normalized_provider_keys
+        else:
+            next_settings.pop(ASSISTANT_PROVIDER_KEYS_SETTING_KEY, None)
+
+    if assistant_model_targets is not None:
+        normalized_model_targets = _normalize_assistant_model_targets(assistant_model_targets)
+        if any(
+            target.get("provider") or target.get("model_id") or target.get("base_url")
+            for target in normalized_model_targets.values()
+        ):
+            next_settings[ASSISTANT_MODEL_TARGETS_SETTING_KEY] = normalized_model_targets
+        else:
+            next_settings.pop(ASSISTANT_MODEL_TARGETS_SETTING_KEY, None)
 
     return next_settings
 

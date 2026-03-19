@@ -43,10 +43,20 @@ export type CustomerRecord = {
 export type CustomerExperienceSettingsState = {
   error: string | null
   success: string | null
+  settings: CustomerExperienceSettings | null
 }
 
 export type CustomerExperienceSettings = {
   zoning_code_url: string | null
+  assistant_provider_keys: Record<string, string | null>
+  assistant_model_targets: Record<
+    string,
+    {
+      provider: string | null
+      model_id: string | null
+      base_url: string | null
+    }
+  >
 }
 
 export type CustomerZoningKnowledgeLatestRun = {
@@ -250,6 +260,7 @@ const initialCustomerMutationState: CustomerMutationState = {
 const initialCustomerExperienceSettingsState: CustomerExperienceSettingsState = {
   error: null,
   success: null,
+  settings: null,
 }
 
 const initialCustomerZoningKnowledgeMutationState: CustomerZoningKnowledgeMutationState = {
@@ -280,6 +291,57 @@ function buildEmptyCustomerZoningKnowledgeStatus(
 function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
   return {
     zoning_code_url: null,
+    assistant_provider_keys: {
+      gemini: null,
+      openrouter: null,
+      openai: null,
+      groq: null,
+    },
+    assistant_model_targets: {},
+  }
+}
+
+function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperienceSettings {
+  const fallback = buildEmptyCustomerExperienceSettings()
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const record = payload as Record<string, unknown>
+  const providerKeysInput =
+    record.assistant_provider_keys && typeof record.assistant_provider_keys === 'object'
+      ? (record.assistant_provider_keys as Record<string, unknown>)
+      : {}
+  const modelTargetsInput =
+    record.assistant_model_targets && typeof record.assistant_model_targets === 'object'
+      ? (record.assistant_model_targets as Record<string, unknown>)
+      : {}
+
+  const assistant_provider_keys: CustomerExperienceSettings['assistant_provider_keys'] = {
+    gemini: typeof providerKeysInput.gemini === 'string' ? providerKeysInput.gemini : null,
+    openrouter: typeof providerKeysInput.openrouter === 'string' ? providerKeysInput.openrouter : null,
+    openai: typeof providerKeysInput.openai === 'string' ? providerKeysInput.openai : null,
+    groq: typeof providerKeysInput.groq === 'string' ? providerKeysInput.groq : null,
+  }
+
+  const assistant_model_targets: CustomerExperienceSettings['assistant_model_targets'] = {}
+  for (const [targetId, rawTarget] of Object.entries(modelTargetsInput)) {
+    if (!rawTarget || typeof rawTarget !== 'object') {
+      continue
+    }
+
+    const target = rawTarget as Record<string, unknown>
+    assistant_model_targets[targetId] = {
+      provider: typeof target.provider === 'string' ? target.provider : null,
+      model_id: typeof target.model_id === 'string' ? target.model_id : null,
+      base_url: typeof target.base_url === 'string' ? target.base_url : null,
+    }
+  }
+
+  return {
+    zoning_code_url: typeof record.zoning_code_url === 'string' ? record.zoning_code_url : null,
+    assistant_provider_keys,
+    assistant_model_targets,
   }
 }
 
@@ -543,6 +605,7 @@ async function updateTenantClientStatus(organizationId: string, isActive: boolea
 async function updateTenantClientGeneralDetails(
   organizationId: string,
   payload: {
+    clientId: string
     cityName: string
     departmentName: string
     clerkOrganizationId: string
@@ -554,6 +617,7 @@ async function updateTenantClientGeneralDetails(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      client_id: payload.clientId,
       city_name: payload.cityName,
       department_name: payload.departmentName,
       clerk_organization_id: payload.clerkOrganizationId,
@@ -622,7 +686,7 @@ export async function fetchCustomerExperienceSettings(
       return buildEmptyCustomerExperienceSettings()
     }
 
-    return (await response.json()) as CustomerExperienceSettings
+    return normalizeCustomerExperienceSettings(await response.json())
   } catch {
     return buildEmptyCustomerExperienceSettings()
   }
@@ -644,6 +708,29 @@ export async function saveCustomerExperienceSettingsAction(
 
   const organizationId = String(formData.get('organizationId') || '').trim()
   const zoningCodeUrl = String(formData.get('zoningCodeUrl') || '').trim()
+  const assistantProviderKeys = {
+    gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
+    openrouter: String(formData.get('providerKeyOpenrouter') || '').trim() || null,
+    openai: String(formData.get('providerKeyOpenai') || '').trim() || null,
+    groq: String(formData.get('providerKeyGroq') || '').trim() || null,
+  }
+  const assistantModelTargets = {
+    'customer-zoning-agent': {
+      provider: String(formData.get('targetProviderCustomerZoningAgent') || '').trim() || null,
+      model_id: String(formData.get('targetModelCustomerZoningAgent') || '').trim() || null,
+      base_url: String(formData.get('targetBaseUrlCustomerZoningAgent') || '').trim() || null,
+    },
+    'parcel-data-agent': {
+      provider: String(formData.get('targetProviderParcelDataAgent') || '').trim() || null,
+      model_id: String(formData.get('targetModelParcelDataAgent') || '').trim() || null,
+      base_url: String(formData.get('targetBaseUrlParcelDataAgent') || '').trim() || null,
+    },
+    'code-researcher-agent': {
+      provider: String(formData.get('targetProviderCodeResearcherAgent') || '').trim() || null,
+      model_id: String(formData.get('targetModelCodeResearcherAgent') || '').trim() || null,
+      base_url: String(formData.get('targetBaseUrlCodeResearcherAgent') || '').trim() || null,
+    },
+  }
 
   if (!organizationId) {
     return {
@@ -661,6 +748,8 @@ export async function saveCustomerExperienceSettingsAction(
         },
         body: JSON.stringify({
           zoning_code_url: zoningCodeUrl || null,
+          assistant_provider_keys: assistantProviderKeys,
+          assistant_model_targets: assistantModelTargets,
         }),
       })
 
@@ -680,14 +769,19 @@ export async function saveCustomerExperienceSettingsAction(
       )
     }
 
+    const savedSettings = normalizeCustomerExperienceSettings(await response.json())
+
     revalidatePath('/super-admin')
     revalidatePath(`/super-admin/customers/${organizationId}`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant-setup`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant`)
     revalidatePath('/assistant')
     revalidatePath('/')
 
     return {
       error: null,
       success: 'Jurisdiction assistant settings saved.',
+      settings: savedSettings,
     }
   } catch (error) {
     return {
@@ -1092,6 +1186,7 @@ export async function saveCustomerGeneralSettingsAction(
   }
 
   const organizationId = String(formData.get('organizationId') || '').trim()
+  const clientId = String(formData.get('clientId') || '').trim()
   const cityName = String(formData.get('cityName') || '').trim()
   const departmentName = String(formData.get('departmentName') || '').trim()
   const clerkOrganizationId = String(formData.get('clerkOrganizationId') || '').trim()
@@ -1104,6 +1199,10 @@ export async function saveCustomerGeneralSettingsAction(
 
   if (!cityName) {
     return { error: 'Jurisdiction name is required.', success: null }
+  }
+
+  if (!clientId) {
+    return { error: 'Organization ID is required.', success: null }
   }
 
   if (!departmentName) {
@@ -1123,6 +1222,7 @@ export async function saveCustomerGeneralSettingsAction(
       slug: clerkSlug,
     })
     await updateTenantClientGeneralDetails(organizationId, {
+      clientId,
       cityName,
       departmentName,
       clerkOrganizationId,
@@ -1139,7 +1239,11 @@ export async function saveCustomerGeneralSettingsAction(
       error: null,
       success: `${cityName} details were saved.`,
       redirectPath:
-        clerkOrganizationId !== organizationId ? `/super-admin/customers/${clerkOrganizationId}` : null,
+        clientId !== organizationId
+          ? `/super-admin/customers/${clientId}`
+          : clerkOrganizationId !== organizationId
+            ? `/super-admin/customers/${clerkOrganizationId}`
+            : null,
     }
   } catch (error) {
     return {

@@ -1,6 +1,5 @@
 import { JurisdictionPickerClient } from '../../components/JurisdictionPickerClient'
 import { buildServerBackendApiUrl } from '../../lib/backend'
-import { getClerkManagementClient } from '../../lib/clerk'
 
 type CustomerChoice = {
   orgid: string
@@ -30,37 +29,13 @@ async function loadCustomers() {
   }
 }
 
-async function loadClerkOrganizationIds() {
-  try {
-    const client = await getClerkManagementClient()
-    const organizations = await client.organizations.getOrganizationList({
-      limit: 100,
-    })
-
-    return new Set(
-      organizations.data
-        .map((organization) => organization.id?.trim())
-        .filter((organizationId): organizationId is string => Boolean(organizationId)),
-    )
-  } catch {
-    return null
-  }
-}
-
 export default async function SelectJurisdictionPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const requestedReturnTo = Array.isArray(resolvedSearchParams.returnTo)
     ? resolvedSearchParams.returnTo[0] || '/'
     : resolvedSearchParams.returnTo || '/'
   const returnTo = requestedReturnTo.startsWith('/') ? requestedReturnTo : '/'
-  const [customers, clerkOrganizationIds] = await Promise.all([
-    loadCustomers(),
-    loadClerkOrganizationIds(),
-  ])
-  const visibleCustomers =
-    clerkOrganizationIds === null
-      ? customers
-      : customers.filter((customer) => clerkOrganizationIds.has(customer.orgid.trim()))
+  const customers = await loadCustomers()
 
   return (
     <section className="jurisdiction-picker-page">
@@ -74,8 +49,8 @@ export default async function SelectJurisdictionPage({ searchParams }: PageProps
           </p>
         </div>
 
-        {visibleCustomers.length > 0 ? (
-          <JurisdictionPickerClient customers={visibleCustomers} returnTo={returnTo} />
+        {customers.length > 0 ? (
+          <JurisdictionPickerClient customers={customers} returnTo={returnTo} />
         ) : (
           <section className="card jurisdiction-picker-empty">
             <h2 className="section-title">No Jurisdictions Available</h2>

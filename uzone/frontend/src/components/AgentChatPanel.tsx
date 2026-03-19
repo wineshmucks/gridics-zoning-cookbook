@@ -123,6 +123,10 @@ function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string 
   return { events, remainder }
 }
 
+function eventMatches(eventName: string, expected: string): boolean {
+  return eventName === expected || eventName === `Team${expected}`
+}
+
 function toStepLabel(toolName?: string): string {
   if (!toolName) {
     return "Working"
@@ -652,6 +656,10 @@ export function AgentChatPanel({
   const sessionIdRef = useRef<string | null>(null)
   const runIdRef = useRef<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const normalizedModelId = modelId.trim()
+  const normalizedDefaultModelId = defaultModelId.trim()
+  const isModelOverrideActive =
+    Boolean(normalizedModelId) && normalizedModelId !== normalizedDefaultModelId
 
   useEffect(() => {
     setModelId((currentModelId) => {
@@ -797,7 +805,7 @@ export function AgentChatPanel({
         runIdRef.current = maybeRunId
       }
 
-      if (event.event === "RunStarted") {
+      if (eventMatches(event.event, "RunStarted")) {
         const model = typeof payload.model === "string" ? payload.model : "configured model"
         runSteps = upsertStep(runSteps, {
           id: "run-started",
@@ -815,7 +823,7 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "ModelRequestStarted") {
+      if (eventMatches(event.event, "ModelRequestStarted")) {
         modelRequestCount += 1
         if (sawToolCall || modelRequestCount > 1) {
           answerPhaseStarted = true
@@ -830,7 +838,7 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "ModelRequestCompleted") {
+      if (eventMatches(event.event, "ModelRequestCompleted")) {
         runSteps = upsertStep(runSteps, {
           id: "model-request",
           label: answerPhaseStarted ? "Writing final answer" : "Drafting response",
@@ -841,7 +849,7 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "ToolCallStarted") {
+      if (eventMatches(event.event, "ToolCallStarted")) {
         const tool = payload.tool && typeof payload.tool === "object" ? (payload.tool as Record<string, unknown>) : undefined
         const toolId =
           typeof tool?.tool_call_id === "string"
@@ -866,7 +874,7 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "ToolCallCompleted") {
+      if (eventMatches(event.event, "ToolCallCompleted")) {
         const tool = payload.tool && typeof payload.tool === "object" ? (payload.tool as Record<string, unknown>) : undefined
         const toolId =
           typeof tool?.tool_call_id === "string"
@@ -890,7 +898,7 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "ToolCallError") {
+      if (eventMatches(event.event, "ToolCallError")) {
         const tool = payload.tool && typeof payload.tool === "object" ? (payload.tool as Record<string, unknown>) : undefined
         const toolId =
           typeof tool?.tool_call_id === "string"
@@ -913,7 +921,7 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "RunContent") {
+      if (eventMatches(event.event, "RunContent")) {
         const incomingContent = sanitizeAssistantContent(normalizeContent(payload.content))
         if (incomingContent) {
           if (sawToolCall || answerPhaseStarted) {
@@ -931,12 +939,12 @@ export function AgentChatPanel({
         return false
       }
 
-      if (event.event === "RunContentCompleted") {
+      if (eventMatches(event.event, "RunContentCompleted")) {
         handleStreamUpdate({ steps: runSteps, toolCalls, status: "streaming" })
         return false
       }
 
-      if (event.event === "RunCompleted") {
+      if (eventMatches(event.event, "RunCompleted")) {
         let debugDetail: string | null = null
         let finalContent = getAssistantContent(payload as AgentRunResponse)
         if (!finalContent) {
@@ -994,7 +1002,7 @@ export function AgentChatPanel({
         return true
       }
 
-      if (event.event === "RunError") {
+      if (eventMatches(event.event, "RunError")) {
         const errorMessage =
           typeof payload.content === "string" && payload.content ? payload.content : "Unable to reach the assistant."
         runSteps = upsertStep(runSteps, {
@@ -1224,7 +1232,7 @@ export function AgentChatPanel({
         <div className={`agent-chat-form assistant-ui-composer assistant-ui-composer-${variant}`}>
           <div className="assistant-model-popover-shell" ref={modelPickerRef}>
             <button
-              className="assistant-model-trigger"
+              className={`assistant-model-trigger${isModelOverrideActive ? " is-override" : ""}`}
               type="button"
               aria-label="Open model settings"
               aria-haspopup="dialog"
@@ -1233,7 +1241,7 @@ export function AgentChatPanel({
             >
               <span className="assistant-model-trigger-label">Model</span>
               <span className="assistant-model-trigger-status">
-                {modelId.trim() && modelId.trim() !== defaultModelId.trim() ? "Custom" : "Default"}
+                {isModelOverrideActive ? "Override On" : "Default"}
               </span>
             </button>
 
@@ -1243,7 +1251,7 @@ export function AgentChatPanel({
                   <div className="assistant-model-controls-copy">
                     <strong>Model override</strong>
                     <span>
-                      Default: <code>{defaultModelId || "env configured model"}</code>
+                      Default: <code>{defaultModelId || "backend-defined model"}</code>
                     </span>
                   </div>
                   <button
@@ -1262,7 +1270,7 @@ export function AgentChatPanel({
                     value={modelId}
                     disabled={isStreaming}
                     onChange={(event) => setModelId(event.target.value)}
-                    placeholder={defaultModelId || "Paste a model id to test"}
+                    placeholder={defaultModelId || "Leave blank to use the backend-defined model"}
                   />
                   <button
                     className="button secondary"
@@ -1274,9 +1282,9 @@ export function AgentChatPanel({
                   </button>
                 </div>
                 <div className="assistant-model-controls-status">
-                  {modelId.trim() && modelId.trim() !== defaultModelId.trim()
-                    ? `Override active for new runs: ${modelId.trim()}`
-                    : "Using the default model from the environment."}
+                  {isModelOverrideActive
+                    ? `Override active for new runs: ${normalizedModelId}`
+                    : "No override active. New runs will use the model defined by the backend agent."}
                 </div>
               </div>
             ) : null}
@@ -1312,6 +1320,20 @@ export function AgentChatPanel({
             </label>
           </div>
           <div className="assistant-ui-composer-footer">
+            <div
+              className={`assistant-model-banner${isModelOverrideActive ? " is-override" : ""}`}
+              aria-live="polite"
+            >
+              {isModelOverrideActive ? (
+                <>
+                  Next run will override the backend-defined model with <code>{normalizedModelId}</code>.
+                </>
+              ) : (
+                <>
+                  Next run will use the backend-defined model <code>{defaultModelId || "agent default"}</code>.
+                </>
+              )}
+            </div>
             <div className="assistant-ui-composer-hint">Ctrl+Enter to send. Enter for a new line.</div>
             <button className="button secondary" type="button" onClick={() => void handleCopyConversation()}>
               {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy Failed" : "Copy Conversation"}

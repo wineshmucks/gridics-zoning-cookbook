@@ -17,7 +17,6 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
   const permissions = await getPermissionContext(clerkEnabled)
   const backendBase =
     process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
-  const defaultModelId = process.env.UZONE_ZONING_AGENT_LLM_MODEL_ID || ''
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
@@ -60,7 +59,6 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
         backendBase={backendBase}
         customerName={organization.name}
         clientId={zoningKnowledgeStatus.client_id}
-        defaultModelId={defaultModelId}
         surface="super-admin-customer-assistant"
         title=""
         description=""

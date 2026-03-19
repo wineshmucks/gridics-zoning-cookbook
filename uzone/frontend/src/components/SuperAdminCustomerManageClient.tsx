@@ -31,6 +31,7 @@ type PendingInvite = {
 
 type SelectedCustomer = {
   id: string
+  clientId: string
   name: string
   departmentName: string | null
   clerkOrganizationId: string
@@ -139,6 +140,10 @@ export function SuperAdminCustomerManageClient({
             <form action={generalAction} className="admin-form">
               <input type="hidden" name="organizationId" value={customer.id} />
               <label className="field">
+                <span>Organization ID</span>
+                <input name="clientId" defaultValue={customer.clientId} required />
+              </label>
+              <label className="field">
                 <span>Jurisdiction name</span>
                 <input name="cityName" defaultValue={customer.name} required />
               </label>
@@ -161,7 +166,7 @@ export function SuperAdminCustomerManageClient({
               <dl className="detail-list">
                 <div>
                   <dt>Organization ID</dt>
-                  <dd>{customer.customerId || 'Organization ID unavailable'}</dd>
+                  <dd>{customer.clientId || customer.customerId || 'Organization ID unavailable'}</dd>
                 </div>
                 <div>
                   <dt>Slug</dt>

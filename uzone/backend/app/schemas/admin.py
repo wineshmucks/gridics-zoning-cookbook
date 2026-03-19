@@ -281,6 +281,7 @@ class TenantClientRead(BaseModel):
 
 
 class TenantClientUpdate(BaseModel):
+    client_id: str | None = Field(default=None, min_length=1, max_length=255)
     city_name: str | None = Field(default=None, min_length=1, max_length=255)
     department_name: str | None = Field(default=None, min_length=1, max_length=255)
     clerk_organization_id: str | None = Field(default=None, min_length=1, max_length=255)
@@ -289,10 +290,14 @@ class TenantClientUpdate(BaseModel):
 
 class TenantExperienceSettingsRead(BaseModel):
     zoning_code_url: str | None
+    assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
+    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
 
 
 class TenantExperienceSettingsUpdate(BaseModel):
     zoning_code_url: str | None = Field(default=None, max_length=2000)
+    assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
+    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
 
 
 class ZoningKnowledgeLatestRunRead(BaseModel):

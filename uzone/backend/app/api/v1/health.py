@@ -1,6 +1,7 @@
 """Health and route inspection endpoints."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 
@@ -17,12 +18,29 @@ def root_health() -> dict:
     return {"status": "ok"}
 
 
+@router.get("/api/health/agent-os")
+@router.get("/health/agent-os")
+def agent_os_health(request: Request):
+    agent_os_enabled = bool(getattr(request.app.state, "agent_os_enabled", False))
+    status_code = 200 if agent_os_enabled else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if agent_os_enabled else "unavailable",
+            "agent_os_enabled": agent_os_enabled,
+            "require_agent_os": settings.require_agent_os,
+        },
+    )
+
+
 @router.get("/routes")
 def routes() -> dict:
     route_map = {
         "health": [
             "GET /api/health",
             "GET /health",
+            "GET /api/health/agent-os",
+            "GET /health/agent-os",
             "GET /routes",
         ],
         "auth": [

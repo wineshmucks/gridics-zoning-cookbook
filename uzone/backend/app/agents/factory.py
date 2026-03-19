@@ -16,24 +16,58 @@ def create_agent(**kwargs: Any) -> Agent:
     return build_with_supported_kwargs(Agent, **kwargs)
 
 
-def _get_agent_model_api_key(provider: str, is_override: bool = False, explicit_api_key: str | None = None) -> str | None:
-    if explicit_api_key:
-        return explicit_api_key
+def _mask_api_key_suffix(api_key: str | None) -> str | None:
+    if not api_key:
+        return None
+    suffix = api_key[-4:]
+    return suffix if suffix else None
 
-    # Only use the generic global key if we are NOT overriding the default provider
-    if not is_override and settings.zoning_agent_llm_api_key:
-        return settings.zoning_agent_llm_api_key
+
+def _attach_model_trace(model: Any, *, provider: str, model_id: str, api_key_source: str, api_key: str | None) -> Any:
+    setattr(model, "_uzone_model_provider", provider)
+    setattr(model, "_uzone_model_id", model_id)
+    setattr(model, "_uzone_api_key_source", api_key_source)
+    setattr(model, "_uzone_api_key_suffix", _mask_api_key_suffix(api_key))
+    return model
+
+
+def get_model_trace(model: Any) -> dict[str, str | None]:
+    return {
+        "provider": getattr(model, "_uzone_model_provider", None),
+        "model_id": getattr(model, "_uzone_model_id", None),
+        "api_key_source": getattr(model, "_uzone_api_key_source", None),
+        "api_key_suffix": getattr(model, "_uzone_api_key_suffix", None),
+    }
+
+
+def _get_agent_model_api_key(
+    provider: str,
+    *,
+    explicit_api_key: str | None = None,
+    allow_env_fallback: bool = False,
+) -> tuple[str | None, str]:
+    if explicit_api_key:
+        return explicit_api_key, "tenant_db"
+
+    if not allow_env_fallback:
+        return None, "missing"
+
+    # Prefer the deployed generic zoning-agent key when present. This keeps
+    # hardcoded agent/team models working in environments that only provide
+    # UZONE_ZONING_AGENT_LLM_API_KEY instead of provider-specific env vars.
+    if settings.zoning_agent_llm_api_key:
+        return settings.zoning_agent_llm_api_key, "env_generic"
 
     if provider == "gemini":
-        return os.getenv("GOOGLE_API_KEY")
+        return os.getenv("GOOGLE_API_KEY"), "env_provider"
     if provider == "openrouter":
-        return os.getenv("OPENROUTER_API_KEY")
+        return os.getenv("OPENROUTER_API_KEY"), "env_provider"
     if provider == "openai":
-        return os.getenv("OPENAI_API_KEY")
+        return os.getenv("OPENAI_API_KEY"), "env_provider"
     if provider == "groq":
-        return os.getenv("GROQ_API_KEY")
+        return os.getenv("GROQ_API_KEY"), "env_provider"
 
-    return None
+    return None, "missing"
 
 
 def build_agent_model(
@@ -43,6 +77,7 @@ def build_agent_model(
     api_key: str | None = None,
     base_url: str | None = None,
     max_tokens: int = 4096,
+    allow_env_fallback: bool = False,
 ):
     """Construct the Agno chat model configured for zoning chat agents."""
     
@@ -50,51 +85,84 @@ def build_agent_model(
     active_provider = (provider or settings.zoning_agent_llm_provider).strip().lower()
     active_model_id = (model_id or settings.zoning_agent_llm_model_id).strip()
     
-    # Check if we are diverging from the global default provider
-    is_override = bool(provider and provider.strip().lower() != settings.zoning_agent_llm_provider.strip().lower())
-    
     # 2. Fetch the safe API key
-    api_key = _get_agent_model_api_key(active_provider, is_override=is_override, explicit_api_key=api_key)
+    api_key, api_key_source = _get_agent_model_api_key(
+        active_provider,
+        explicit_api_key=api_key,
+        allow_env_fallback=allow_env_fallback,
+    )
 
     if not active_model_id:
         raise RuntimeError(f"Model ID must be specified for provider '{active_provider}'.")
 
+    def missing_key_error(provider_label: str, env_name: str) -> RuntimeError:
+        if allow_env_fallback:
+            return RuntimeError(f"Set {env_name} for the {provider_label} zoning agent.")
+        return RuntimeError(
+            f"Missing API key for tenant-configured provider '{active_provider}'. "
+            "Save the provider key in super-admin assistant setup."
+        )
+
     if active_provider == "gemini":
         if not api_key:
-            raise RuntimeError("Set GOOGLE_API_KEY for the Gemini zoning agent.")
+            raise missing_key_error("Gemini", "GOOGLE_API_KEY")
         from agno.models.google import Gemini
-        return build_with_supported_kwargs(Gemini, id=active_model_id, api_key=api_key)
+        return _attach_model_trace(
+            build_with_supported_kwargs(Gemini, id=active_model_id, api_key=api_key),
+            provider=active_provider,
+            model_id=active_model_id,
+            api_key_source=api_key_source,
+            api_key=api_key,
+        )
 
     if active_provider == "openrouter":
         if not api_key:
-            raise RuntimeError("Set OPENROUTER_API_KEY for the OpenRouter zoning agent.")
+            raise missing_key_error("OpenRouter", "OPENROUTER_API_KEY")
         from agno.models.openrouter import OpenRouter
-        return build_with_supported_kwargs(
-            OpenRouter,
-            id=active_model_id,
+        return _attach_model_trace(
+            build_with_supported_kwargs(
+                OpenRouter,
+                id=active_model_id,
+                api_key=api_key,
+                base_url=base_url or settings.zoning_agent_llm_base_url or "https://openrouter.ai/api/v1",
+                max_tokens=max_tokens,
+            ),
+            provider=active_provider,
+            model_id=active_model_id,
+            api_key_source=api_key_source,
             api_key=api_key,
-            base_url=base_url or settings.zoning_agent_llm_base_url or "https://openrouter.ai/api/v1",
-            max_tokens=max_tokens,
         )
 
     if active_provider == "openai":
         if not api_key:
-            raise RuntimeError("Set OPENAI_API_KEY for the OpenAI zoning agent.")
+            raise missing_key_error("OpenAI", "OPENAI_API_KEY")
         from agno.models.openai import OpenAIChat
-        return build_with_supported_kwargs(
-            OpenAIChat,
-            id=active_model_id,
+        return _attach_model_trace(
+            build_with_supported_kwargs(
+                OpenAIChat,
+                id=active_model_id,
+                api_key=api_key,
+                base_url=base_url or settings.zoning_agent_llm_base_url,
+            ),
+            provider=active_provider,
+            model_id=active_model_id,
+            api_key_source=api_key_source,
             api_key=api_key,
-            base_url=base_url or settings.zoning_agent_llm_base_url,
         )
 
     if active_provider == "groq":
         if not api_key:
-            raise RuntimeError("Set GROQ_API_KEY for the Groq zoning agent.")
+            raise missing_key_error("Groq", "GROQ_API_KEY")
         from agno.models.groq import Groq
-        return build_with_supported_kwargs(
-            Groq,
-            id=active_model_id,
+        return _attach_model_trace(
+            build_with_supported_kwargs(
+                Groq,
+                id=active_model_id,
+                api_key=api_key,
+            ),
+            provider=active_provider,
+            model_id=active_model_id,
+            api_key_source=api_key_source,
             api_key=api_key,
         )
 

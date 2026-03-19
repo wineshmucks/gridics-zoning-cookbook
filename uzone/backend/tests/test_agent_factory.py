@@ -40,6 +40,8 @@ def test_build_agent_model_uses_gemini(monkeypatch) -> None:
 
     assert isinstance(model, FakeGemini)
     assert captured == {"id": "gemini-2.0-flash-001", "api_key": "gemini-key"}
+    assert getattr(model, "_uzone_api_key_source") == "env_generic"
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
 
 
 def test_build_agent_model_uses_openrouter_default_base_url(monkeypatch) -> None:
@@ -82,7 +84,7 @@ def test_build_agent_model_accepts_model_override(monkeypatch) -> None:
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "openrouter-key")
     monkeypatch.setattr(settings, "zoning_agent_llm_base_url", None)
 
-    model = build_agent_model(model_id_override="override/model")
+    model = build_agent_model(model_id="override/model")
 
     assert isinstance(model, FakeOpenRouter)
     assert captured == {
@@ -119,3 +121,65 @@ def test_build_agent_model_uses_groq(monkeypatch) -> None:
 
     assert isinstance(model, FakeGroq)
     assert captured == {"id": "llama3-8b-8192", "api_key": "groq-key"}
+
+
+def test_build_agent_model_uses_generic_key_for_hardcoded_groq_provider(monkeypatch) -> None:
+    captured = {}
+
+    class FakeGroq:
+        def __init__(self, *, id=None, api_key=None):
+            captured["id"] = id
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr("agno.models.groq.Groq", FakeGroq)
+    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
+    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
+    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "shared-llm-key")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    model = build_agent_model(provider="groq", model_id="llama-3.1-8b-instant")
+
+    assert isinstance(model, FakeGroq)
+    assert captured == {"id": "llama-3.1-8b-instant", "api_key": "shared-llm-key"}
+    assert getattr(model, "_uzone_api_key_source") == "env_generic"
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
+
+
+def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -> None:
+    captured = {}
+
+    class FakeGemini:
+        def __init__(self, *, id=None, api_key=None):
+            captured["id"] = id
+            captured["api_key"] = api_key
+
+    monkeypatch.setattr("agno.models.google.Gemini", FakeGemini)
+    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
+    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
+    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "env-shared-key")
+
+    model = build_agent_model(
+        provider="gemini",
+        model_id="gemini-3.1-flash-lite-preview",
+        api_key="tenant-db-key",
+        allow_env_fallback=False,
+    )
+
+    assert isinstance(model, FakeGemini)
+    assert captured == {"id": "gemini-3.1-flash-lite-preview", "api_key": "tenant-db-key"}
+    assert getattr(model, "_uzone_api_key_source") == "tenant_db"
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
+
+
+def test_build_agent_model_rejects_missing_explicit_key_when_env_fallback_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
+    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
+    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "env-shared-key")
+
+    with pytest.raises(RuntimeError, match="Missing API key for tenant-configured provider"):
+        build_agent_model(
+            provider="gemini",
+            model_id="gemini-3.1-flash-lite-preview",
+            api_key=None,
+            allow_env_fallback=False,
+        )

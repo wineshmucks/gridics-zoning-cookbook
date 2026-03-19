@@ -56,6 +56,14 @@ type SSEEvent = {
   data: Record<string, unknown>
 }
 
+type AssistantModelTraceEntry = {
+  provider?: string | null
+  model_id?: string | null
+  api_key_source?: string | null
+  api_key_suffix?: string | null
+  reason?: string | null
+}
+
 function formatConversation(messages: ChatMessage[], customerName: string): string {
   return messages
     .map((message) => {
@@ -141,6 +149,79 @@ function toStepLabel(toolName?: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
+}
+
+function getAssistantModelTrace(payload: Record<string, unknown>): Record<string, AssistantModelTraceEntry> | null {
+  const metadata = payload.metadata && typeof payload.metadata === "object"
+    ? (payload.metadata as Record<string, unknown>)
+    : null
+  const rawTrace = metadata?.assistant_model_trace
+  if (!rawTrace || typeof rawTrace !== "object") {
+    return null
+  }
+
+  const entries: Record<string, AssistantModelTraceEntry> = {}
+  for (const [targetId, rawEntry] of Object.entries(rawTrace as Record<string, unknown>)) {
+    if (!rawEntry || typeof rawEntry !== "object") {
+      continue
+    }
+    const entry = rawEntry as Record<string, unknown>
+    entries[targetId] = {
+      provider: typeof entry.provider === "string" ? entry.provider : null,
+      model_id: typeof entry.model_id === "string" ? entry.model_id : null,
+      api_key_source: typeof entry.api_key_source === "string" ? entry.api_key_source : null,
+      api_key_suffix: typeof entry.api_key_suffix === "string" ? entry.api_key_suffix : null,
+      reason: typeof entry.reason === "string" ? entry.reason : null,
+    }
+  }
+
+  return Object.keys(entries).length ? entries : null
+}
+
+function formatAssistantModelTrace(payload: Record<string, unknown>): string | null {
+  const trace = getAssistantModelTrace(payload)
+  if (!trace) {
+    return null
+  }
+
+  return Object.entries(trace)
+    .map(([targetId, entry]) => {
+      const parts = [
+        targetId,
+        entry.provider && entry.model_id ? `${entry.provider}/${entry.model_id}` : null,
+        entry.api_key_source ? `key:${entry.api_key_source}` : null,
+        entry.api_key_suffix ? `suffix:${entry.api_key_suffix}` : null,
+        entry.reason ? `reason:${entry.reason}` : null,
+      ].filter(Boolean)
+      return parts.join(" | ")
+    })
+    .join(" || ")
+}
+
+function enrichRunStartedStepWithTrace(steps: StreamStep[], traceDetail: string | null): StreamStep[] {
+  if (!traceDetail) {
+    return steps
+  }
+
+  return steps.map((step) => {
+    if (step.id !== "run-started") {
+      return step
+    }
+
+    const detail = step.detail || ""
+    if (detail.includes("key:") || detail.includes(traceDetail)) {
+      return step
+    }
+
+    return {
+      ...step,
+      detail: detail ? `${detail} | ${traceDetail}` : traceDetail,
+    }
+  })
+}
+
+function buildTraceBanner(traceDetail: string | null): string {
+  return traceDetail ? `Model trace: ${traceDetail}` : ""
 }
 
 function truncateMiddle(value: string, maxLength: number): string {
@@ -807,10 +888,11 @@ export function AgentChatPanel({
 
       if (eventMatches(event.event, "RunStarted")) {
         const model = typeof payload.model === "string" ? payload.model : "configured model"
+        const traceDetail = formatAssistantModelTrace(payload)
         runSteps = upsertStep(runSteps, {
           id: "run-started",
           label: "Preparing answer",
-          detail: `Connected to ${model}`,
+          detail: traceDetail ? `Connected to ${model} | ${traceDetail}` : `Connected to ${model}`,
           status: "complete",
         })
         runSteps = upsertStep(runSteps, {
@@ -947,6 +1029,7 @@ export function AgentChatPanel({
       if (eventMatches(event.event, "RunCompleted")) {
         let debugDetail: string | null = null
         let finalContent = getAssistantContent(payload as AgentRunResponse)
+        let traceDetail = formatAssistantModelTrace(payload)
         if (!finalContent) {
           debugDetail = `RunCompleted payload inspection: ${getAssistantContentDebug(payload as AgentRunResponse)}`
         }
@@ -964,6 +1047,7 @@ export function AgentChatPanel({
             .filter(Boolean)
             .join(" | ")
           const fetchedContent = getAssistantContent(completedRun.payload || {})
+          traceDetail = traceDetail || formatAssistantModelTrace((completedRun.payload || {}) as Record<string, unknown>)
           if (fetchedContent) {
             finalContent = fetchedContent
           }
@@ -986,6 +1070,7 @@ export function AgentChatPanel({
           detail: "Answer completed",
           status: "complete",
         })
+        runSteps = enrichRunStartedStepWithTrace(runSteps, traceDetail)
         runSteps = appendDebugStep(runSteps, debugDetail)
         handleStreamUpdate({
           content:
@@ -1003,8 +1088,22 @@ export function AgentChatPanel({
       }
 
       if (eventMatches(event.event, "RunError")) {
+        let traceDetail = formatAssistantModelTrace(payload)
         const errorMessage =
           typeof payload.content === "string" && payload.content ? payload.content : "Unable to reach the assistant."
+
+        if ((!traceDetail || !traceDetail.includes("key:")) && runIdRef.current) {
+          const completedRun = await fetchCompletedRunWithRetry(
+            backendBase,
+            agentId,
+            runIdRef.current,
+            sessionIdRef.current,
+          )
+          traceDetail = traceDetail || formatAssistantModelTrace((completedRun.payload || {}) as Record<string, unknown>)
+        }
+
+        runSteps = enrichRunStartedStepWithTrace(runSteps, traceDetail)
+        const traceBanner = buildTraceBanner(traceDetail)
         runSteps = upsertStep(runSteps, {
           id: "model-request",
           label: "Drafting response",
@@ -1012,7 +1111,13 @@ export function AgentChatPanel({
           status: "error",
         })
         handleStreamUpdate({
-          content: textContent || lastVisibleContent || "The assistant run failed before returning any content.",
+          content:
+            [
+              traceBanner,
+              textContent || lastVisibleContent || "The assistant run failed before returning any content.",
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
           steps: runSteps,
           toolCalls,
           status: "error",

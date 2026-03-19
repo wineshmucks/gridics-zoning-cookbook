@@ -17,6 +17,8 @@ DB_PASSWORD_OVERRIDE="${DB_PASSWORD_OVERRIDE:-}"
 CERTIFICATE_ARN_OVERRIDE="${CERTIFICATE_ARN_OVERRIDE:-}"
 SKIP_TERRAFORM_APPLY="${SKIP_TERRAFORM_APPLY:-0}"
 SKIP_IMAGE_PUSH="${SKIP_IMAGE_PUSH:-0}"
+SMOKE_TEST_TIMEOUT_SECONDS="${SMOKE_TEST_TIMEOUT_SECONDS:-180}"
+SMOKE_TEST_BASE_URL="${SMOKE_TEST_BASE_URL:-https://uzones.dev}"
 
 require_command() {
   local name="$1"
@@ -68,6 +70,7 @@ fi
 require_command aws
 require_command terraform
 require_command docker
+require_command curl
 
 set -a
 # shellcheck disable=SC1090
@@ -82,6 +85,29 @@ APP_ALLOWED_ORIGINS="${APP_ALLOWED_ORIGINS_OVERRIDE:-${UZONE_ALLOWED_ORIGINS:-ht
 DB_USERNAME="${DB_USERNAME_OVERRIDE:-${POSTGRES_USER:-uzone}}"
 DB_PASSWORD="${DB_PASSWORD_OVERRIDE:-${POSTGRES_PASSWORD:-postgres}}"
 CERTIFICATE_ARN="${CERTIFICATE_ARN_OVERRIDE:-}"
+REQUIRE_AGENT_OS="${UZONE_REQUIRE_AGENT_OS:-true}"
+
+wait_for_expected_status() {
+  local url="$1"
+  local expected_status="$2"
+  local timeout_seconds="$3"
+  local start_time
+  start_time="$(date +%s)"
+
+  while true; do
+    local status
+    status="$(curl -s -o /tmp/uzone_smoke_response.txt -w '%{http_code}' "${url}" || true)"
+    if [[ "${status}" == "${expected_status}" ]]; then
+      return 0
+    fi
+    if (( $(date +%s) - start_time >= timeout_seconds )); then
+      echo "smoke check failed for ${url}: expected ${expected_status}, got ${status}" >&2
+      cat /tmp/uzone_smoke_response.txt >&2 || true
+      return 1
+    fi
+    sleep 5
+  done
+}
 
 mkdir -p "${TF_DIR}"
 
@@ -114,6 +140,7 @@ $(emit_kv_if_set "UZONE_ZONING_EMBEDDER_PROVIDER" "${UZONE_ZONING_EMBEDDER_PROVI
 $(emit_kv_if_set "UZONE_ZONING_EMBEDDER_MODEL_ID" "${UZONE_ZONING_EMBEDDER_MODEL_ID:-}")
 $(emit_kv_if_set "UZONE_ZONING_EMBEDDER_DIMENSIONS" "${UZONE_ZONING_EMBEDDER_DIMENSIONS:-}")
 $(emit_kv_if_set "UZONE_ZONING_EMBEDDER_REQUESTS_PER_MINUTE" "${UZONE_ZONING_EMBEDDER_REQUESTS_PER_MINUTE:-}")
+$(emit_kv_if_set "UZONE_REQUIRE_AGENT_OS" "${REQUIRE_AGENT_OS}")
 $(emit_kv_if_set "UZONE_ZONING_AGENT_LLM_PROVIDER" "${UZONE_ZONING_AGENT_LLM_PROVIDER:-}")
 $(emit_kv_if_set "UZONE_ZONING_AGENT_LLM_MODEL_ID" "${UZONE_ZONING_AGENT_LLM_MODEL_ID:-}")
 $(emit_kv_if_set "GRIDICS_CLERK_ORGANIZATION_SLUG" "${GRIDICS_CLERK_ORGANIZATION_SLUG:-}")
@@ -130,6 +157,10 @@ $(emit_secret_arn_if_set "UZONE_STRIPE_WEBHOOK_SECRET" "uzone/stripe-webhook" "$
 $(emit_secret_arn_if_set "UZONE_RESEND_API_KEY" "uzone/resend-api-key" "${UZONE_RESEND_API_KEY:-}")
 $(emit_secret_arn_if_set "UZONE_ZONING_EMBEDDER_API_KEY" "uzone/zoning-embedder-api-key" "${UZONE_ZONING_EMBEDDER_API_KEY:-}")
 $(emit_secret_arn_if_set "UZONE_ZONING_AGENT_LLM_API_KEY" "uzone/zoning-agent-llm-api-key" "${UZONE_ZONING_AGENT_LLM_API_KEY:-}")
+$(emit_secret_arn_if_set "GOOGLE_API_KEY" "uzone/google-api-key" "${GOOGLE_API_KEY:-}")
+$(emit_secret_arn_if_set "OPENROUTER_API_KEY" "uzone/openrouter-api-key" "${OPENROUTER_API_KEY:-}")
+$(emit_secret_arn_if_set "OPENAI_API_KEY" "uzone/openai-api-key" "${OPENAI_API_KEY:-}")
+$(emit_secret_arn_if_set "GROQ_API_KEY" "uzone/groq-api-key" "${GROQ_API_KEY:-}")
 $(emit_secret_arn_if_set "GRIDICS_API_KEY" "uzone/gridics-api-key" "${GRIDICS_API_KEY:-}")
 $(emit_secret_arn_if_set "GRIDICS_CONSUMER_KEY" "uzone/gridics-consumer-key" "${GRIDICS_CONSUMER_KEY:-}")
 $(emit_secret_arn_if_set "GRIDICS_CONSUMER_SECRET" "uzone/gridics-consumer-secret" "${GRIDICS_CONSUMER_SECRET:-}")
@@ -184,5 +215,9 @@ fi
 
 if [[ "${SKIP_TERRAFORM_APPLY}" != "1" ]]; then
   terraform apply -auto-approve
-  echo "alb_dns_name: $(terraform output -raw alb_dns_name)"
+  ALB_DNS_NAME="$(terraform output -raw alb_dns_name)"
+  echo "alb_dns_name: ${ALB_DNS_NAME}"
+  wait_for_expected_status "${SMOKE_TEST_BASE_URL}/api/health" "200" "${SMOKE_TEST_TIMEOUT_SECONDS}"
+  wait_for_expected_status "${SMOKE_TEST_BASE_URL}/api/health/agent-os" "200" "${SMOKE_TEST_TIMEOUT_SECONDS}"
+  wait_for_expected_status "${SMOKE_TEST_BASE_URL}/api/agents/customer-zoning-agent/runs" "422" "${SMOKE_TEST_TIMEOUT_SECONDS}"
 fi

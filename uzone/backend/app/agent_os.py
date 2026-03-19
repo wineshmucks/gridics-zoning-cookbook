@@ -64,8 +64,8 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()
-        elif path.startswith("/api/agents"):
-            rewritten = path[4:]
+        elif path.startswith("/api/agents/customer-zoning-agent"):
+            rewritten = path.replace("/api/agents/customer-zoning-agent", "/teams/customer-zoning-agent", 1)
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()
@@ -74,8 +74,8 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()
-        elif path.startswith("/api/agents/customer-zoning-agent"):
-            rewritten = path.replace("/api/agents/customer-zoning-agent", "/teams/customer-zoning-agent", 1)
+        elif path.startswith("/api/agents"):
+            rewritten = path[4:]
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()

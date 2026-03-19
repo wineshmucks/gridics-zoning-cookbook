@@ -18,6 +18,7 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         description="Backend API for the UZone zoning verification platform.",
     )
+    base_app.state.agent_os_enabled = False
 
     @base_app.middleware("http")
     async def rewrite_agent_os_api_paths(request, call_next):
@@ -48,7 +49,9 @@ def create_app() -> FastAPI:
         return base_app
 
     try:
-        return build_agent_os_app(base_app)
+        app = build_agent_os_app(base_app)
+        app.state.agent_os_enabled = True
+        return app
     except Exception:
         logger.exception("Failed to initialize optional AgentOS integration.")
         if settings.require_agent_os:

@@ -57,6 +57,22 @@ if [[ -n "${UZONE_ZONING_AGENT_LLM_API_KEY:-}" ]]; then
   put_secret "uzone/zoning-agent-llm-api-key" "${UZONE_ZONING_AGENT_LLM_API_KEY}"
 fi
 
+if [[ -n "${GOOGLE_API_KEY:-}" ]]; then
+  put_secret "uzone/google-api-key" "${GOOGLE_API_KEY}"
+fi
+
+if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+  put_secret "uzone/openrouter-api-key" "${OPENROUTER_API_KEY}"
+fi
+
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  put_secret "uzone/openai-api-key" "${OPENAI_API_KEY}"
+fi
+
+if [[ -n "${GROQ_API_KEY:-}" ]]; then
+  put_secret "uzone/groq-api-key" "${GROQ_API_KEY}"
+fi
+
 if [[ -n "${GRIDICS_API_KEY:-}" ]]; then
   put_secret "uzone/gridics-api-key" "${GRIDICS_API_KEY}"
 fi
@@ -78,6 +94,10 @@ $(if [[ -n "${UZONE_STRIPE_WEBHOOK_SECRET:-}" ]]; then echo "arn:aws:secretsmana
 $(if [[ -n "${UZONE_RESEND_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/resend-api-key"; fi)
 $(if [[ -n "${UZONE_ZONING_EMBEDDER_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/zoning-embedder-api-key"; fi)
 $(if [[ -n "${UZONE_ZONING_AGENT_LLM_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/zoning-agent-llm-api-key"; fi)
+$(if [[ -n "${GOOGLE_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/google-api-key"; fi)
+$(if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/openrouter-api-key"; fi)
+$(if [[ -n "${OPENAI_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/openai-api-key"; fi)
+$(if [[ -n "${GROQ_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/groq-api-key"; fi)
 $(if [[ -n "${GRIDICS_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/gridics-api-key"; fi)
 $(if [[ -n "${GRIDICS_CONSUMER_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/gridics-consumer-key"; fi)
 $(if [[ -n "${GRIDICS_CONSUMER_SECRET:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/gridics-consumer-secret"; fi)

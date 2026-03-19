@@ -1,12 +1,16 @@
 """Customer-scoped multi-agent zoning team."""
 
 from __future__ import annotations
+from dataclasses import dataclass
 from typing import Any
+from collections.abc import AsyncIterator, Iterator
 
+from agno.models.base import Model
+from agno.models.response import ModelResponse
 from agno.team import Team
 from sqlalchemy import select
 
-from app.agents.factory import build_agent_model, create_agent
+from app.agents.factory import build_agent_model, create_agent, get_model_trace
 from app.agents.tools import analyze_customer_zoning_request, query_customer_zoning_code
 from app.db.models import TenantClient
 from app.db.session import SessionLocal
@@ -15,12 +19,71 @@ from app.services.tenant_service import get_tenant_assistant_settings
 _MODEL_OVERRIDE_METADATA_KEY = "assistant_model_id"
 _MODEL_OVERRIDE_STATE_KEY = "_assistant_model_override_active"
 _TENANT_ASSISTANT_CONFIG_STATE_KEY = "_tenant_assistant_config_active"
+_ASSISTANT_MODEL_TRACE_METADATA_KEY = "assistant_model_trace"
 _DEFAULT_SESSION_STATE = {"active_property_context": None}
 _ASSISTANT_TARGET_IDS = (
     "customer-zoning-agent",
     "parcel-data-agent",
     "code-researcher-agent",
 )
+_CODE_DEFAULT_TARGET_CONFIG = {
+    "customer-zoning-agent": {
+        "provider": "gemini",
+        # "model_id": "gemini-3.1-flash-lite-preview",
+        "model_id": "gemini-flash-lite-latest",
+        "base_url": None,
+    },
+    "parcel-data-agent": {
+        "provider": "groq",
+        "model_id": "llama-3.1-8b-instant",
+        "base_url": None,
+    },
+    "code-researcher-agent": {
+        "provider": "groq",
+        "model_id": "llama-3.3-70b-versatile",
+        "base_url": None,
+    },
+}
+
+
+@dataclass
+class UnconfiguredTenantModel(Model):
+    """Fail-closed placeholder until tenant configuration injects a real model."""
+
+    id: str = "uzone-tenant-config-required"
+    name: str | None = "UZone Tenant Config Required"
+    provider: str | None = "UZone"
+
+    def _raise_unconfigured(self) -> RuntimeError:
+        return RuntimeError(
+            "Assistant setup is incomplete for this jurisdiction. "
+            "Save provider keys and model targets in super-admin assistant setup."
+        )
+
+    def invoke(self, *args, **kwargs) -> ModelResponse:
+        raise self._raise_unconfigured()
+
+    async def ainvoke(self, *args, **kwargs) -> ModelResponse:
+        raise self._raise_unconfigured()
+
+    def invoke_stream(self, *args, **kwargs) -> Iterator[ModelResponse]:
+        raise self._raise_unconfigured()
+        if False:
+            yield ModelResponse()  # pragma: no cover
+
+    async def ainvoke_stream(self, *args, **kwargs) -> AsyncIterator[ModelResponse]:
+        raise self._raise_unconfigured()
+        if False:
+            yield ModelResponse()  # pragma: no cover
+
+    def _parse_provider_response(self, response: Any, **kwargs) -> ModelResponse:
+        raise self._raise_unconfigured()
+
+    def _parse_provider_response_delta(self, response: Any) -> ModelResponse:
+        raise self._raise_unconfigured()
+
+
+_UNCONFIGURED_TENANT_MODEL = UnconfiguredTenantModel()
 
 
 def _get_run_client_id(run_context: Any) -> str | None:
@@ -44,6 +107,48 @@ def _target_members(target: Any) -> list[Any]:
     return list(members) if isinstance(members, list) else []
 
 
+def _resolve_target_config(
+    target_id: str,
+    model_targets: dict[str, dict[str, str | None]],
+) -> dict[str, str | None]:
+    code_default = _CODE_DEFAULT_TARGET_CONFIG.get(target_id, {})
+    saved_target = model_targets.get(target_id) or {}
+    provider = str(saved_target.get("provider") or code_default.get("provider") or "").strip().lower()
+    model_id = str(saved_target.get("model_id") or code_default.get("model_id") or "").strip()
+    base_url = str(saved_target.get("base_url") or code_default.get("base_url") or "").strip() or None
+    return {
+        "provider": provider or None,
+        "model_id": model_id or None,
+        "base_url": base_url,
+        "is_code_default": not bool(saved_target.get("provider") or saved_target.get("model_id") or saved_target.get("base_url")),
+    }
+
+
+def _record_model_trace(metadata: dict[str, Any], target: Any, *, reason: str) -> None:
+    target_id = str(getattr(target, "id", "") or "").strip()
+    if not target_id:
+        return
+
+    trace_entry = {
+        **get_model_trace(getattr(target, "model", None)),
+        "reason": reason,
+    }
+    if not trace_entry.get("provider") and not trace_entry.get("model_id"):
+        return
+
+    trace = metadata.get(_ASSISTANT_MODEL_TRACE_METADATA_KEY)
+    if not isinstance(trace, dict):
+        trace = {}
+        metadata[_ASSISTANT_MODEL_TRACE_METADATA_KEY] = trace
+    trace[target_id] = trace_entry
+
+
+def _record_target_tree_traces(metadata: dict[str, Any], target: Any, *, reason: str) -> None:
+    _record_model_trace(metadata, target, reason=reason)
+    for member in _target_members(target):
+        _record_model_trace(metadata, member, reason=reason)
+
+
 def _apply_tenant_assistant_config(*, agent=None, team=None, run_context, **_: Any) -> None:
     target = _resolve_hook_target(agent=agent, team=team)
     if target is None:
@@ -53,14 +158,15 @@ def _apply_tenant_assistant_config(*, agent=None, team=None, run_context, **_: A
     if not isinstance(metadata, dict):
         return
 
+    metadata.pop(_ASSISTANT_MODEL_TRACE_METADATA_KEY, None)
+
     client_id = _get_run_client_id(run_context)
     if not client_id:
-        return
+        raise RuntimeError(
+            "Tenant client ID is required for jurisdiction-scoped assistant runs."
+        )
 
     provider_keys, model_targets = _load_tenant_assistant_config(client_id)
-    if not model_targets:
-        return
-
     targets_by_id = {str(getattr(target, "id", "") or ""): target}
     for member in _target_members(target):
         member_id = str(getattr(member, "id", "") or "")
@@ -71,34 +177,49 @@ def _apply_tenant_assistant_config(*, agent=None, team=None, run_context, **_: A
     applied_targets: dict[str, dict[str, str | None]] = {}
 
     for target_id in _ASSISTANT_TARGET_IDS:
-        config = model_targets.get(target_id) or {}
+        config = _resolve_target_config(target_id, model_targets)
         provider = str(config.get("provider") or "").strip().lower()
         model_id = str(config.get("model_id") or "").strip()
         base_url = str(config.get("base_url") or "").strip() or None
         resolved_target = targets_by_id.get(target_id)
 
-        if not resolved_target or not provider or not model_id:
+        if not resolved_target:
             continue
+        if not provider or not model_id:
+            raise RuntimeError(
+                f"Assistant setup is incomplete for this jurisdiction. "
+                f"Missing provider/model for target '{target_id}'."
+            )
 
         api_key = provider_keys.get(provider)
+        if not api_key:
+            raise RuntimeError(
+                f"Assistant setup is incomplete for this jurisdiction. "
+                f"Missing API key for provider '{provider}' used by target '{target_id}'."
+            )
         original_models[target_id] = getattr(resolved_target, "model", None)
         resolved_target.model = build_agent_model(
             provider=provider,
             model_id=model_id,
             api_key=api_key,
             base_url=base_url,
+            allow_env_fallback=False,
         )
         applied_targets[target_id] = {
             "provider": provider,
             "model_id": model_id,
             "base_url": base_url,
+            "code_default": bool(config.get("is_code_default")),
         }
 
     if original_models:
         metadata[_TENANT_ASSISTANT_CONFIG_STATE_KEY] = {
             "original_models": original_models,
             "applied_targets": applied_targets,
+            "provider_keys": provider_keys,
         }
+
+    _record_target_tree_traces(metadata, target, reason="tenant_config")
 
 
 def _restore_tenant_assistant_config(*, agent=None, team=None, run_context, **_: Any) -> None:
@@ -126,7 +247,7 @@ def _restore_tenant_assistant_config(*, agent=None, team=None, run_context, **_:
 
     for target_id, original_model in original_models.items():
         resolved_target = targets_by_id.get(target_id)
-        if resolved_target is not None and original_model is not None:
+        if resolved_target is not None:
             resolved_target.model = original_model
 
 # --- HOOKS ---
@@ -142,8 +263,39 @@ def _apply_model_override(*, agent=None, team=None, run_context, **_: Any) -> No
     if not override_model_id: return
     current_model_id = str(getattr(getattr(target, "model", None), "id", "") or "").strip()
     if override_model_id == current_model_id: return
+    tenant_state = metadata.get(_TENANT_ASSISTANT_CONFIG_STATE_KEY)
+    if not isinstance(tenant_state, dict):
+        raise RuntimeError(
+            "Model override requires jurisdiction assistant setup and cannot use environment keys."
+        )
+    applied_targets = tenant_state.get("applied_targets")
+    provider_keys = tenant_state.get("provider_keys")
+    if not isinstance(applied_targets, dict) or not isinstance(provider_keys, dict):
+        raise RuntimeError(
+            "Model override requires jurisdiction assistant setup and cannot use environment keys."
+        )
+    target_id = str(getattr(target, "id", "") or "").strip()
+    target_config = applied_targets.get(target_id)
+    if not isinstance(target_config, dict):
+        raise RuntimeError(
+            f"Model override is not available because target '{target_id}' is not configured for this jurisdiction."
+        )
+    provider = str(target_config.get("provider") or "").strip().lower()
+    base_url = str(target_config.get("base_url") or "").strip() or None
+    api_key = provider_keys.get(provider)
+    if not provider or not api_key:
+        raise RuntimeError(
+            f"Model override is not available because provider '{provider or 'unknown'}' has no jurisdiction API key."
+        )
     metadata[_MODEL_OVERRIDE_STATE_KEY] = {"original_model": getattr(target, "model", None)}
-    target.model = build_agent_model(model_id=override_model_id)
+    target.model = build_agent_model(
+        provider=provider,
+        model_id=override_model_id,
+        api_key=api_key,
+        base_url=base_url,
+        allow_env_fallback=False,
+    )
+    _record_model_trace(metadata, target, reason="ui_model_override")
 
 def _restore_model_override(*, agent=None, team=None, run_context, **_: Any) -> None:
     target = _resolve_hook_target(agent=agent, team=team)
@@ -152,9 +304,7 @@ def _restore_model_override(*, agent=None, team=None, run_context, **_: Any) -> 
     if not isinstance(metadata, dict): return
     override_state = metadata.pop(_MODEL_OVERRIDE_STATE_KEY, None)
     if not isinstance(override_state, dict): return
-    original_model = override_state.get("original_model")
-    if original_model is not None:
-        target.model = original_model
+    target.model = override_state.get("original_model")
 
 
 # --- 1. PARCEL DATA AGENT (API Specialist) ---
@@ -163,7 +313,7 @@ parcel_data_agent = create_agent(
     name="Parcel Data Agent",
     role="Fetch pre-compressed property data from the Gridics API.",
     # Since this agent just passes a string now, you can use a smaller, faster model if desired!
-    model=build_agent_model(provider="groq", model_id="llama-3.1-8b-instant"), 
+    model=_UNCONFIGURED_TENANT_MODEL,
     tools=[analyze_customer_zoning_request],
     instructions=[
         "Your ONLY job is to call `analyze_customer_zoning_request` for the requested address.",
@@ -178,7 +328,7 @@ code_researcher_agent = create_agent(
     id="code-researcher-agent",
     name="Code Researcher Agent",
     role="Query the customer zoning code knowledge base for legal text and citations.",
-    model=build_agent_model(provider="groq", model_id="llama-3.3-70b-versatile"),
+    model=_UNCONFIGURED_TENANT_MODEL,
     tools=[query_customer_zoning_code],
     instructions=[
         "You are the Zoning Code Legal Researcher.",
@@ -229,9 +379,7 @@ def build_customer_zoning_team():
         id="customer-zoning-agent",
         name="Customer Zoning Lead Agent",
         description="Lead zoning consultant orchestrating data extraction and code research to write analysis.",
-        # model=build_agent_model(provider="groq", model_id="qwen/qwen3-32b"),
-        # model=build_agent_model(provider="gemini", model_id="gemini-flash-lite-latest"),
-        model=build_agent_model(provider="gemini", model_id="gemini-3.1-flash-lite-preview"),
+        model=_UNCONFIGURED_TENANT_MODEL,
 
         members=[parcel_data_agent, code_researcher_agent],
         tools=[analyze_customer_zoning_request, query_customer_zoning_code],

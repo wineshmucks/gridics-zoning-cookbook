@@ -12,11 +12,17 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@router.get("/health")
+def root_health() -> dict:
+    return {"status": "ok"}
+
+
 @router.get("/routes")
 def routes() -> dict:
     route_map = {
         "health": [
             "GET /api/health",
+            "GET /health",
             "GET /routes",
         ],
         "auth": [

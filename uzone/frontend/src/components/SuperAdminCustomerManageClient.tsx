@@ -1,11 +1,12 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useActionState, useEffect } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 
 import {
   deleteCustomerAction,
   inviteClientAdminAction,
+  removeCustomerLogoAction,
   removeClientAdminAction,
   saveCustomerGeneralSettingsAction,
   setCustomerActiveStateAction,
@@ -13,6 +14,7 @@ import {
   type InviteAdminState,
   type RemoveAdminState,
 } from '../app/admin/actions'
+import { buildApiUrl } from '../lib/api'
 import { SuperAdminCustomerHeader } from './SuperAdminCustomerIcons'
 
 type AdminMember = {
@@ -34,6 +36,8 @@ type SelectedCustomer = {
   clientId: string
   name: string
   departmentName: string | null
+  pathAlias: string | null
+  logoPath: string | null
   clerkOrganizationId: string
   slug: string | null
   customerId: string | null
@@ -80,6 +84,10 @@ export function SuperAdminCustomerManageClient({
     saveCustomerGeneralSettingsAction,
     initialCustomerMutationState,
   )
+  const [removeLogoState, removeLogoAction, removeLogoPending] = useActionState(
+    removeCustomerLogoAction,
+    initialCustomerMutationState,
+  )
   const [deleteState, deleteAction, deletePending] = useActionState(
     deleteCustomerAction,
     initialCustomerMutationState,
@@ -87,6 +95,7 @@ export function SuperAdminCustomerManageClient({
   const router = useRouter()
   const searchParams = useSearchParams()
   const activeSection = searchParams.get('section') === 'admin-users' ? 'admin-users' : 'general'
+  const [selectedLogoPreviewUrl, setSelectedLogoPreviewUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (generalState.redirectPath) {
@@ -95,12 +104,34 @@ export function SuperAdminCustomerManageClient({
       return
     }
 
-    if (!inviteState.success && !removeState.success && !statusState.success && !generalState.success) {
+    if (
+      !inviteState.success &&
+      !removeState.success &&
+      !statusState.success &&
+      !generalState.success &&
+      !removeLogoState.success
+    ) {
       return
     }
 
     router.refresh()
-  }, [generalState.redirectPath, generalState.success, inviteState.success, removeState.success, router, statusState.success])
+  }, [
+    generalState.redirectPath,
+    generalState.success,
+    inviteState.success,
+    removeLogoState.success,
+    removeState.success,
+    router,
+    statusState.success,
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (selectedLogoPreviewUrl) {
+        URL.revokeObjectURL(selectedLogoPreviewUrl)
+      }
+    }
+  }, [selectedLogoPreviewUrl])
 
   useEffect(() => {
     if (!deleteState.success) {
@@ -115,6 +146,8 @@ export function SuperAdminCustomerManageClient({
     customer.isActive === true ? 'Active' : customer.isActive === false ? 'Inactive' : 'Unprovisioned'
   const statusTone =
     customer.isActive === true ? 'is-active' : customer.isActive === false ? 'is-inactive' : 'is-draft'
+  const currentLogoUrl = customer.logoPath ? buildApiUrl(customer.logoPath) : null
+  const previewLogoUrl = selectedLogoPreviewUrl || currentLogoUrl
 
   return (
     <div className="panel-stack">
@@ -163,6 +196,60 @@ export function SuperAdminCustomerManageClient({
                 <span>Clerk slug</span>
                 <input name="clerkSlug" defaultValue={customer.slug || ''} placeholder="miami-planning" />
               </label>
+              <label className="field">
+                <span>Public path alias</span>
+                <input name="pathAlias" defaultValue={customer.pathAlias || ''} placeholder="/us/fl/miami" />
+              </label>
+              <label className="field">
+                <span>Jurisdiction logo</span>
+                <input
+                  name="logoFile"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] || null
+                    setSelectedLogoPreviewUrl((currentValue) => {
+                      if (currentValue) {
+                        URL.revokeObjectURL(currentValue)
+                      }
+                      return nextFile ? URL.createObjectURL(nextFile) : null
+                    })
+                  }}
+                />
+              </label>
+              {previewLogoUrl ? (
+                <div className="jurisdiction-logo-preview">
+                  <img src={previewLogoUrl} alt={`${customer.name} logo preview`} className="jurisdiction-logo-preview-image" />
+                  <div style={{ color: 'var(--muted)' }}>
+                    {selectedLogoPreviewUrl ? 'New logo preview selected.' : 'Current uploaded logo.'}{' '}
+                    {currentLogoUrl ? (
+                      <a href={currentLogoUrl} target="_blank" rel="noreferrer">
+                        Open full image
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: 'var(--muted)' }}>
+                  No jurisdiction logo uploaded yet. The default building icon will be used.
+                </div>
+              )}
+              {customer.logoPath ? (
+                <div className="admin-action-row">
+                  <input type="hidden" name="customerName" value={customer.name} />
+                  <div style={{ color: 'var(--muted)' }}>
+                    Remove the uploaded logo and revert the header to the default building icon.
+                  </div>
+                  <button
+                    className="button secondary"
+                    type="submit"
+                    formAction={removeLogoAction}
+                    disabled={removeLogoPending}
+                  >
+                    {removeLogoPending ? 'Removing…' : 'Remove Logo'}
+                  </button>
+                </div>
+              ) : null}
               <dl className="detail-list">
                 <div>
                   <dt>Organization ID</dt>
@@ -171,6 +258,10 @@ export function SuperAdminCustomerManageClient({
                 <div>
                   <dt>Slug</dt>
                   <dd>{customer.slug || 'No slug configured'}</dd>
+                </div>
+                <div>
+                  <dt>Public alias</dt>
+                  <dd>{customer.pathAlias || 'No public alias configured'}</dd>
                 </div>
                 <div>
                   <dt>Admin users</dt>
@@ -196,6 +287,12 @@ export function SuperAdminCustomerManageClient({
             ) : null}
             {generalState.success ? (
               <div className="status-banner status-banner-success">{generalState.success}</div>
+            ) : null}
+            {removeLogoState.error ? (
+              <div className="status-banner status-banner-error">{removeLogoState.error}</div>
+            ) : null}
+            {removeLogoState.success ? (
+              <div className="status-banner status-banner-success">{removeLogoState.success}</div>
             ) : null}
           </div>
 

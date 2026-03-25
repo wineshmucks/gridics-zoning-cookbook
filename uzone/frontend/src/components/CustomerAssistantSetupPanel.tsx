@@ -237,6 +237,19 @@ export function CustomerAssistantSetupPanel({
             Save the public zoning code source for {customer.name}. Ingestion uses this URL to build
             the tenant-specific knowledge base.
           </div>
+          <label className="field">
+            <span>Assistant disclaimer</span>
+            <textarea
+              name="assistantDisclaimerText"
+              rows={5}
+              placeholder="Explain that the assistant can make mistakes and that users should verify important information."
+              defaultValue={experienceSettings.assistant_disclaimer_text}
+            />
+          </label>
+          <div style={{ color: 'var(--muted)' }}>
+            This text appears as a first-visit acknowledgement when someone opens the public
+            assistant for this jurisdiction.
+          </div>
           <div className="panel-stack">
             <div className="admin-list-heading">Provider API keys</div>
             <div style={{ color: 'var(--muted)' }}>

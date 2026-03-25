@@ -3,6 +3,7 @@ import { buildServerBackendApiUrl } from '../../lib/backend'
 
 type CustomerChoice = {
   orgid: string
+  path_alias?: string | null
   client_id: string
   city_name: string
   department_name: string

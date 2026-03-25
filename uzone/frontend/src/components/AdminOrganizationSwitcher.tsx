@@ -5,14 +5,15 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { startTransition, useState } from 'react'
 
 import type { ClientMembership } from '../lib/permissions'
-import { replaceOrgIdInPathname } from '../lib/org-url'
+import { buildInternalOrgScopePath, replaceScopePathInPathname } from '../lib/org-url'
 
 type Props = {
   memberships: ClientMembership[]
   selectedOrganizationId: string | null
+  currentScopePath: string | null
 }
 
-export function AdminOrganizationSwitcher({ memberships, selectedOrganizationId }: Props) {
+export function AdminOrganizationSwitcher({ memberships, selectedOrganizationId, currentScopePath }: Props) {
   const { setActive } = useClerk()
   const pathname = usePathname()
   const router = useRouter()
@@ -43,7 +44,11 @@ export function AdminOrganizationSwitcher({ memberships, selectedOrganizationId 
 
     const params = new URLSearchParams(searchParams.toString())
     params.delete('clientid')
-    const nextPathname = replaceOrgIdInPathname(pathname, membership.organizationId)
+    const nextPathname = replaceScopePathInPathname(
+      pathname,
+      currentScopePath,
+      buildInternalOrgScopePath(membership.organizationId),
+    )
     const nextSearch = params.toString()
 
     startTransition(() => {

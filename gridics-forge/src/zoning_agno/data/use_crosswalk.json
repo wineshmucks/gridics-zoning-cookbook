@@ -1,0 +1,163 @@
+{
+  "accessory_dwelling_unit": [
+    "Accessory Dwelling Unit",
+    "Dwelling - Accessory"
+  ],
+  "duplex": [
+    "Duplex",
+    "Dwelling - Duplex"
+  ],
+  "industrialized_housing_unit": [
+    "Industrialized Housing Unit",
+    "Dwelling - Industrialized Housing Unit"
+  ],
+  "manufactured_home": [
+    "Manufactured Home",
+    "Dwelling - Manufactured Home (HUD-Code)"
+  ],
+  "mobile_home": [
+    "Mobile Home",
+    "Dwelling - Mobile Home"
+  ],
+  "large_multifamily": [
+    "Large Multifamily",
+    "Dwelling - Multiple-Family"
+  ],
+  "patio_home": [
+    "Patio Home",
+    "Dwelling - Patio Home"
+  ],
+  "single_family": [
+    "Single Family",
+    "Dwelling - Single Family Detached"
+  ],
+  "townhome": [
+    "Townhome",
+    "Dwelling - Townhome"
+  ],
+  "adult_entertainment": [
+    "Adult Entertainment",
+    "Adult Entertainment Enterprise"
+  ],
+  "affordable_housing": [
+    "Affordable Housing",
+    "Workforce Housing",
+    "Mixed-Income Housing"
+  ],
+  "adult_education": [
+    "Adult Education",
+    "Trade/Business School",
+    "Arts School"
+  ],
+  "agricultural_land": [
+    "Agricultural Land",
+    "Agriculture",
+    "Agricultural Use",
+    "Crop Production"
+  ],
+  "cultural_buildings": [
+    "Cultural Buildings",
+    "Cultural Facilities"
+  ],
+  "day_care": [
+    "Day Care",
+    "Day-Care Operation - Center-Based",
+    "Day Care Operation Home-Based"
+  ],
+  "general_office": [
+    "General Office",
+    "Office (general, professional, financial)"
+  ],
+  "medical_office": [
+    "Medical Office",
+    "Office (general, professional, financial)"
+  ],
+  "home_office_occupation": [
+    "Home Office Occupation",
+    "Home Occupation"
+  ],
+  "medical_clinic_hospital": [
+    "Medical Clinic/Hospital",
+    "Personal Care Facility",
+    "Rehabilitation Facility"
+  ],
+  "light_industrial": [
+    "Light Industrial",
+    "Manufacturing (light)"
+  ],
+  "medium_industrial": [
+    "Medium Industrial",
+    "Manufacturing (light)",
+    "Manufacturing (incidental)"
+  ],
+  "heavy_industrial": [
+    "Heavy Industrial",
+    "Manufacturing (heavy)"
+  ],
+  "church_place_of_worship": [
+    "Assembly",
+    "Church or Place of Worship"
+  ],
+  "assembly": [
+    "Assembly",
+    "Meeting Hall",
+    "Place of Worship"
+  ],
+  "university_college": [
+    "Adult Education",
+    "University/College",
+    "College/University"
+  ],
+  "accessory_structure": [
+    "Agricultural Structures",
+    "Accessory Structure"
+  ],
+  "conservation_land": [
+    "Conservation Land",
+    "Open Space",
+    "Recreation Outdoors (passive)"
+  ],
+  "government_buildings": [
+    "Government Buildings",
+    "Post Office",
+    "Fire/Police Station",
+    "Military and Armed Forces Reserve Center"
+  ],
+  "general_commercial": [
+    "General Commercial",
+    "Retail Sales/Rental (indoor)",
+    "Personal Services",
+    "Service"
+  ],
+  "medical_speciality_commercial": [
+    "Medical/Speciality Commercial",
+    "Medical/Dental Laboratory",
+    "Personal Care Facility"
+  ],
+  "large_lodging": [
+    "Large Lodging",
+    "Hotel/Motel",
+    "Bed & Breakfast"
+  ],
+  "accessory_lodging_unit": [
+    "Accessory Lodging Unit",
+    "Accessory Lodging",
+    "Guest House",
+    "Bed & Breakfast"
+  ],
+  "accessory_office_unit": [
+    "Accessory Office Unit",
+    "Accessory Office",
+    "Administrative Office Accessory",
+    "Home Occupation",
+    "Office (general, professional, financial)"
+  ],
+  "accessory_commercial_unit": [
+    "Accessory Commercial Unit",
+    "Accessory Commercial",
+    "Accessory Retail",
+    "Accessory Sales",
+    "Home Occupation",
+    "Personal Services"
+  ]
+}

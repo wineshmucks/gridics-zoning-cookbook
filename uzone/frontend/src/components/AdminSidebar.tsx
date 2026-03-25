@@ -1,17 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 
 import { ADMIN_SECTIONS } from '../lib/admin-sections'
-import { appendOrgIdToHref, getScopedPathParts } from '../lib/org-url'
+import { appendScopePathToHref } from '../lib/org-url'
 import { AdminSectionIcon } from './AdminSectionIcon'
 
 const SIDEBAR_SECTIONS = ADMIN_SECTIONS.filter((section) => section.slug !== 'jurisdictions')
 
-export function AdminSidebar() {
-  const pathname = usePathname()
-  const { orgId, scopedPathname } = getScopedPathParts(pathname)
+export function AdminSidebar({
+  currentScopePath,
+  scopedPathname,
+}: {
+  currentScopePath: string | null
+  scopedPathname: string
+}) {
 
   return (
     <aside className="admin-sidebar">
@@ -19,7 +22,7 @@ export function AdminSidebar() {
         <div className="admin-sidebar-heading">Configuration</div>
         <nav className="admin-sidebar-nav" aria-label="Admin configuration navigation">
           <Link
-            href={appendOrgIdToHref('/admin', orgId)}
+            href={appendScopePathToHref('/admin', currentScopePath)}
             className={`admin-sidebar-home${scopedPathname === '/admin' ? ' is-active' : ''}`}
           >
             <AdminSectionIcon name="settings" />
@@ -27,7 +30,7 @@ export function AdminSidebar() {
           </Link>
 
           {SIDEBAR_SECTIONS.map((section) => {
-            const href = appendOrgIdToHref(`/admin/${section.slug}`, orgId)
+            const href = appendScopePathToHref(`/admin/${section.slug}`, currentScopePath)
             const isActive = scopedPathname === `/admin/${section.slug}`
 
             return (

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { appendOrgIdToHref } from '../lib/org-url'
+import { appendScopePathToHref, buildAssistantHref } from '../lib/org-url'
 
 type NavItem = {
   href: string
@@ -13,24 +13,34 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Zoning Letters', requiresJurisdiction: true },
-  { href: '/assistant', label: 'Assistant', requiresJurisdiction: true },
+  { href: '/ai-assistant', label: 'Assistant', requiresJurisdiction: true },
   { href: '/request/new', label: 'Property Search', requiresJurisdiction: true },
   { href: '/#features-section', label: 'Resources', requiresJurisdiction: true },
   { href: '/#cta-section', label: 'Contact', requiresJurisdiction: true },
 ]
 
-export function PublicNav({ orgId }: { orgId: string | null }) {
+export function PublicNav({ orgId, scopePath }: { orgId: string | null, scopePath: string | null }) {
   const pathname = usePathname()
+  const isAssistantSurface = pathname === '/ai-assistant' || pathname.startsWith('/ai-assistant/')
+  const isJurisdictionPicker = pathname === '/select-jurisdiction'
+
+  if (isAssistantSurface || isJurisdictionPicker) {
+    return null
+  }
 
   return (
     <nav className="nav nav-public" aria-label="Primary">
       {navItems.map((item) => {
-        const href = appendOrgIdToHref(item.href, orgId)
+        const href =
+          item.href === '/ai-assistant'
+            ? buildAssistantHref(scopePath)
+            : appendScopePathToHref(item.href, scopePath)
         const normalizedHref = item.href.split('#', 1)[0]
         const isActive =
           normalizedHref === '/'
-            ? pathname === '/' || pathname === `/${orgId}`
-            : normalizedHref !== '' && pathname.startsWith(normalizedHref)
+            ? pathname === '/' || (scopePath ? pathname === scopePath : pathname === `/${orgId}`)
+            : normalizedHref !== '' &&
+              (scopePath ? pathname === `${scopePath}${normalizedHref}` || pathname.startsWith(`${scopePath}${normalizedHref}/`) : pathname.startsWith(normalizedHref))
         const isDisabled = item.requiresJurisdiction && !orgId
 
         if (isDisabled) {
@@ -50,6 +60,8 @@ export function PublicNav({ orgId }: { orgId: string | null }) {
           <Link
             key={item.label}
             href={href}
+            target={item.href === '/ai-assistant' ? '_blank' : undefined}
+            rel={item.href === '/ai-assistant' ? 'noreferrer' : undefined}
             className={`nav-public-link${isActive ? ' is-active' : ''}`}
           >
             {item.label}

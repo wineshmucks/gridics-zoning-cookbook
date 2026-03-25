@@ -1,8 +1,11 @@
 """Admin routes."""
 
 import re
+from pathlib import Path
+from secrets import token_hex
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -51,13 +54,19 @@ from app.services.email_template_service import get_default_email_templates, get
 from app.services.cache_service import get_cache_service
 from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
 from app.services.tenant_service import (
+    get_tenant_path_alias,
     get_home_page_content_record,
     get_home_page_content_payload,
     get_tenant_assistant_settings,
+    get_tenant_assistant_disclaimer_text,
     get_tenant_experience_settings,
+    get_tenant_logo_path,
     has_home_page_content_storage,
     invalidate_tenant_cache,
+    merge_tenant_branding_settings,
+    merge_tenant_path_alias_settings,
     merge_tenant_experience_settings,
+    normalize_tenant_path_alias,
 )
 from app.services.zoning_knowledge_service import (
     build_zoning_knowledge_status,
@@ -67,6 +76,15 @@ from app.services.zoning_knowledge_service import (
 )
 
 router = APIRouter()
+
+ALLOWED_LOGO_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
+LOGO_FILE_EXTENSION_BY_CONTENT_TYPE = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+}
+MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024
 
 
 def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
@@ -186,6 +204,30 @@ def _get_tenant_client_by_lookup(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant client not found")
 
 
+def _tenant_logo_dir() -> Path:
+    logo_dir = Path(settings.artifacts_dir) / "tenant-logos"
+    logo_dir.mkdir(parents=True, exist_ok=True)
+    return logo_dir
+
+
+def _safe_remove_logo_file(logo_path: str | None) -> None:
+    if not logo_path:
+        return
+
+    prefix = "/api/admin/assets/tenant-logos/"
+    if not logo_path.startswith(prefix):
+        return
+
+    candidate = _tenant_logo_dir() / logo_path.removeprefix(prefix)
+    try:
+        candidate.resolve().relative_to(_tenant_logo_dir().resolve())
+    except ValueError:
+        return
+
+    if candidate.exists():
+        candidate.unlink()
+
+
 @router.post("/clients", response_model=TenantClientRead, status_code=status.HTTP_201_CREATED)
 def create_tenant_client(
     payload: TenantClientCreate,
@@ -288,6 +330,34 @@ def update_tenant_client(
             )
         tenant_client.clerk_organization_id = clerk_organization_id
 
+    if payload.path_alias is not None:
+        try:
+            normalized_path_alias = normalize_tenant_path_alias(payload.path_alias)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+        existing_alias_client = next(
+            (
+                candidate
+                for candidate in db.scalars(select(TenantClient).where(TenantClient.id != tenant_client.id)).all()
+                if get_tenant_path_alias(candidate.settings_json) == normalized_path_alias
+            ),
+            None,
+        )
+        if existing_alias_client is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Path alias is already assigned to another tenant client.",
+            )
+
+        tenant_client.settings_json = merge_tenant_path_alias_settings(
+            tenant_client.settings_json,
+            path_alias=normalized_path_alias,
+        )
+
     if payload.is_active is not None:
         tenant_client.is_active = payload.is_active
 
@@ -309,6 +379,75 @@ def update_tenant_client(
     return TenantClientRead.model_validate(tenant_client)
 
 
+@router.post("/clients/{organization_id}/logo", response_model=TenantClientRead)
+async def upload_tenant_client_logo(
+    organization_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> TenantClientRead:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    content_type = (file.content_type or "").strip().lower()
+    if content_type not in ALLOWED_LOGO_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Logo must be a PNG, JPEG, WebP, or SVG image.",
+        )
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Logo file is required.")
+    if len(payload) > MAX_LOGO_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Logo must be 2 MB or smaller.")
+
+    extension = LOGO_FILE_EXTENSION_BY_CONTENT_TYPE[content_type]
+    filename = f"{tenant_client.id}-{token_hex(8)}{extension}"
+    destination = _tenant_logo_dir() / filename
+    destination.write_bytes(payload)
+
+    previous_logo_path = get_tenant_logo_path(tenant_client.settings_json)
+    tenant_client.settings_json = merge_tenant_branding_settings(
+        tenant_client.settings_json,
+        logo_path=f"/api/admin/assets/tenant-logos/{filename}",
+    )
+    db.commit()
+    db.refresh(tenant_client)
+    invalidate_tenant_cache()
+    _safe_remove_logo_file(previous_logo_path)
+    return TenantClientRead.model_validate(tenant_client)
+
+
+@router.delete("/clients/{organization_id}/logo", response_model=TenantClientRead)
+def delete_tenant_client_logo(
+    organization_id: str,
+    db: Session = Depends(get_db),
+) -> TenantClientRead:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    previous_logo_path = get_tenant_logo_path(tenant_client.settings_json)
+    tenant_client.settings_json = merge_tenant_branding_settings(
+        tenant_client.settings_json,
+        logo_path=None,
+    )
+    db.commit()
+    db.refresh(tenant_client)
+    invalidate_tenant_cache()
+    _safe_remove_logo_file(previous_logo_path)
+    return TenantClientRead.model_validate(tenant_client)
+
+
+@router.get("/assets/tenant-logos/{filename}")
+def get_tenant_logo_asset(filename: str) -> FileResponse:
+    asset_path = (_tenant_logo_dir() / filename).resolve()
+    try:
+        asset_path.relative_to(_tenant_logo_dir().resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not found") from exc
+
+    if not asset_path.exists() or not asset_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not found")
+
+    return FileResponse(asset_path)
+
+
 @router.delete("/clients/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tenant_client(
     organization_id: str,
@@ -328,8 +467,10 @@ def get_tenant_experience_settings_route(
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
     assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
     return TenantExperienceSettingsRead(
         zoning_code_url=zoning_code_url,
+        assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
@@ -348,6 +489,9 @@ def update_tenant_experience_settings(
         tenant_client.settings_json,
         agent_url=agent_url,
         zoning_code_url=payload.zoning_code_url.strip() if payload.zoning_code_url else None,
+        assistant_disclaimer_text=payload.assistant_disclaimer_text.strip()
+        if payload.assistant_disclaimer_text
+        else None,
         assistant_provider_keys=payload.assistant_provider_keys,
         assistant_model_targets=payload.assistant_model_targets,
     )
@@ -357,8 +501,10 @@ def update_tenant_experience_settings(
     invalidate_tenant_cache()
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
     assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
     return TenantExperienceSettingsRead(
         zoning_code_url=zoning_code_url,
+        assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { getServerBackendOrigin } from '../../lib/backend'
+import { DEFAULT_ASSISTANT_DISCLAIMER_TEXT } from '../../lib/assistant-disclaimer'
 import { getCurrentOrgId } from '../../lib/org-context'
 import { getClerkManagementClient } from '../../lib/clerk'
 import { getPermissionContext } from '../../lib/permissions'
@@ -38,6 +39,10 @@ export type CustomerRecord = {
   city_name: string
   department_name: string
   is_active: boolean
+  settings_json?: {
+    header_logo_path?: string | null
+    [key: string]: unknown
+  } | null
 }
 
 export type CustomerExperienceSettingsState = {
@@ -48,6 +53,7 @@ export type CustomerExperienceSettingsState = {
 
 export type CustomerExperienceSettings = {
   zoning_code_url: string | null
+  assistant_disclaimer_text: string
   assistant_provider_keys: Record<string, string | null>
   assistant_model_targets: Record<
     string,
@@ -291,6 +297,7 @@ function buildEmptyCustomerZoningKnowledgeStatus(
 function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
   return {
     zoning_code_url: null,
+    assistant_disclaimer_text: DEFAULT_ASSISTANT_DISCLAIMER_TEXT,
     assistant_provider_keys: {
       gemini: null,
       openrouter: null,
@@ -340,6 +347,10 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
 
   return {
     zoning_code_url: typeof record.zoning_code_url === 'string' ? record.zoning_code_url : null,
+    assistant_disclaimer_text:
+      typeof record.assistant_disclaimer_text === 'string' && record.assistant_disclaimer_text.trim()
+        ? record.assistant_disclaimer_text.trim()
+        : fallback.assistant_disclaimer_text,
     assistant_provider_keys,
     assistant_model_targets,
   }
@@ -609,6 +620,7 @@ async function updateTenantClientGeneralDetails(
     cityName: string
     departmentName: string
     clerkOrganizationId: string
+    pathAlias: string | null
   },
 ) {
   const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}`), {
@@ -621,6 +633,7 @@ async function updateTenantClientGeneralDetails(
       city_name: payload.cityName,
       department_name: payload.departmentName,
       clerk_organization_id: payload.clerkOrganizationId,
+      path_alias: payload.pathAlias,
     }),
   })
 
@@ -628,6 +641,36 @@ async function updateTenantClientGeneralDetails(
     const payload = await response.json().catch(() => null)
     throw new Error(
       typeof payload?.detail === 'string' ? payload.detail : 'Unable to update jurisdiction details.',
+    )
+  }
+}
+
+async function uploadTenantClientLogo(organizationId: string, logoFile: File) {
+  const formData = new FormData()
+  formData.set('file', logoFile)
+
+  const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}/logo`), {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to upload jurisdiction logo.',
+    )
+  }
+}
+
+async function removeTenantClientLogo(organizationId: string) {
+  const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}/logo`), {
+    method: 'DELETE',
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to remove jurisdiction logo.',
     )
   }
 }
@@ -708,6 +751,7 @@ export async function saveCustomerExperienceSettingsAction(
 
   const organizationId = String(formData.get('organizationId') || '').trim()
   const zoningCodeUrl = String(formData.get('zoningCodeUrl') || '').trim()
+  const assistantDisclaimerText = String(formData.get('assistantDisclaimerText') || '').trim()
   const assistantProviderKeys = {
     gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
     openrouter: String(formData.get('providerKeyOpenrouter') || '').trim() || null,
@@ -748,6 +792,7 @@ export async function saveCustomerExperienceSettingsAction(
         },
         body: JSON.stringify({
           zoning_code_url: zoningCodeUrl || null,
+          assistant_disclaimer_text: assistantDisclaimerText || null,
           assistant_provider_keys: assistantProviderKeys,
           assistant_model_targets: assistantModelTargets,
         }),
@@ -1190,8 +1235,10 @@ export async function saveCustomerGeneralSettingsAction(
   const cityName = String(formData.get('cityName') || '').trim()
   const departmentName = String(formData.get('departmentName') || '').trim()
   const clerkOrganizationId = String(formData.get('clerkOrganizationId') || '').trim()
+  const pathAliasRaw = String(formData.get('pathAlias') || '').trim()
   const clerkSlugRaw = String(formData.get('clerkSlug') || '').trim()
   const clerkSlug = clerkSlugRaw || undefined
+  const logoFile = formData.get('logoFile')
 
   if (!organizationId) {
     return { error: 'Organization is required.', success: null }
@@ -1226,7 +1273,11 @@ export async function saveCustomerGeneralSettingsAction(
       cityName,
       departmentName,
       clerkOrganizationId,
+      pathAlias: pathAliasRaw || null,
     })
+    if (logoFile instanceof File && logoFile.size > 0) {
+      await uploadTenantClientLogo(organizationId, logoFile)
+    }
     revalidatePath('/super-admin')
     revalidatePath(`/super-admin/customers/${organizationId}`)
     revalidatePath(`/super-admin/customers/${clerkOrganizationId}`)
@@ -1250,6 +1301,43 @@ export async function saveCustomerGeneralSettingsAction(
       error: getErrorMessage(error, 'Unable to update jurisdiction details.'),
       success: null,
       redirectPath: null,
+    }
+  }
+}
+
+export async function removeCustomerLogoAction(
+  _previousState: CustomerMutationState,
+  formData: FormData,
+): Promise<CustomerMutationState> {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    return { error: 'Only super admins can remove jurisdiction logos.', success: null }
+  }
+
+  const organizationId = String(formData.get('organizationId') || '').trim()
+  const customerName = String(formData.get('customerName') || '').trim()
+
+  if (!organizationId) {
+    return { error: 'Organization is required.', success: null }
+  }
+
+  try {
+    await removeTenantClientLogo(organizationId)
+    revalidatePath('/super-admin')
+    revalidatePath(`/super-admin/customers/${organizationId}`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant-setup`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant`)
+
+    return {
+      error: null,
+      success: `${customerName || 'Jurisdiction'} logo was removed.`,
+    }
+  } catch (error) {
+    return {
+      error: getErrorMessage(error, 'Unable to remove jurisdiction logo.'),
+      success: null,
     }
   }
 }

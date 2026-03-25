@@ -83,6 +83,19 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
         clientId: tenantRecord?.client_id || organizationId,
         name: tenantRecord?.city_name || organization?.name || organizationId,
         departmentName: tenantRecord?.department_name || null,
+        pathAlias:
+          tenantRecord?.settings_json &&
+          typeof tenantRecord.settings_json.path_alias === 'string'
+            ? tenantRecord.settings_json.path_alias
+            : tenantRecord?.settings_json &&
+                typeof (tenantRecord.settings_json as Record<string, unknown>).pathAlias === 'string'
+              ? ((tenantRecord.settings_json as Record<string, unknown>).pathAlias as string)
+            : null,
+        logoPath:
+          tenantRecord?.settings_json &&
+          typeof tenantRecord.settings_json.header_logo_path === 'string'
+            ? tenantRecord.settings_json.header_logo_path
+            : null,
         clerkOrganizationId: tenantRecord?.clerk_organization_id || organization?.id || organizationId,
         slug: organization?.slug || null,
         customerId: organization?.id || tenantRecord?.clerk_organization_id || null,

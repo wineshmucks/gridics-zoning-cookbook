@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation'
 
 import { AdminDashboardClient } from '../../components/AdminDashboardClient'
-import { getCurrentOrgId } from '../../lib/org-context'
+import { getCurrentOrgId, getCurrentScopePath } from '../../lib/org-context'
 import { getPermissionContext } from '../../lib/permissions'
 
 export default async function AdminPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
   const requestedOrgId = await getCurrentOrgId()
+  const currentScopePath = await getCurrentScopePath()
 
   if (!permissions.canAccessAdminScreens) {
     return (
@@ -27,5 +28,5 @@ export default async function AdminPage() {
     redirect(`/${encodeURIComponent(selectedOrganizationId)}/admin`)
   }
 
-  return <AdminDashboardClient clerkEnabled={clerkEnabled} />
+  return <AdminDashboardClient clerkEnabled={clerkEnabled} currentScopePath={currentScopePath} />
 }

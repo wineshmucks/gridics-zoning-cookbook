@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 
 import type { AdminSection } from '../lib/admin-sections'
+import { appendScopePathToHref } from '../lib/org-url'
 import { AdminSidebar } from './AdminSidebar'
 import { AdminEmailTemplatesPage } from './AdminEmailTemplatesPage'
 import { AdminFeeStructurePage } from './AdminFeeStructurePage'
@@ -11,12 +12,14 @@ import { AdminSectionTitle } from './AdminSectionTitle'
 export async function AdminSectionPage({ section }: { section: AdminSection }) {
   const headerStore = await headers()
   const currentOrgId = headerStore.get('x-uzone-orgid') || null
-  const adminOverviewHref = currentOrgId ? `/${encodeURIComponent(currentOrgId)}/admin` : '/admin'
+  const currentScopePath = headerStore.get('x-uzone-scope-path') || (currentOrgId ? `/${encodeURIComponent(currentOrgId)}` : null)
+  const scopedPathname = headerStore.get('x-uzone-scoped-path') || '/admin'
+  const adminOverviewHref = appendScopePathToHref('/admin', currentScopePath)
 
   if (section.slug === 'email-settings') {
     return (
       <div className="admin-layout">
-        <AdminSidebar />
+        <AdminSidebar currentScopePath={currentScopePath} scopedPathname={scopedPathname} />
         <div className="admin-content">
           <AdminEmailTemplatesPage />
         </div>
@@ -27,7 +30,7 @@ export async function AdminSectionPage({ section }: { section: AdminSection }) {
   if (section.slug === 'fee-structure') {
     return (
       <div className="admin-layout">
-        <AdminSidebar />
+        <AdminSidebar currentScopePath={currentScopePath} scopedPathname={scopedPathname} />
         <div className="admin-content">
           <AdminFeeStructurePage />
         </div>
@@ -38,7 +41,7 @@ export async function AdminSectionPage({ section }: { section: AdminSection }) {
   if (section.slug === 'home-page') {
     return (
       <div className="admin-layout">
-        <AdminSidebar />
+        <AdminSidebar currentScopePath={currentScopePath} scopedPathname={scopedPathname} />
         <div className="admin-content">
           <AdminHomePagePage />
         </div>
@@ -48,7 +51,7 @@ export async function AdminSectionPage({ section }: { section: AdminSection }) {
 
   return (
     <div className="admin-layout">
-      <AdminSidebar />
+      <AdminSidebar currentScopePath={currentScopePath} scopedPathname={scopedPathname} />
 
       <section className="card admin-section-detail admin-content">
         <div className="admin-header">

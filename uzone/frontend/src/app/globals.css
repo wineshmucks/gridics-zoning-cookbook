@@ -147,9 +147,41 @@ main {
   font-weight: 700;
 }
 
+.brand-mark-has-image {
+  background: transparent;
+  color: inherit;
+}
+
 .building-logo {
   width: 22px;
   height: 22px;
+}
+
+.building-logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.jurisdiction-logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.jurisdiction-logo-preview-image {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid var(--border);
+  padding: 8px;
+  flex: 0 0 auto;
 }
 
 .brand-mark-public {
@@ -1535,6 +1567,61 @@ main {
 
 .fee-modal-close:hover {
   background: rgba(15, 23, 42, 0.1);
+}
+
+.assistant-disclaimer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.44);
+  backdrop-filter: blur(6px);
+}
+
+.assistant-disclaimer-modal {
+  width: min(640px, 100%);
+  display: grid;
+  gap: 16px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+}
+
+.assistant-disclaimer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.assistant-disclaimer-close {
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  color: #334155;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.assistant-disclaimer-close:hover {
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.assistant-disclaimer-copy {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.assistant-disclaimer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .fee-summary-list,
@@ -3317,6 +3404,25 @@ main {
   justify-content: flex-start;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.assistant-ui-powered-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.assistant-ui-powered-footer a {
+  color: #0f766e;
+  text-decoration: none;
+}
+
+.assistant-ui-powered-footer a:hover {
+  text-decoration: underline;
 }
 
 .assistant-ui-composer-hint {

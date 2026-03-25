@@ -218,6 +218,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# gridics-forge generated spreadsheets
+/gridics-forge/cache/
+/gridics-forge/out/
+/gridics-forge/**/*.xlsx
+!/gridics-forge/data/templates/*.xlsx
 .npm/
 .pnpm-store/
 .yarn/

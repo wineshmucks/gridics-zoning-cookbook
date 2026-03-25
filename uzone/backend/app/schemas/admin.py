@@ -285,11 +285,13 @@ class TenantClientUpdate(BaseModel):
     city_name: str | None = Field(default=None, min_length=1, max_length=255)
     department_name: str | None = Field(default=None, min_length=1, max_length=255)
     clerk_organization_id: str | None = Field(default=None, min_length=1, max_length=255)
+    path_alias: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
 
 
 class TenantExperienceSettingsRead(BaseModel):
     zoning_code_url: str | None
+    assistant_disclaimer_text: str
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     raw_settings_json: dict | None = None
@@ -300,6 +302,7 @@ class TenantExperienceSettingsRead(BaseModel):
 
 class TenantExperienceSettingsUpdate(BaseModel):
     zoning_code_url: str | None = Field(default=None, max_length=2000)
+    assistant_disclaimer_text: str | None = Field(default=None, max_length=8000)
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
 

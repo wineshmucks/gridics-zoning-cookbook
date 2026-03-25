@@ -741,6 +741,8 @@ export function AgentChatPanel({
   const normalizedDefaultModelId = defaultModelId.trim()
   const isModelOverrideActive =
     Boolean(normalizedModelId) && normalizedModelId !== normalizedDefaultModelId
+  const showPublicAssistantFooter = surface === "public-assistant"
+  const currentYear = new Date().getFullYear()
 
   useEffect(() => {
     setModelId((currentModelId) => {
@@ -1447,6 +1449,18 @@ export function AgentChatPanel({
               {isStreaming ? "Stop & Reset" : "New Chat"}
             </button>
           </div>
+          {showPublicAssistantFooter ? (
+            <div className="assistant-ui-powered-footer">
+              <span>Powered by Gridics.</span>
+              <span>Copyright © {currentYear} Gridics. All rights reserved.</span>
+              <a href="https://gridics.com/privacy/" target="_blank" rel="noreferrer">
+                Privacy
+              </a>
+              <a href="https://gridics.com/terms/" target="_blank" rel="noreferrer">
+                Terms of Service
+              </a>
+            </div>
+          ) : null}
           {composerError ? <div className="status-banner status-banner-error">{composerError}</div> : null}
         </div>
       </div>

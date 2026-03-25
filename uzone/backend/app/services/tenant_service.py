@@ -19,6 +19,8 @@ class TenantPublicConfig:
     clerk_organization_id: str | None
     city_name: str
     department_name: str
+    path_alias: str | None
+    logo_path: str | None
     standard_letter_fee_cents: int
     comprehensive_letter_fee_cents: int
     expedited_fee_cents: int
@@ -28,14 +30,36 @@ class TenantPublicConfig:
     jurisdiction_id: str | None
     agent_url: str | None
     zoning_code_url: str | None
+    assistant_disclaimer_text: str
     home_page_content: dict
 
 
 AGENT_URL_SETTING_KEY = "agent_url"
 ZONING_CODE_URL_SETTING_KEY = "zoning_code_url"
+HEADER_LOGO_PATH_SETTING_KEY = "header_logo_path"
+PATH_ALIAS_SETTING_KEY = "path_alias"
 ASSISTANT_PROVIDER_KEYS_SETTING_KEY = "assistant_provider_keys"
 ASSISTANT_MODEL_TARGETS_SETTING_KEY = "assistant_model_targets"
+ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY = "assistant_disclaimer_text"
 SUPPORTED_ASSISTANT_PROVIDERS = ("gemini", "openrouter", "openai", "groq")
+DEFAULT_ASSISTANT_DISCLAIMER_TEXT = (
+    "This AI assistant may make mistakes. Please verify important zoning, permitting, and code "
+    "information with official jurisdiction staff, adopted ordinances, and other authoritative sources "
+    "before relying on it."
+)
+RESERVED_PUBLIC_PATH_SEGMENTS = {
+    "_next",
+    "_internal",
+    "api",
+    "account",
+    "admin",
+    "assistant",
+    "request",
+    "requests",
+    "staff",
+    "super-admin",
+    "select-jurisdiction",
+}
 
 
 def _normalize_assistant_provider_keys(value: object) -> dict[str, str | None]:
@@ -103,6 +127,61 @@ def get_tenant_experience_settings(settings_json: dict | None) -> tuple[str | No
     )
 
 
+def get_tenant_logo_path(settings_json: dict | None) -> str | None:
+    if not isinstance(settings_json, dict):
+        return None
+
+    logo_path = settings_json.get(HEADER_LOGO_PATH_SETTING_KEY)
+    return logo_path if isinstance(logo_path, str) and logo_path.strip() else None
+
+
+def normalize_tenant_path_alias(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    parts = [part.strip().lower() for part in value.split("/") if part.strip()]
+    if not parts:
+        return None
+    if parts[0] in RESERVED_PUBLIC_PATH_SEGMENTS:
+        raise ValueError(f"The alias cannot start with '/{parts[0]}'.")
+    return "/" + "/".join(parts)
+
+
+def get_tenant_path_alias(settings_json: dict | None) -> str | None:
+    if not isinstance(settings_json, dict):
+        return None
+
+    raw_alias = settings_json.get(PATH_ALIAS_SETTING_KEY)
+    if not isinstance(raw_alias, str):
+        return None
+    try:
+        return normalize_tenant_path_alias(raw_alias)
+    except ValueError:
+        return None
+
+
+def merge_tenant_branding_settings(existing_settings: dict | None, *, logo_path: str | None) -> dict:
+    next_settings = dict(existing_settings) if isinstance(existing_settings, dict) else {}
+
+    if logo_path:
+        next_settings[HEADER_LOGO_PATH_SETTING_KEY] = logo_path
+    else:
+        next_settings.pop(HEADER_LOGO_PATH_SETTING_KEY, None)
+
+    return next_settings
+
+
+def merge_tenant_path_alias_settings(existing_settings: dict | None, *, path_alias: str | None) -> dict:
+    next_settings = dict(existing_settings) if isinstance(existing_settings, dict) else {}
+
+    if path_alias:
+        next_settings[PATH_ALIAS_SETTING_KEY] = path_alias
+    else:
+        next_settings.pop(PATH_ALIAS_SETTING_KEY, None)
+
+    return next_settings
+
+
 def get_tenant_assistant_settings(
     settings_json: dict | None,
 ) -> tuple[dict[str, str | None], dict[str, dict[str, str | None]]]:
@@ -119,11 +198,23 @@ def get_tenant_assistant_settings(
     return provider_keys, model_targets
 
 
+def get_tenant_assistant_disclaimer_text(settings_json: dict | None) -> str:
+    if not isinstance(settings_json, dict):
+        return DEFAULT_ASSISTANT_DISCLAIMER_TEXT
+
+    disclaimer_text = settings_json.get(ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY)
+    if not isinstance(disclaimer_text, str) or not disclaimer_text.strip():
+        return DEFAULT_ASSISTANT_DISCLAIMER_TEXT
+
+    return disclaimer_text.strip()
+
+
 def merge_tenant_experience_settings(
     existing_settings: dict | None,
     *,
     agent_url: str | None,
     zoning_code_url: str | None,
+    assistant_disclaimer_text: str | None = None,
     assistant_provider_keys: dict[str, str | None] | None = None,
     assistant_model_targets: dict[str, dict[str, str | None]] | None = None,
 ) -> dict:
@@ -138,6 +229,11 @@ def merge_tenant_experience_settings(
         next_settings[ZONING_CODE_URL_SETTING_KEY] = zoning_code_url
     else:
         next_settings.pop(ZONING_CODE_URL_SETTING_KEY, None)
+
+    if assistant_disclaimer_text:
+        next_settings[ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY] = assistant_disclaimer_text.strip()
+    else:
+        next_settings.pop(ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY, None)
 
     if assistant_provider_keys is not None:
         normalized_provider_keys = _normalize_assistant_provider_keys(assistant_provider_keys)
@@ -299,6 +395,8 @@ def _to_public_config(
         clerk_organization_id=client.clerk_organization_id,
         city_name=client.city_name,
         department_name=client.department_name,
+        path_alias=get_tenant_path_alias(client.settings_json),
+        logo_path=get_tenant_logo_path(client.settings_json),
         standard_letter_fee_cents=client.standard_letter_fee_cents,
         comprehensive_letter_fee_cents=client.comprehensive_letter_fee_cents,
         expedited_fee_cents=client.expedited_fee_cents,
@@ -308,6 +406,7 @@ def _to_public_config(
         jurisdiction_id=client.jurisdiction_id,
         agent_url=agent_url,
         zoning_code_url=zoning_code_url,
+        assistant_disclaimer_text=get_tenant_assistant_disclaimer_text(client.settings_json),
         home_page_content=get_home_page_content_payload(home_page_content_record, client),
     )
 
@@ -318,11 +417,18 @@ def resolve_tenant_public_config(
     host: str | None = None,
     client_id: str | None = None,
     organization_id: str | None = None,
+    path_alias: str | None = None,
 ) -> TenantPublicConfig | None:
     normalized_host = normalize_hostname(host)
     normalized_client_id = client_id.strip().lower() if client_id else None
     normalized_organization_id = organization_id.strip() if organization_id else None
-    key = f"tenant-public:{_cache_key(host=normalized_host, client_id=normalized_client_id, organization_id=normalized_organization_id)}"
+    normalized_path_alias = normalize_tenant_path_alias(path_alias) if path_alias else None
+    cache_key_value = (
+        f"alias:{normalized_path_alias.lower()}"
+        if normalized_path_alias
+        else _cache_key(host=normalized_host, client_id=normalized_client_id, organization_id=normalized_organization_id)
+    )
+    key = f"tenant-public:{cache_key_value}"
     cache = get_cache_service()
     cached = cache.get_json(key)
     if cached is not cache.cache_miss:
@@ -346,6 +452,18 @@ def resolve_tenant_public_config(
                 | (func.lower(TenantClient.client_id) == normalized_organization_id_lower),
                 TenantClient.is_active.is_(True),
             )
+        )
+    elif normalized_path_alias:
+        candidates = db.scalars(
+            select(TenantClient).where(TenantClient.is_active.is_(True))
+        ).all()
+        client = next(
+            (
+                candidate
+                for candidate in candidates
+                if get_tenant_path_alias(candidate.settings_json) == normalized_path_alias
+            ),
+            None,
         )
     elif normalized_host:
         client = db.scalar(

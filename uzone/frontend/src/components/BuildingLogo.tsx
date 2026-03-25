@@ -1,4 +1,16 @@
-export function BuildingLogo() {
+import { buildApiUrl } from '../lib/api'
+
+type Props = {
+  logoUrl?: string | null
+  alt?: string
+}
+
+export function BuildingLogo({ logoUrl, alt = 'Logo' }: Props) {
+  if (logoUrl) {
+    const resolvedLogoUrl = logoUrl.startsWith('/') ? buildApiUrl(logoUrl) : logoUrl
+    return <img src={resolvedLogoUrl} alt={alt} className="building-logo building-logo-image" />
+  }
+
   return (
     <svg
       aria-hidden="true"

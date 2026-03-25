@@ -3,10 +3,11 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
-import { appendOrgIdToHref } from '../lib/org-url'
+import { appendScopePathToHref } from '../lib/org-url'
 
 type CustomerChoice = {
   orgid: string
+  path_alias?: string | null
   client_id: string
   city_name: string
   department_name: string
@@ -85,7 +86,7 @@ export function JurisdictionPickerClient({ customers, returnTo }: Props) {
             <div className="jurisdiction-picker-actions">
               <Link
                 className="button jurisdiction-picker-button-primary"
-                href={appendOrgIdToHref(returnTo, customer.orgid)}
+                href={appendScopePathToHref(returnTo, customer.path_alias || `/_internal/${customer.orgid}`)}
                 prefetch={false}
               >
                 Select jurisdiction

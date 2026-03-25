@@ -3,10 +3,16 @@
 import { AdminSidebar } from './AdminSidebar'
 import { AdminSectionTitle } from './AdminSectionTitle'
 
-export function AdminDashboardClient({ clerkEnabled: _clerkEnabled }: { clerkEnabled: boolean }) {
+export function AdminDashboardClient({
+  clerkEnabled: _clerkEnabled,
+  currentScopePath,
+}: {
+  clerkEnabled: boolean
+  currentScopePath: string | null
+}) {
   return (
     <section className="admin-layout">
-      <AdminSidebar />
+      <AdminSidebar currentScopePath={currentScopePath} scopedPathname="/admin" />
 
       <div className="admin-content">
         <div className="card admin-sections-hero">

@@ -1,6 +1,6 @@
 """Public tenant configuration routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,12 @@ from app.api.dependencies import get_db
 from app.core.config import settings
 from app.db.models import TenantClient
 from app.services.clerk_service import get_clerk_organization
-from app.services.tenant_service import resolve_tenant_public_config, tenant_public_config_to_dict
+from app.services.tenant_service import (
+    get_tenant_path_alias,
+    normalize_tenant_path_alias,
+    resolve_tenant_public_config,
+    tenant_public_config_to_dict,
+)
 
 router = APIRouter()
 
@@ -47,6 +52,7 @@ def get_client_config(
     request: Request,
     clientid: str | None = Query(default=None),
     orgid: str | None = Query(default=None),
+    path_alias: str | None = Query(default=None),
     host: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -54,6 +60,7 @@ def get_client_config(
         db,
         client_id=clientid,
         organization_id=orgid,
+        path_alias=path_alias,
         host=host or request.headers.get("host"),
     )
     if resolved is None and orgid:
@@ -63,6 +70,7 @@ def get_client_config(
                 db,
                 client_id=clientid,
                 organization_id=orgid,
+                path_alias=path_alias,
                 host=host or request.headers.get("host"),
             )
     if resolved is None:
@@ -90,7 +98,7 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
         customer_org_id = customer.clerk_organization_id.strip() if customer.clerk_organization_id else None
         customer_org_id_lower = customer_org_id.lower() if customer_org_id else None
         customer_client_id_lower = customer_client_id.lower() if customer_client_id else None
-        public_org_id = customer_client_id or customer_org_id
+        public_org_id = customer_org_id or customer_client_id
 
         if customer_client_id_lower == "gridics":
             continue
@@ -102,6 +110,7 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
         results.append(
             {
                 "orgid": public_org_id,
+                "path_alias": get_tenant_path_alias(customer.settings_json),
                 "client_id": customer.client_id,
                 "city_name": customer.city_name,
                 "department_name": customer.department_name,
@@ -109,3 +118,24 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
         )
 
     return results
+
+
+@router.get("/path-alias")
+def resolve_path_alias(
+    path: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        normalized_path = normalize_tenant_path_alias(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    resolved = resolve_tenant_public_config(db, path_alias=normalized_path)
+    if resolved is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Path alias not found")
+
+    return {
+        "path_alias": resolved.path_alias or normalized_path,
+        "orgid": resolved.clerk_organization_id or resolved.client_id,
+        "client_id": resolved.client_id,
+    }

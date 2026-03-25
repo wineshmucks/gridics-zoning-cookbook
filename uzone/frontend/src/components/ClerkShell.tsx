@@ -13,6 +13,7 @@ type AuthControlsProps = {
   canAccessAdminScreens: boolean
   isSuperAdmin: boolean
   currentOrgId: string | null
+  currentScopePath: string | null
 }
 
 function AuthControls({
@@ -20,8 +21,9 @@ function AuthControls({
   canAccessAdminScreens,
   isSuperAdmin,
   currentOrgId,
+  currentScopePath,
 }: AuthControlsProps) {
-  const adminHref = currentOrgId ? `/${encodeURIComponent(currentOrgId)}/admin` : '/admin'
+  const adminHref = currentScopePath ? `${currentScopePath}/admin` : currentOrgId ? `/${encodeURIComponent(currentOrgId)}/admin` : '/admin'
 
   if (!clerkEnabled) {
     return (

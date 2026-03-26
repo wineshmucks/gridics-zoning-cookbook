@@ -170,7 +170,7 @@ export function SuperAdminCustomerManageClient({
             <div style={{ color: 'var(--muted)' }}>
               Jurisdiction details and lifecycle controls for {customer.name}.
             </div>
-            <form action={generalAction} className="admin-form">
+            <form action={generalAction} className="admin-form" encType="multipart/form-data">
               <input type="hidden" name="organizationId" value={customer.id} />
               <label className="field">
                 <span>Organization ID</span>

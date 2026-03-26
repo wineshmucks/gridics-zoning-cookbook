@@ -23,6 +23,7 @@ aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${BACKEND_REPO_URL%/*}"
 
 docker build \
+  --no-cache \
   -f "${UZONE_DIR}/backend/Dockerfile.prod" \
   -t "${BACKEND_REPO_URL}:${IMAGE_TAG}" \
   "${UZONE_DIR}/backend"
@@ -30,6 +31,7 @@ docker build \
 docker push "${BACKEND_REPO_URL}:${IMAGE_TAG}"
 
 docker build \
+  --no-cache \
   -f "${UZONE_DIR}/frontend/Dockerfile.prod" \
   --build-arg NEXT_PUBLIC_UZONE_API_BASE=/api \
   --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" \

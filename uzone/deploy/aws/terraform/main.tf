@@ -35,6 +35,8 @@ locals {
     cidrsubnet(var.vpc_cidr, 4, 1),
   ]
 
+  assets_bucket_name = "gridics-uzones"
+
   private_subnet_cidrs = [
     cidrsubnet(var.vpc_cidr, 4, 8),
     cidrsubnet(var.vpc_cidr, 4, 9),
@@ -49,6 +51,8 @@ locals {
         UZONE_RUN_SEED_DATA   = "false"
         UZONE_DEV_RELOAD      = "false"
         UZONE_ARTIFACTS_DIR   = "/app/artifacts"
+        UZONE_ASSETS_BUCKET   = aws_s3_bucket.logo_assets.bucket
+        UZONE_ASSETS_PREFIX   = "jurisdictions"
       },
       var.backend_environment
       ) : {
@@ -331,6 +335,40 @@ resource "aws_cloudwatch_log_group" "frontend" {
   tags = local.common_tags
 }
 
+resource "aws_s3_bucket" "logo_assets" {
+  bucket = local.assets_bucket_name
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-logo-assets"
+  })
+}
+
+resource "aws_s3_bucket_public_access_block" "logo_assets" {
+  bucket                  = aws_s3_bucket.logo_assets.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "logo_assets" {
+  bucket = aws_s3_bucket.logo_assets.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "logo_assets" {
+  bucket = aws_s3_bucket.logo_assets.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 resource "aws_ecs_cluster" "main" {
   name = "${local.name_prefix}-cluster"
 
@@ -383,6 +421,33 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
           "kms:Decrypt"
         ]
         Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "ecs_task_logo_assets" {
+  name = "${local.name_prefix}-ecs-task-logo-assets"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+        ]
+        Resource = aws_s3_bucket.logo_assets.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = "${aws_s3_bucket.logo_assets.arn}/*"
       }
     ]
   })

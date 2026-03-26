@@ -21,7 +21,10 @@ const navItems: NavItem[] = [
 
 export function PublicNav({ orgId, scopePath }: { orgId: string | null, scopePath: string | null }) {
   const pathname = usePathname()
-  const isAssistantSurface = pathname === '/ai-assistant' || pathname.startsWith('/ai-assistant/')
+  const isAssistantSurface =
+    pathname === '/ai-assistant' ||
+    pathname.startsWith('/ai-assistant/') ||
+    (scopePath ? pathname === `${scopePath}/assistant` || pathname.startsWith(`${scopePath}/assistant/`) : false)
   const isJurisdictionPicker = pathname === '/select-jurisdiction'
 
   if (isAssistantSurface || isJurisdictionPicker) {

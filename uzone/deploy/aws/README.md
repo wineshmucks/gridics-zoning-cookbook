@@ -12,6 +12,7 @@ This directory contains a pragmatic AWS deployment baseline for `uzone/`:
 - `database`: Amazon RDS for PostgreSQL
 - `ingress`: Application Load Balancer
 - `images`: Amazon ECR
+- `assets`: Amazon S3
 
 Routing is path-based:
 
@@ -24,6 +25,93 @@ Routing is path-based:
 - AWS CLI v2
 - Docker
 - an AWS account with permissions for ECS, ECR, IAM, ALB, VPC, CloudWatch, and RDS
+- S3 access for jurisdiction-scoped asset uploads and deletes
+
+## Install AWS Tooling
+
+Install the required local tools before running the deploy scripts.
+
+### macOS
+
+```bash
+brew install awscli terraform
+brew install --cask docker
+```
+
+Then start Docker Desktop and verify:
+
+```bash
+aws --version
+terraform version
+docker --version
+```
+
+### Ubuntu or Debian
+
+Install Docker:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Install AWS CLI v2:
+
+```bash
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+```
+
+Install Terraform:
+
+```bash
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+  gpg --dearmor | \
+  sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(. /etc/os-release && echo "$VERSION_CODENAME") main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update
+sudo apt-get install -y terraform
+```
+
+Verify:
+
+```bash
+aws --version
+terraform version
+docker --version
+```
+
+### Configure AWS Credentials
+
+If you do not already have credentials configured on the machine:
+
+```bash
+aws configure
+```
+
+Provide:
+
+- AWS Access Key ID
+- AWS Secret Access Key
+- default region, for example `us-east-1`
+- default output format, for example `json`
+
+Then confirm the active account:
+
+```bash
+aws sts get-caller-identity
+```
 
 ## Deploy Flow
 
@@ -32,8 +120,14 @@ You can do the first deployment without a custom domain:
 - leave `certificate_arn = ""`
 - use the ALB DNS name over HTTP
 - verify ECS, RDS, migrations, and page routing first
+- `deploy-from-env.sh` now uses the Terraform `alb_dns_name` automatically for smoke tests unless you explicitly set `SMOKE_TEST_BASE_URL`
+- if `UZONE_PUBLIC_BASE_URL` is set in `.env-deploy`, the deploy script will smoke test that public URL before falling back to the ALB hostname
 
 After that, add a real domain or subdomain you control, request an ACM certificate, set `certificate_arn`, and re-apply Terraform to enable HTTPS.
+
+If you use `deploy-from-env.sh`, an existing `certificate_arn` already present in `terraform.tfvars` is now preserved automatically. You only need to set it again when you are intentionally changing certificates. You can also force a specific value with `UZONE_AWS_CERTIFICATE_ARN` or `CERTIFICATE_ARN_OVERRIDE`.
+
+For additional safety, `deploy-from-env.sh` now prints a warning when `DEPLOY_ENVIRONMENT=prod` and `certificate_arn` is empty, so it is harder to accidentally roll out production without HTTPS.
 
 1. Initialize Terraform inputs.
 
@@ -56,6 +150,7 @@ For the current app configuration in [uzone/.env](/workspaces/gridics-zoning-coo
 - `backend_environment.UZONE_AUTH_PROVIDER = "clerk"`
 - `backend_environment.UZONE_CLERK_JWKS_URL`
 - `backend_environment.UZONE_CLERK_AUTHORIZED_PARTIES`
+- `backend_environment.UZONE_ASSETS_PREFIX`
 - `frontend_environment.GRIDICS_CLERK_ORGANIZATION_SLUG`
 - `frontend_secret_arns.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `frontend_secret_arns.CLERK_SECRET_KEY`
@@ -65,6 +160,8 @@ If you rely on a fixed Gridics org id in the UI, also set:
 - `frontend_secret_arns.GRIDICS_CLERK_ORGANIZATION_ID`
 
 Do not copy the current `.env` secrets into Terraform files. Store them in AWS Secrets Manager or SSM first.
+
+Jurisdiction assets are now stored in S3 instead of the ECS container filesystem. The deploy creates a bucket named `gridics-uzones` and passes it to the backend as `UZONE_ASSETS_BUCKET`. Objects are stored under jurisdiction-specific prefixes so assets are not mixed between tenants.
 
 Example bootstrap commands are in:
 
@@ -115,6 +212,12 @@ This first URL will look like:
 - `http://<alb-name>.us-east-1.elb.amazonaws.com`
 
 Use it for infrastructure validation only.
+
+If you want the deploy script to smoke test a real custom domain instead of the ALB hostname, override it explicitly:
+
+```bash
+SMOKE_TEST_BASE_URL=https://uzones.dev ./deploy-from-env.sh
+```
 
 ## Recommended Mapping From The Current `.env`
 

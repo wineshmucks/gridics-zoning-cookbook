@@ -8,6 +8,7 @@ import {
   SCOPE_PATH_COOKIE,
   UNSCOPED_ROUTE_PREFIXES,
 } from './lib/org-constants'
+import { getServerBackendOrigin } from './lib/backend'
 
 function isProtectedPath(pathname: string) {
   return (
@@ -24,23 +25,41 @@ function normalizeScopePath(value: string | null | undefined) {
   return normalized && normalized.startsWith('/') ? normalized : normalized ? `/${normalized}` : ''
 }
 
-function getBackendBaseUrl() {
-  const baseUrl =
-    process.env.UZONE_API_BASE ||
-    process.env.NEXT_PUBLIC_UZONE_API_BASE ||
-    'http://backend:8000'
-  return baseUrl.replace(/\/+$/, '')
+function isAssistantAliasRoute(pathname: string, scopePath: string | null): boolean {
+  if (!scopePath) {
+    return false
+  }
+
+  return pathname === `${scopePath}/assistant` || pathname.startsWith(`${scopePath}/assistant/`)
 }
 
-async function resolveAliasPrefix(pathname: string): Promise<{ orgId: string; scopePath: string; scopedPathname: string } | null> {
+async function resolveAliasPrefix(
+  req: NextRequest,
+  pathname: string,
+): Promise<{ orgId: string; scopePath: string; scopedPathname: string } | null> {
   const parts = pathname.split('/').filter(Boolean)
+  const backendOrigin = getServerBackendOrigin()
   for (let index = parts.length; index >= 1; index -= 1) {
     const candidate = `/${parts.slice(0, index).join('/')}`
     try {
-      const response = await fetch(
-        `${getBackendBaseUrl()}/api/public/path-alias?path=${encodeURIComponent(candidate)}`,
-        { cache: 'no-store' },
-      )
+      const aliasUrl = new URL('/api/public/path-alias', backendOrigin)
+      aliasUrl.searchParams.set('path', candidate)
+      if (pathname.startsWith('/us/fl/miami')) {
+        console.log('[proxy] alias lookup', {
+          pathname,
+          candidate,
+          backendOrigin,
+          aliasUrl: aliasUrl.toString(),
+        })
+      }
+      const response = await fetch(aliasUrl, { cache: 'no-store' })
+      if (pathname.startsWith('/us/fl/miami')) {
+        console.log('[proxy] alias response', {
+          pathname,
+          candidate,
+          status: response.status,
+        })
+      }
       if (!response.ok) {
         continue
       }
@@ -75,6 +94,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
   let effectiveScopePath = scopePathFromCookie
   let scopedPathname = pathname
   let isScopedRoute = false
+  let shouldClearOrgCookies = false
 
   if (isAiAssistantRoute) {
     const assistantScopePath = pathname === '/ai-assistant' ? '' : pathname.slice('/ai-assistant'.length)
@@ -86,7 +106,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
         effectiveScopePath = normalizeScopePath(`/${INTERNAL_ORG_ROUTE_PREFIX}/${orgId}`)
       }
     } else if (assistantScopePath) {
-      const aliasMatch = await resolveAliasPrefix(assistantScopePath)
+      const aliasMatch = await resolveAliasPrefix(req, assistantScopePath)
       if (aliasMatch) {
         effectiveOrgId = aliasMatch.orgId
         effectiveScopePath = aliasMatch.scopePath
@@ -97,17 +117,37 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
     const orgId = parts[1] || ''
     if (orgId) {
       effectiveOrgId = orgId
-      effectiveScopePath = normalizeScopePath(`/${INTERNAL_ORG_ROUTE_PREFIX}/${orgId}`)
-      scopedPathname = pathname.slice(effectiveScopePath.length) || '/'
+      const requestedScopePath = normalizeScopePath(req.nextUrl.searchParams.get('scopePath') || '')
+      effectiveScopePath =
+        requestedScopePath || normalizeScopePath(`/${INTERNAL_ORG_ROUTE_PREFIX}/${orgId}`)
+      const internalScopePath = normalizeScopePath(`/${INTERNAL_ORG_ROUTE_PREFIX}/${orgId}`)
+      scopedPathname = pathname.slice(internalScopePath.length) || '/'
       isScopedRoute = true
     }
   } else if (!isExcludedRoute && !isHomepage) {
-    const aliasMatch = await resolveAliasPrefix(pathname)
+    const aliasMatch = await resolveAliasPrefix(req, pathname)
     if (aliasMatch) {
       effectiveOrgId = aliasMatch.orgId
       effectiveScopePath = aliasMatch.scopePath
       scopedPathname = aliasMatch.scopedPathname
       isScopedRoute = true
+    }
+  }
+
+  if (effectiveOrgId && firstSegment !== 'api') {
+    try {
+      const configUrl = new URL('/api/public/client-config', getServerBackendOrigin())
+      configUrl.searchParams.set('orgid', effectiveOrgId)
+      const configResponse = await fetch(configUrl, { cache: 'no-store' })
+      if (!configResponse.ok) {
+        effectiveOrgId = ''
+        effectiveScopePath = ''
+        shouldClearOrgCookies = true
+      }
+    } catch {
+      effectiveOrgId = ''
+      effectiveScopePath = ''
+      shouldClearOrgCookies = true
     }
   }
 
@@ -153,13 +193,20 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
     rewriteUrl.pathname = scopedPathname
   }
 
+  if (isAssistantAliasRoute(pathname, effectiveScopePath)) {
+    rewriteUrl.pathname = `/ai-assistant${effectiveScopePath}${scopedPathname === '/assistant' ? '' : scopedPathname.slice('/assistant'.length)}`
+  }
+
   const response = NextResponse.rewrite(rewriteUrl, {
     request: {
       headers: requestHeaders,
     },
   })
 
-  if (!isExcludedRoute && effectiveOrgId && !isHomepage) {
+  if (shouldClearOrgCookies) {
+    response.cookies.delete(ORG_ID_COOKIE)
+    response.cookies.delete(SCOPE_PATH_COOKIE)
+  } else if (!isExcludedRoute && effectiveOrgId && !isHomepage) {
     response.cookies.set(ORG_ID_COOKIE, effectiveOrgId, {
       path: '/',
       sameSite: 'lax',

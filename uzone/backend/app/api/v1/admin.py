@@ -1,12 +1,15 @@
 """Admin routes."""
 
+import logging
 import re
+from mimetypes import guess_type
 from pathlib import Path
 from secrets import token_hex
+from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
@@ -18,7 +21,11 @@ from app.db.models import (
     JurisdictionHomePageContent,
     LetterTemplate,
     TenantClient,
+    TenantDomain,
     User,
+    ZoningCodeDocument,
+    ZoningCodeIngestionRun,
+    ZoningCodeSection,
 )
 from app.schemas import (
     EmailTemplateClientContextRead,
@@ -52,7 +59,16 @@ from app.schemas import (
 from app.core.config import settings
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
 from app.services.cache_service import get_cache_service
+from app.services.clerk_service import get_clerk_organization
+from app.services.logo_storage import (
+    delete_asset,
+    delete_asset_namespace,
+    download_asset,
+    is_asset_storage_enabled,
+    upload_asset,
+)
 from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
+from app.services.clerk_service import delete_clerk_organization, update_clerk_organization
 from app.services.tenant_service import (
     get_tenant_path_alias,
     get_home_page_content_record,
@@ -76,6 +92,7 @@ from app.services.zoning_knowledge_service import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 ALLOWED_LOGO_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
 LOGO_FILE_EXTENSION_BY_CONTENT_TYPE = {
@@ -179,7 +196,9 @@ def _build_home_page_content_response(
 def _get_tenant_client_by_org_id(db: Session, organization_id: str) -> TenantClient:
     tenant_client = db.scalar(
         select(TenantClient).where(
-            (TenantClient.clerk_organization_id == organization_id) | (TenantClient.client_id == organization_id)
+            (TenantClient.id == organization_id)
+            | (TenantClient.clerk_organization_id == organization_id)
+            | (TenantClient.client_id == organization_id)
         )
     )
     if tenant_client is None:
@@ -204,28 +223,83 @@ def _get_tenant_client_by_lookup(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant client not found")
 
 
-def _tenant_logo_dir() -> Path:
-    logo_dir = Path(settings.artifacts_dir) / "tenant-logos"
-    logo_dir.mkdir(parents=True, exist_ok=True)
-    return logo_dir
+def _tenant_asset_dir(namespace: str, asset_type: str) -> Path:
+    asset_dir = Path(settings.artifacts_dir) / "jurisdictions" / namespace / asset_type
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    return asset_dir
 
 
-def _safe_remove_logo_file(logo_path: str | None) -> None:
-    if not logo_path:
+def _safe_remove_asset_file(asset_path: str | None) -> None:
+    if not asset_path:
         return
 
-    prefix = "/api/admin/assets/tenant-logos/"
-    if not logo_path.startswith(prefix):
-        return
+    if asset_path.startswith("/api/admin/assets/jurisdictions/"):
+        relative = asset_path.removeprefix("/api/admin/assets/jurisdictions/")
+        parts = relative.split("/", 2)
+        if len(parts) != 3:
+            return
+        namespace, asset_type, filename = parts
+        candidate = _tenant_asset_dir(namespace, asset_type) / filename
+    else:
+        prefix = "/api/admin/assets/tenant-logos/"
+        if not asset_path.startswith(prefix):
+            return
+        filename = asset_path.removeprefix(prefix)
+        namespace = _legacy_logo_namespace_from_filename(filename)
+        if namespace is None:
+            return
+        candidate = _tenant_asset_dir(namespace, "logos") / filename
 
-    candidate = _tenant_logo_dir() / logo_path.removeprefix(prefix)
     try:
-        candidate.resolve().relative_to(_tenant_logo_dir().resolve())
+        candidate.resolve().relative_to(Path(settings.artifacts_dir).resolve())
     except ValueError:
         return
 
     if candidate.exists():
         candidate.unlink()
+
+
+def _legacy_logo_namespace_from_filename(filename: str | None) -> str | None:
+    if not filename:
+        return None
+
+    candidate = filename.strip()
+    if len(candidate) < 37 or candidate[36] != "-":
+        return None
+
+    namespace = candidate[:36]
+    try:
+        UUID(namespace)
+    except ValueError:
+        return None
+    return namespace
+
+
+def _asset_path(namespace: str, asset_type: str, filename: str) -> str:
+    return f"/api/admin/assets/jurisdictions/{namespace}/{asset_type}/{filename}"
+
+
+def _asset_info_from_path(asset_path: str | None) -> tuple[str, str, str] | None:
+    if not asset_path:
+        return None
+
+    prefix = "/api/admin/assets/jurisdictions/"
+    if asset_path.startswith(prefix):
+        remainder = asset_path.removeprefix(prefix)
+        parts = remainder.split("/", 2)
+        if len(parts) == 3:
+            namespace, asset_type, filename = parts
+            if namespace and asset_type and filename:
+                return namespace, asset_type, filename
+
+    legacy_prefix = "/api/admin/assets/tenant-logos/"
+    if asset_path.startswith(legacy_prefix):
+        filename = asset_path.removeprefix(legacy_prefix).strip()
+        namespace = _legacy_logo_namespace_from_filename(filename)
+        if namespace:
+            return namespace, "logos", filename
+
+    return None
 
 
 @router.post("/clients", response_model=TenantClientRead, status_code=status.HTTP_201_CREATED)
@@ -257,6 +331,12 @@ def create_tenant_client(
     db.refresh(tenant_client)
     invalidate_tenant_cache()
     return TenantClientRead.model_validate(tenant_client)
+
+
+@router.get("/clients", response_model=list[TenantClientRead])
+def list_tenant_clients(db: Session = Depends(get_db)) -> list[TenantClientRead]:
+    tenant_clients = db.scalars(select(TenantClient).order_by(TenantClient.city_name.asc())).all()
+    return [TenantClientRead.model_validate(item) for item in tenant_clients]
 
 
 @router.get("/clients/{organization_id}", response_model=TenantClientRead)
@@ -317,6 +397,8 @@ def update_tenant_client(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Clerk organization ID is required",
             )
+        if settings.clerk_secret_key and get_clerk_organization(clerk_organization_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clerk organization not found")
         existing_org = db.scalar(
             select(TenantClient).where(
                 TenantClient.clerk_organization_id == clerk_organization_id,
@@ -375,6 +457,16 @@ def update_tenant_client(
 
     db.commit()
     db.refresh(tenant_client)
+    if tenant_client.clerk_organization_id and settings.clerk_secret_key:
+        clerk_updates: dict[str, str | None] = {"name": tenant_client.city_name}
+        if payload.clerk_slug is not None:
+            clerk_updates["slug"] = payload.clerk_slug.strip() or None
+        update_clerk_organization(
+            tenant_client.clerk_organization_id,
+            name=clerk_updates["name"],
+            slug=clerk_updates.get("slug"),
+            update_slug=payload.clerk_slug is not None,
+        )
     invalidate_tenant_cache()
     return TenantClientRead.model_validate(tenant_client)
 
@@ -401,18 +493,30 @@ async def upload_tenant_client_logo(
 
     extension = LOGO_FILE_EXTENSION_BY_CONTENT_TYPE[content_type]
     filename = f"{tenant_client.id}-{token_hex(8)}{extension}"
-    destination = _tenant_logo_dir() / filename
-    destination.write_bytes(payload)
+    storage_uploaded = upload_asset(tenant_client.id, "logos", filename, payload, content_type)
+    if is_asset_storage_enabled() and not storage_uploaded:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Logo upload could not be stored in S3. Please try again.",
+        )
+    if not storage_uploaded:
+        destination = _tenant_asset_dir(tenant_client.id, "logos") / filename
+        destination.write_bytes(payload)
 
     previous_logo_path = get_tenant_logo_path(tenant_client.settings_json)
     tenant_client.settings_json = merge_tenant_branding_settings(
         tenant_client.settings_json,
-        logo_path=f"/api/admin/assets/tenant-logos/{filename}",
+        logo_path=_asset_path(tenant_client.id, "logos", filename),
     )
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()
-    _safe_remove_logo_file(previous_logo_path)
+    previous_asset = _asset_info_from_path(previous_logo_path)
+    if previous_asset is not None:
+        previous_namespace, previous_asset_type, previous_filename = previous_asset
+        if is_asset_storage_enabled():
+            delete_asset(previous_namespace, previous_asset_type, previous_filename)
+        _safe_remove_asset_file(previous_logo_path)
     return TenantClientRead.model_validate(tenant_client)
 
 
@@ -430,22 +534,57 @@ def delete_tenant_client_logo(
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()
-    _safe_remove_logo_file(previous_logo_path)
+    previous_asset = _asset_info_from_path(previous_logo_path)
+    if previous_asset is not None:
+        previous_namespace, previous_asset_type, previous_filename = previous_asset
+        if is_asset_storage_enabled():
+            delete_asset(previous_namespace, previous_asset_type, previous_filename)
+        _safe_remove_asset_file(previous_logo_path)
     return TenantClientRead.model_validate(tenant_client)
 
 
-@router.get("/assets/tenant-logos/{filename}")
-def get_tenant_logo_asset(filename: str) -> FileResponse:
-    asset_path = (_tenant_logo_dir() / filename).resolve()
+def _serve_tenant_asset(namespace: str, asset_type: str, filename: str) -> Response | FileResponse:
+    asset_path = (_tenant_asset_dir(namespace, asset_type) / filename).resolve()
     try:
-        asset_path.relative_to(_tenant_logo_dir().resolve())
+        asset_path.relative_to(Path(settings.artifacts_dir).resolve())
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not found") from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found") from exc
 
     if not asset_path.exists() or not asset_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not found")
+        s3_asset = download_asset(namespace, asset_type, filename)
+        if s3_asset is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+        return Response(
+            content=s3_asset.content,
+            media_type=s3_asset.content_type,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+
+    if is_asset_storage_enabled():
+        uploaded = upload_asset(
+            namespace,
+            asset_type,
+            filename,
+            asset_path.read_bytes(),
+            guess_type(filename)[0] or "application/octet-stream",
+        )
+        if not uploaded:
+            logger.warning("Unable to backfill asset %s/%s/%s to S3.", namespace, asset_type, filename)
 
     return FileResponse(asset_path)
+
+
+@router.get("/assets/jurisdictions/{namespace}/{asset_type}/{filename}", response_model=None)
+def get_tenant_asset(namespace: str, asset_type: str, filename: str) -> Response:
+    return _serve_tenant_asset(namespace, asset_type, filename)
+
+
+@router.get("/assets/tenant-logos/{filename}", response_model=None)
+def get_tenant_logo_asset(filename: str) -> Response:
+    namespace = _legacy_logo_namespace_from_filename(filename)
+    if namespace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    return _serve_tenant_asset(namespace, "logos", filename)
 
 
 @router.delete("/clients/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -456,6 +595,29 @@ def delete_tenant_client(
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     db.delete(tenant_client)
     db.commit()
+    invalidate_tenant_cache()
+
+
+def _delete_tenant_client_dependencies(db: Session, tenant_client: TenantClient) -> None:
+    db.execute(delete(TenantDomain).where(TenantDomain.tenant_client_id == tenant_client.id))
+    db.execute(delete(ZoningCodeSection).where(ZoningCodeSection.tenant_client_id == tenant_client.id))
+    db.execute(delete(ZoningCodeDocument).where(ZoningCodeDocument.tenant_client_id == tenant_client.id))
+    db.execute(delete(ZoningCodeIngestionRun).where(ZoningCodeIngestionRun.tenant_client_id == tenant_client.id))
+    db.execute(delete(EmailTemplate).where(EmailTemplate.tenant_client_id == tenant_client.id))
+
+
+@router.delete("/clients/{organization_id}/purge", status_code=status.HTTP_204_NO_CONTENT)
+def purge_tenant_client(
+    organization_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    _delete_tenant_client_dependencies(db, tenant_client)
+    db.delete(tenant_client)
+    db.commit()
+    if is_asset_storage_enabled():
+        delete_asset_namespace(tenant_client.id)
+    delete_clerk_organization(tenant_client.clerk_organization_id)
     invalidate_tenant_cache()
 
 

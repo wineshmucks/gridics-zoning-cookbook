@@ -575,6 +575,18 @@ async function createTenantClientRecord(clientName: string, organizationId: stri
   }
 }
 
+export async function fetchCustomerRecords(): Promise<CustomerRecord[]> {
+  const response = await fetch(buildBackendApiUrl('/api/admin/clients'), {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error('Unable to load jurisdiction records.')
+  }
+
+  return (await response.json()) as CustomerRecord[]
+}
+
 async function ensureTenantClientRecord(organizationId: string) {
   const existingRecord = await fetchCustomerRecord(organizationId)
   if (existingRecord) {
@@ -620,6 +632,7 @@ async function updateTenantClientGeneralDetails(
     cityName: string
     departmentName: string
     clerkOrganizationId: string
+    clerkSlug?: string | null
     pathAlias: string | null
   },
 ) {
@@ -633,6 +646,7 @@ async function updateTenantClientGeneralDetails(
       city_name: payload.cityName,
       department_name: payload.departmentName,
       clerk_organization_id: payload.clerkOrganizationId,
+      clerk_slug: payload.clerkSlug ?? null,
       path_alias: payload.pathAlias,
     }),
   })
@@ -643,6 +657,87 @@ async function updateTenantClientGeneralDetails(
       typeof payload?.detail === 'string' ? payload.detail : 'Unable to update jurisdiction details.',
     )
   }
+}
+
+export async function syncJurisdictionsFromClerkAction() {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    throw new Error('Only super admins can sync jurisdictions.')
+  }
+
+  const client = await getClerkManagementClient()
+  const [clerkOrganizations, tenantRecords] = await Promise.all([
+    client.organizations.getOrganizationList({
+      includeMembersCount: false,
+      orderBy: 'name',
+      limit: 100,
+    }),
+    fetchCustomerRecords(),
+  ])
+
+  const recordsByClerkId = new Map(
+    tenantRecords
+      .filter((record) => Boolean(record.clerk_organization_id))
+      .map((record) => [record.clerk_organization_id as string, record]),
+  )
+  const recordsByClientId = new Map(tenantRecords.map((record) => [record.client_id, record]))
+  const clerkOrgIds = new Set(clerkOrganizations.data.map((organization) => organization.id))
+  const matchedRecordIds = new Set<string>()
+
+  let createdCount = 0
+  let updatedCount = 0
+  let deactivatedCount = 0
+
+  for (const organization of clerkOrganizations.data) {
+    const existingRecord = recordsByClerkId.get(organization.id) || recordsByClientId.get(organization.id) || null
+
+    if (!existingRecord) {
+      await createTenantClientRecord(organization.name, organization.id)
+      createdCount += 1
+      continue
+    }
+
+    const pathAlias =
+      existingRecord.settings_json &&
+      typeof existingRecord.settings_json.path_alias === 'string'
+        ? existingRecord.settings_json.path_alias
+        : existingRecord.settings_json &&
+            typeof (existingRecord.settings_json as Record<string, unknown>).pathAlias === 'string'
+          ? ((existingRecord.settings_json as Record<string, unknown>).pathAlias as string)
+          : null
+
+    await updateTenantClientGeneralDetails(existingRecord.id, {
+      clientId: existingRecord.client_id,
+      cityName: organization.name,
+      departmentName: existingRecord.department_name,
+      clerkOrganizationId: organization.id,
+      clerkSlug: organization.slug || null,
+      pathAlias,
+    })
+    matchedRecordIds.add(existingRecord.id)
+    updatedCount += 1
+  }
+
+  for (const record of tenantRecords) {
+    const recordIdentity = record.clerk_organization_id || record.client_id
+    if (matchedRecordIds.has(record.id) || clerkOrgIds.has(recordIdentity)) {
+      continue
+    }
+
+    if (record.is_active) {
+      await updateTenantClientStatus(record.id, false)
+      deactivatedCount += 1
+    }
+  }
+
+  revalidatePath('/select-jurisdiction')
+  revalidatePath('/super-admin')
+
+  redirect(
+    `/super-admin?status=jurisdictions-synced&created=${createdCount}&updated=${updatedCount}&deactivated=${deactivatedCount}&clerk=${clerkOrganizations.data.length}`,
+  )
 }
 
 async function uploadTenantClientLogo(organizationId: string, logoFile: File) {
@@ -710,6 +805,23 @@ async function deleteTenantClientRecord(organizationId: string) {
     const payload = await response.json().catch(() => null)
     throw new Error(
       typeof payload?.detail === 'string' ? payload.detail : 'Unable to delete jurisdiction record.',
+    )
+  }
+}
+
+async function purgeTenantClientRecord(organizationId: string) {
+  const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}/purge`), {
+    method: 'DELETE',
+  })
+
+  if (response.status === 404) {
+    return
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(
+      typeof payload?.detail === 'string' ? payload.detail : 'Unable to purge jurisdiction record.',
     )
   }
 }
@@ -1239,6 +1351,9 @@ export async function saveCustomerGeneralSettingsAction(
   const clerkSlugRaw = String(formData.get('clerkSlug') || '').trim()
   const clerkSlug = clerkSlugRaw || undefined
   const logoFile = formData.get('logoFile')
+  if (logoFile !== null && !(logoFile instanceof File)) {
+    return { error: 'Logo upload could not be read. Please try again.', success: null }
+  }
 
   if (!organizationId) {
     return { error: 'Organization is required.', success: null }
@@ -1262,17 +1377,12 @@ export async function saveCustomerGeneralSettingsAction(
 
   try {
     await ensureTenantClientRecord(organizationId)
-    const client = await getClerkManagementClient()
-    await client.organizations.getOrganization({ organizationId: clerkOrganizationId })
-    await client.organizations.updateOrganization(clerkOrganizationId, {
-      name: cityName,
-      slug: clerkSlug,
-    })
     await updateTenantClientGeneralDetails(organizationId, {
       clientId,
       cityName,
       departmentName,
       clerkOrganizationId,
+      clerkSlug: clerkSlug || null,
       pathAlias: pathAliasRaw || null,
     })
     if (logoFile instanceof File && logoFile.size > 0) {
@@ -1372,6 +1482,35 @@ export async function deleteCustomerAction(
       error: getErrorMessage(error, 'Unable to delete the jurisdiction.'),
       success: null,
     }
+  }
+}
+
+export async function purgeInactiveJurisdictionAction(formData: FormData): Promise<void> {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    redirect('/super-admin?status=jurisdiction-purge-failed')
+  }
+
+  const organizationId = String(formData.get('organizationId') || '').trim()
+  const customerName = String(formData.get('customerName') || '').trim()
+
+  if (!organizationId) {
+    redirect('/super-admin?status=jurisdiction-purge-failed')
+  }
+
+  try {
+    await purgeTenantClientRecord(organizationId)
+    revalidatePath('/super-admin')
+    revalidatePath('/select-jurisdiction')
+    redirect(
+      `/super-admin?status=jurisdiction-purged&customerName=${encodeURIComponent(customerName || 'Jurisdiction')}`,
+    )
+  } catch {
+    redirect(
+      `/super-admin?status=jurisdiction-purge-failed&customerName=${encodeURIComponent(customerName || 'Jurisdiction')}`,
+    )
   }
 }
 

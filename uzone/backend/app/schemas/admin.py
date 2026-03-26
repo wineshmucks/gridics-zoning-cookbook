@@ -285,6 +285,7 @@ class TenantClientUpdate(BaseModel):
     city_name: str | None = Field(default=None, min_length=1, max_length=255)
     department_name: str | None = Field(default=None, min_length=1, max_length=255)
     clerk_organization_id: str | None = Field(default=None, min_length=1, max_length=255)
+    clerk_slug: str | None = Field(default=None, min_length=1, max_length=255)
     path_alias: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
 

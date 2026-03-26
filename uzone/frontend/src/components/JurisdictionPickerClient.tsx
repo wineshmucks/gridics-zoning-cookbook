@@ -86,7 +86,7 @@ export function JurisdictionPickerClient({ customers, returnTo }: Props) {
             <div className="jurisdiction-picker-actions">
               <Link
                 className="button jurisdiction-picker-button-primary"
-                href={appendScopePathToHref(returnTo, customer.path_alias || `/_internal/${customer.orgid}`)}
+                href={appendScopePathToHref(returnTo, customer.path_alias || `/${customer.orgid}`)}
                 prefetch={false}
               >
                 Select jurisdiction

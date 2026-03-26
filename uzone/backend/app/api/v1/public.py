@@ -104,6 +104,8 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
             continue
         if not public_org_id:
             continue
+        if settings.clerk_secret_key and customer_org_id and get_clerk_organization(customer_org_id) is None:
+            continue
         if gridics_org_id and customer_org_id_lower == gridics_org_id:
             continue
 

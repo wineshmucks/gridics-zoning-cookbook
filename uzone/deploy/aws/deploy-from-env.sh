@@ -18,7 +18,8 @@ CERTIFICATE_ARN_OVERRIDE="${CERTIFICATE_ARN_OVERRIDE:-}"
 SKIP_TERRAFORM_APPLY="${SKIP_TERRAFORM_APPLY:-0}"
 SKIP_IMAGE_PUSH="${SKIP_IMAGE_PUSH:-0}"
 SMOKE_TEST_TIMEOUT_SECONDS="${SMOKE_TEST_TIMEOUT_SECONDS:-180}"
-SMOKE_TEST_BASE_URL="${SMOKE_TEST_BASE_URL:-https://uzones.dev}"
+SMOKE_TEST_BASE_URL="${SMOKE_TEST_BASE_URL:-}"
+UZONE_PUBLIC_BASE_URL="${UZONE_PUBLIC_BASE_URL:-}"
 
 require_command() {
   local name="$1"
@@ -53,6 +54,16 @@ emit_secret_arn_if_set() {
   fi
 }
 
+read_existing_tfvars_string() {
+  local key="$1"
+
+  if [[ ! -f "${TFVARS_PATH}" ]]; then
+    return
+  fi
+
+  sed -nE "s/^${key}[[:space:]]*=[[:space:]]*\"(.*)\"[[:space:]]*$/\\1/p" "${TFVARS_PATH}" | head -n 1
+}
+
 resolve_secret_arn() {
   local secret_name="$1"
   aws secretsmanager describe-secret \
@@ -84,7 +95,8 @@ FRONTEND_REPOSITORY_NAME="${PROJECT}-${DEPLOY_ENVIRONMENT}-frontend"
 APP_ALLOWED_ORIGINS="${APP_ALLOWED_ORIGINS_OVERRIDE:-${UZONE_ALLOWED_ORIGINS:-http://localhost:3001,http://127.0.0.1:3001}}"
 DB_USERNAME="${DB_USERNAME_OVERRIDE:-${POSTGRES_USER:-uzone}}"
 DB_PASSWORD="${DB_PASSWORD_OVERRIDE:-${POSTGRES_PASSWORD:-postgres}}"
-CERTIFICATE_ARN="${CERTIFICATE_ARN_OVERRIDE:-}"
+EXISTING_CERTIFICATE_ARN="$(read_existing_tfvars_string "certificate_arn")"
+CERTIFICATE_ARN="${CERTIFICATE_ARN_OVERRIDE:-${UZONE_AWS_CERTIFICATE_ARN:-${EXISTING_CERTIFICATE_ARN}}}"
 REQUIRE_AGENT_OS="${UZONE_REQUIRE_AGENT_OS:-true}"
 
 wait_for_expected_status() {
@@ -109,10 +121,47 @@ wait_for_expected_status() {
   done
 }
 
+resolve_smoke_test_base_url() {
+  local alb_dns_name="$1"
+
+  if [[ -n "${SMOKE_TEST_BASE_URL}" ]]; then
+    printf '%s' "${SMOKE_TEST_BASE_URL%/}"
+    return
+  fi
+
+  if [[ -n "${UZONE_PUBLIC_BASE_URL}" ]]; then
+    printf '%s' "${UZONE_PUBLIC_BASE_URL%/}"
+    return
+  fi
+
+  if [[ -n "${CERTIFICATE_ARN}" ]]; then
+    if [[ "${DEPLOY_ENVIRONMENT}" == "prod" ]]; then
+      printf 'https://uzones.dev'
+    else
+      printf 'https://%s' "${alb_dns_name}"
+    fi
+    return
+  fi
+
+  printf 'http://%s' "${alb_dns_name}"
+}
+
+warn_if_prod_without_certificate() {
+  if [[ "${DEPLOY_ENVIRONMENT}" == "prod" && -z "${CERTIFICATE_ARN}" ]]; then
+    cat >&2 <<'EOF'
+warning: deploying prod without certificate_arn
+- HTTPS listener will not be created
+- smoke tests will use the ALB HTTP URL
+- Clerk and custom-domain production flows may not work correctly until ACM is configured
+EOF
+  fi
+}
+
 mkdir -p "${TF_DIR}"
 
 export AWS_REGION
 "${SCRIPT_DIR}/create-or-update-secrets.sh"
+warn_if_prod_without_certificate
 
 cat > "${TFVARS_PATH}" <<EOF
 aws_region          = $(escape_hcl_string "${AWS_REGION}")
@@ -217,7 +266,9 @@ if [[ "${SKIP_TERRAFORM_APPLY}" != "1" ]]; then
   terraform apply -auto-approve
   ALB_DNS_NAME="$(terraform output -raw alb_dns_name)"
   echo "alb_dns_name: ${ALB_DNS_NAME}"
-  wait_for_expected_status "${SMOKE_TEST_BASE_URL}/api/health" "200" "${SMOKE_TEST_TIMEOUT_SECONDS}"
-  wait_for_expected_status "${SMOKE_TEST_BASE_URL}/api/health/agent-os" "200" "${SMOKE_TEST_TIMEOUT_SECONDS}"
-  wait_for_expected_status "${SMOKE_TEST_BASE_URL}/api/agents/customer-zoning-agent/runs" "422" "${SMOKE_TEST_TIMEOUT_SECONDS}"
+  EFFECTIVE_SMOKE_TEST_BASE_URL="$(resolve_smoke_test_base_url "${ALB_DNS_NAME}")"
+  echo "smoke_test_base_url: ${EFFECTIVE_SMOKE_TEST_BASE_URL}"
+  wait_for_expected_status "${EFFECTIVE_SMOKE_TEST_BASE_URL}/api/health" "200" "${SMOKE_TEST_TIMEOUT_SECONDS}"
+  wait_for_expected_status "${EFFECTIVE_SMOKE_TEST_BASE_URL}/api/health/agent-os" "200" "${SMOKE_TEST_TIMEOUT_SECONDS}"
+  wait_for_expected_status "${EFFECTIVE_SMOKE_TEST_BASE_URL}/api/agents/customer-zoning-agent/runs" "422" "${SMOKE_TEST_TIMEOUT_SECONDS}"
 fi

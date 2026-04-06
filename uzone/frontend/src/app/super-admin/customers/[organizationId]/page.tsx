@@ -17,11 +17,9 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
-      <section className="card">
+      <section className="super-admin-empty-state">
         <h1 className="section-title">Super Admin Access Required</h1>
-        <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only super admins can manage customers.
-        </p>
+        <p style={{ color: 'var(--muted)', margin: 0 }}>Only super admins can manage customers.</p>
       </section>
     )
   }
@@ -38,6 +36,8 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
   if (!tenantRecord && !organization) {
     notFound()
   }
+
+  const displayName = organization?.name || tenantRecord?.city_name || organizationId
 
   const [adminMembers, pendingInvites] = organization
     ? await Promise.all([
@@ -81,7 +81,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
       customer={{
         id: organizationId,
         clientId: tenantRecord?.client_id || organizationId,
-        name: tenantRecord?.city_name || organization?.name || organizationId,
+        name: displayName,
         departmentName: tenantRecord?.department_name || null,
         pathAlias:
           tenantRecord?.settings_json &&

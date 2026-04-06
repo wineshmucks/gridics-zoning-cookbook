@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation'
 
-import { AgentChatPanel } from '../../../../../components/AgentChatPanel'
+import { fetchCustomerEmbedSettings } from '../../../../admin/actions'
+import { CustomerAssistantEmbedPreview } from '../../../../../components/CustomerAssistantEmbedPreview'
 import { SuperAdminCustomerHeader } from '../../../../../components/SuperAdminCustomerIcons'
-import { fetchCustomerZoningKnowledgeStatus } from '../../../../admin/actions'
 import { getClerkManagementClient } from '../../../../../lib/clerk'
 import { getPermissionContext } from '../../../../../lib/permissions'
 
@@ -10,9 +10,13 @@ type PageProps = {
   params: Promise<{
     organizationId: string
   }>
+  searchParams?: Promise<{
+    secret?: string | string[]
+    origin?: string | string[]
+  }>
 }
 
-export default async function SuperAdminCustomerAssistantPage({ params }: PageProps) {
+export default async function SuperAdminCustomerAssistantEmbedPage({ params, searchParams }: PageProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
   const backendBase =
@@ -23,13 +27,20 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
       <section className="card">
         <h1 className="section-title">Super Admin Access Required</h1>
         <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only super admins can access the jurisdiction assistant.
+          Only super admins can preview jurisdiction embeds.
         </p>
       </section>
     )
   }
 
   const { organizationId } = await params
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const embedSecret = Array.isArray(resolvedSearchParams.secret)
+    ? resolvedSearchParams.secret[0] || null
+    : resolvedSearchParams.secret || null
+  const initialOrigin = Array.isArray(resolvedSearchParams.origin)
+    ? resolvedSearchParams.origin[0] || null
+    : resolvedSearchParams.origin || null
   const client = await getClerkManagementClient()
   const organizations = await client.organizations.getOrganizationList({
     includeMembersCount: true,
@@ -42,28 +53,28 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
   }
 
   const displayName = organization.name
-  const zoningKnowledgeStatus = await fetchCustomerZoningKnowledgeStatus(organizationId)
+  const embedSettings = await fetchCustomerEmbedSettings(organizationId)
 
   return (
     <div className="panel-stack">
       <section className="card">
         <SuperAdminCustomerHeader
           icon="assistant"
-          eyebrow="Assistant"
-          title="Assistant"
-          description="Chat with the jurisdiction-scoped assistant using the current zoning knowledge base."
+          eyebrow="Assistant Embed Preview"
+          title="Embed Preview"
+          description="Mint a short-lived token and preview the widget inside an iframe exactly as a host site would."
         />
       </section>
 
-      <AgentChatPanel
-        agentId="customer-zoning-agent"
+      <CustomerAssistantEmbedPreview
         backendBase={backendBase}
-        customerName={displayName}
-        clientId={zoningKnowledgeStatus.client_id}
-        surface="super-admin-customer-assistant"
-        title=""
-        description=""
-        variant="chatgpt"
+        customer={{
+          id: organization.id,
+          name: displayName,
+        }}
+        embedSettings={embedSettings}
+        embedSecret={embedSecret}
+        initialOrigin={initialOrigin}
       />
     </div>
   )

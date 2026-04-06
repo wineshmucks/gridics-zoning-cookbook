@@ -85,6 +85,10 @@ if [[ -n "${GRIDICS_CONSUMER_SECRET:-}" ]]; then
   put_secret "uzone/gridics-consumer-secret" "${GRIDICS_CONSUMER_SECRET}"
 fi
 
+if [[ -n "${UZONE_EMBED_SESSION_SIGNING_SECRET:-}" ]]; then
+  put_secret "uzone/embed-session-signing-secret" "${UZONE_EMBED_SESSION_SIGNING_SECRET}"
+fi
+
 cat <<EOF
 secret arns:
 arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/clerk-publishable
@@ -101,4 +105,5 @@ $(if [[ -n "${GROQ_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGIO
 $(if [[ -n "${GRIDICS_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/gridics-api-key"; fi)
 $(if [[ -n "${GRIDICS_CONSUMER_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/gridics-consumer-key"; fi)
 $(if [[ -n "${GRIDICS_CONSUMER_SECRET:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/gridics-consumer-secret"; fi)
+$(if [[ -n "${UZONE_EMBED_SESSION_SIGNING_SECRET:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/embed-session-signing-secret"; fi)
 EOF

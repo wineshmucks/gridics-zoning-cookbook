@@ -108,6 +108,12 @@ Backend:
 - `UZONE_CLERK_PEM_PUBLIC_KEY=...`
 - `UZONE_CLERK_JWKS_URL=...`
 - `UZONE_CLERK_AUTHORIZED_PARTIES=http://localhost:3001,...`
+- `UZONE_EMBED_SESSION_SIGNING_SECRET=...`
+- `UZONE_EMBED_SESSION_ISSUER=uzone`
+- `UZONE_EMBED_SESSION_AUDIENCE=uzone-embed-widget`
+- `UZONE_EMBED_SESSION_TTL_SECONDS=3600`
+
+The embed signing secret is required for the live Super Admin embed preview and for minting widget tokens.
 - `UZONE_PAYMENT_PROVIDERS=manual,stripe`
 - `UZONE_DEFAULT_PAYMENT_PROVIDER=manual`
 - `UZONE_STRIPE_SECRET_KEY=...`
@@ -186,3 +192,59 @@ For UZone specifically:
 - use internal approval + generated PDF for ordinary zoning letters that do not require external signer identity proofing
 - use DocuSign when you need formal external signature workflows, signer audit artifacts, or broader municipal/legal scrutiny
 - use Dropbox Sign if embedded in-app signing speed matters more than enterprise breadth
+
+## Embeddable Assistant Widget
+
+UZone now supports a secure third-party widget flow similar to the Placer County / Polimorphic pattern.
+
+How it works:
+
+1. A host site administrator provisions an embed secret for a tenant.
+2. The host backend exchanges that secret for a short-lived widget token from `POST /api/public/embed/sessions`.
+3. The host embeds `https://your-uzone-domain/embed#token=...` in an iframe.
+4. The widget validates the token with `GET /api/public/embed/session` and uses the token on chat run requests.
+
+The signed token is what protects the assistant. The host never gets direct access to the chat backend credentials.
+
+Provisioning example:
+
+```bash
+curl -X POST "https://your-uzone-domain/api/admin/clients/dream-town/assistant-embed" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "allowed_origins": ["https://partner.example.com"],
+    "widget_title": "Ask Dream Town",
+    "launcher_label": "Have a question?",
+    "accent_color": "#0b67c2",
+    "is_active": true
+  }'
+```
+
+That response returns the one-time secret. The host backend can then mint a widget token with:
+
+```bash
+curl -X POST "https://your-uzone-domain/api/public/embed/sessions" \
+  -H "Content-Type: application/json" \
+  -H "X-UZone-Embed-Secret: <one-time-secret>" \
+  -d '{
+    "client_id": "dream-town",
+    "origin": "https://partner.example.com"
+  }'
+```
+
+Use the returned `token` in the iframe fragment:
+
+```html
+<iframe
+  src="https://your-uzone-domain/embed#token=eyJ..."
+  style="position:fixed;right:20px;bottom:20px;width:420px;height:700px;border:0;z-index:2147483647;"
+></iframe>
+```
+
+For a live test page inside UZone, open:
+
+- `/super-admin/customers/:organizationId/assistant-embed`
+- add `?secret=<one-time-secret>` after saving the embed settings
+- optionally add `?origin=https://partner.example.com` to preview a specific allowed origin
+
+That page mints a fresh token and renders the same iframe-backed widget the host site will use.

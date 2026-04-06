@@ -65,6 +65,24 @@ export type CustomerExperienceSettings = {
   >
 }
 
+export type CustomerEmbedSettings = {
+  is_active: boolean
+  allowed_origins: string[]
+  widget_title: string | null
+  launcher_label: string | null
+  accent_color: string | null
+  has_secret: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type CustomerEmbedSettingsState = {
+  error: string | null
+  success: string | null
+  secret: string | null
+  settings: CustomerEmbedSettings | null
+}
+
 export type CustomerZoningKnowledgeLatestRun = {
   id: string
   mode: string
@@ -269,6 +287,13 @@ const initialCustomerExperienceSettingsState: CustomerExperienceSettingsState = 
   settings: null,
 }
 
+const initialCustomerEmbedSettingsState: CustomerEmbedSettingsState = {
+  error: null,
+  success: null,
+  secret: null,
+  settings: null,
+}
+
 const initialCustomerZoningKnowledgeMutationState: CustomerZoningKnowledgeMutationState = {
   error: null,
   success: null,
@@ -305,6 +330,19 @@ function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
       groq: null,
     },
     assistant_model_targets: {},
+  }
+}
+
+function buildEmptyCustomerEmbedSettings(): CustomerEmbedSettings {
+  return {
+    is_active: true,
+    allowed_origins: [],
+    widget_title: null,
+    launcher_label: null,
+    accent_color: null,
+    has_secret: false,
+    created_at: null,
+    updated_at: null,
   }
 }
 
@@ -353,6 +391,28 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
         : fallback.assistant_disclaimer_text,
     assistant_provider_keys,
     assistant_model_targets,
+  }
+}
+
+function normalizeCustomerEmbedSettings(payload: unknown): CustomerEmbedSettings {
+  const fallback = buildEmptyCustomerEmbedSettings()
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const record = payload as Record<string, unknown>
+
+  return {
+    is_active: typeof record.is_active === 'boolean' ? record.is_active : fallback.is_active,
+    allowed_origins: Array.isArray(record.allowed_origins)
+      ? record.allowed_origins.filter((origin): origin is string => typeof origin === 'string')
+      : fallback.allowed_origins,
+    widget_title: typeof record.widget_title === 'string' ? record.widget_title : null,
+    launcher_label: typeof record.launcher_label === 'string' ? record.launcher_label : null,
+    accent_color: typeof record.accent_color === 'string' ? record.accent_color : null,
+    has_secret: typeof record.has_secret === 'boolean' ? record.has_secret : fallback.has_secret,
+    created_at: typeof record.created_at === 'string' ? record.created_at : null,
+    updated_at: typeof record.updated_at === 'string' ? record.updated_at : null,
   }
 }
 
@@ -847,6 +907,25 @@ export async function fetchCustomerExperienceSettings(
   }
 }
 
+export async function fetchCustomerEmbedSettings(organizationId: string): Promise<CustomerEmbedSettings> {
+  try {
+    const response = await fetch(
+      buildBackendApiUrl(`/api/admin/clients/${organizationId}/assistant-embed`),
+      {
+        cache: 'no-store',
+      },
+    )
+
+    if (!response.ok) {
+      return buildEmptyCustomerEmbedSettings()
+    }
+
+    return normalizeCustomerEmbedSettings(await response.json())
+  } catch {
+    return buildEmptyCustomerEmbedSettings()
+  }
+}
+
 export async function saveCustomerExperienceSettingsAction(
   _previousState: CustomerExperienceSettingsState,
   formData: FormData,
@@ -944,6 +1023,91 @@ export async function saveCustomerExperienceSettingsAction(
     return {
       ...initialCustomerExperienceSettingsState,
       error: getErrorMessage(error, 'Unable to save jurisdiction assistant settings.'),
+    }
+  }
+}
+
+export async function saveCustomerEmbedSettingsAction(
+  _previousState: CustomerEmbedSettingsState,
+  formData: FormData,
+): Promise<CustomerEmbedSettingsState> {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    return {
+      ...initialCustomerEmbedSettingsState,
+      error: 'Only super admins can update assistant embed settings.',
+    }
+  }
+
+  const organizationId = String(formData.get('organizationId') || '').trim()
+  const allowedOrigins = String(formData.get('allowedOrigins') || '')
+    .split(/\r?\n/)
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+  const widgetTitle = String(formData.get('widgetTitle') || '').trim()
+  const launcherLabel = String(formData.get('launcherLabel') || '').trim()
+  const accentColor = String(formData.get('accentColor') || '').trim()
+  const isActive = formData.get('isActive') !== null
+
+  if (!organizationId) {
+    return {
+      ...initialCustomerEmbedSettingsState,
+      error: 'Organization is required.',
+    }
+  }
+
+  try {
+    const saveSettings = async () =>
+      fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}/assistant-embed`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          allowed_origins: allowedOrigins,
+          widget_title: widgetTitle || null,
+          launcher_label: launcherLabel || null,
+          accent_color: accentColor || null,
+          is_active: isActive,
+        }),
+      })
+
+    let response = await saveSettings()
+
+    if (response.status === 404) {
+      await ensureTenantClientRecord(organizationId)
+      response = await saveSettings()
+    }
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(
+        typeof payload?.detail === 'string'
+          ? payload.detail
+          : 'Unable to save jurisdiction assistant embed settings.',
+      )
+    }
+
+    const savedSettings = normalizeCustomerEmbedSettings(payload)
+    const secret = typeof payload?.secret === 'string' ? payload.secret : null
+
+    revalidatePath('/super-admin')
+    revalidatePath(`/super-admin/customers/${organizationId}`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant-setup`)
+    revalidatePath(`/super-admin/customers/${organizationId}/assistant-embed`)
+
+    return {
+      error: null,
+      success: 'Jurisdiction assistant embed settings saved.',
+      secret,
+      settings: savedSettings,
+    }
+  } catch (error) {
+    return {
+      ...initialCustomerEmbedSettingsState,
+      error: getErrorMessage(error, 'Unable to save jurisdiction assistant embed settings.'),
     }
   }
 }

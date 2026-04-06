@@ -532,6 +532,7 @@ async function fetchCompletedRun(
   agentId: string,
   runId: string,
   sessionId: string | null,
+  requestHeaders?: Record<string, string>,
 ): Promise<CompletedRunFetchResult> {
   if (!sessionId) {
     return {
@@ -545,6 +546,7 @@ async function fetchCompletedRun(
       `${backendBase}/agents/${agentId}/runs/${runId}?session_id=${encodeURIComponent(sessionId)}`,
       {
         cache: "no-store",
+        headers: requestHeaders,
       },
     )
     if (!response.ok) {
@@ -577,6 +579,7 @@ async function fetchCompletedRunWithRetry(
   agentId: string,
   runId: string,
   sessionId: string | null,
+  requestHeaders?: Record<string, string>,
 ): Promise<CompletedRunFetchResult> {
   const attempts = 4
   let lastResult: CompletedRunFetchResult = {
@@ -585,7 +588,7 @@ async function fetchCompletedRunWithRetry(
   }
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    lastResult = await fetchCompletedRun(backendBase, agentId, runId, sessionId)
+    lastResult = await fetchCompletedRun(backendBase, agentId, runId, sessionId, requestHeaders)
     if (lastResult.payload || lastResult.debug !== null) {
       return lastResult
     }
@@ -714,6 +717,10 @@ export function AgentChatPanel({
   title,
   description,
   variant = "default",
+  requestHeaders,
+  showEmptyStateHint = true,
+  showBrandingFooter = true,
+  showModelControls = true,
 }: {
   agentId: string
   backendBase: string
@@ -724,6 +731,10 @@ export function AgentChatPanel({
   title: string
   description: string
   variant?: "default" | "chatgpt"
+  requestHeaders?: Record<string, string>
+  showEmptyStateHint?: boolean
+  showBrandingFooter?: boolean
+  showModelControls?: boolean
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
@@ -741,7 +752,7 @@ export function AgentChatPanel({
   const normalizedDefaultModelId = defaultModelId.trim()
   const isModelOverrideActive =
     Boolean(normalizedModelId) && normalizedModelId !== normalizedDefaultModelId
-  const showPublicAssistantFooter = surface === "public-assistant"
+  const showPublicAssistantFooter = showBrandingFooter && surface === "public-assistant"
   const currentYear = new Date().getFullYear()
 
   useEffect(() => {
@@ -1042,6 +1053,7 @@ export function AgentChatPanel({
             agentId,
             runIdRef.current,
             sessionIdRef.current,
+            requestHeaders,
           )
           const completedRunDebug = completedRun.debug
           const contentDebug = getAssistantContentDebug(completedRun.payload || {})
@@ -1100,6 +1112,7 @@ export function AgentChatPanel({
             agentId,
             runIdRef.current,
             sessionIdRef.current,
+            requestHeaders,
           )
           traceDetail = traceDetail || formatAssistantModelTrace((completedRun.payload || {}) as Record<string, unknown>)
         }
@@ -1138,6 +1151,7 @@ export function AgentChatPanel({
         signal: controller.signal,
         headers: {
           Accept: "text/event-stream",
+          ...(requestHeaders || {}),
         },
       })
 
@@ -1220,6 +1234,7 @@ export function AgentChatPanel({
             agentId,
             runIdRef.current,
             sessionIdRef.current,
+            requestHeaders,
           )
           const completedRunDebug = completedRun.debug
           const contentDebug = getAssistantContentDebug(completedRun.payload || {})
@@ -1298,7 +1313,12 @@ export function AgentChatPanel({
           {messages.length === 0 ? (
             <div className="agent-chat-empty">
               <div className="agent-chat-empty-title">Ask anything about {customerName} zoning</div>
-              <p>Answers stream in as they are generated, and the assistant exposes its live lookup steps while it works.</p>
+              {showEmptyStateHint ? (
+                <p>
+                  Answers stream in as they are generated, and the assistant exposes its live lookup
+                  steps while it works.
+                </p>
+              ) : null}
             </div>
           ) : (
             messages.map((message) => (
@@ -1337,65 +1357,67 @@ export function AgentChatPanel({
         </div>
 
         <div className={`agent-chat-form assistant-ui-composer assistant-ui-composer-${variant}`}>
-          <div className="assistant-model-popover-shell" ref={modelPickerRef}>
-            <button
-              className={`assistant-model-trigger${isModelOverrideActive ? " is-override" : ""}`}
-              type="button"
-              aria-label="Open model settings"
-              aria-haspopup="dialog"
-              aria-expanded={isModelPickerOpen}
-              onClick={() => setIsModelPickerOpen((open) => !open)}
-            >
-              <span className="assistant-model-trigger-label">Model</span>
-              <span className="assistant-model-trigger-status">
-                {isModelOverrideActive ? "Override On" : "Default"}
-              </span>
-            </button>
+          {showModelControls ? (
+            <div className="assistant-model-popover-shell" ref={modelPickerRef}>
+              <button
+                className={`assistant-model-trigger${isModelOverrideActive ? " is-override" : ""}`}
+                type="button"
+                aria-label="Open model settings"
+                aria-haspopup="dialog"
+                aria-expanded={isModelPickerOpen}
+                onClick={() => setIsModelPickerOpen((open) => !open)}
+              >
+                <span className="assistant-model-trigger-label">Model</span>
+                <span className="assistant-model-trigger-status">
+                  {isModelOverrideActive ? "Override On" : "Default"}
+                </span>
+              </button>
 
-            {isModelPickerOpen ? (
-              <div className="assistant-model-popover" role="dialog" aria-label="Model settings">
-                <div className="assistant-model-popover-header">
-                  <div className="assistant-model-controls-copy">
-                    <strong>Model override</strong>
-                    <span>
-                      Default: <code>{defaultModelId || "backend-defined model"}</code>
-                    </span>
+              {isModelPickerOpen ? (
+                <div className="assistant-model-popover" role="dialog" aria-label="Model settings">
+                  <div className="assistant-model-popover-header">
+                    <div className="assistant-model-controls-copy">
+                      <strong>Model override</strong>
+                      <span>
+                        Default: <code>{defaultModelId || "backend-defined model"}</code>
+                      </span>
+                    </div>
+                    <button
+                      className="assistant-model-popover-close"
+                      type="button"
+                      aria-label="Close model settings"
+                      onClick={() => setIsModelPickerOpen(false)}
+                    >
+                      Close
+                    </button>
                   </div>
-                  <button
-                    className="assistant-model-popover-close"
-                    type="button"
-                    aria-label="Close model settings"
-                    onClick={() => setIsModelPickerOpen(false)}
-                  >
-                    Close
-                  </button>
+                  <div className="assistant-model-controls-inputs">
+                    <input
+                      type="text"
+                      className="assistant-model-input"
+                      value={modelId}
+                      disabled={isStreaming}
+                      onChange={(event) => setModelId(event.target.value)}
+                      placeholder={defaultModelId || "Leave blank to use the backend-defined model"}
+                    />
+                    <button
+                      className="button secondary"
+                      type="button"
+                      disabled={isStreaming || modelId.trim() === defaultModelId.trim()}
+                      onClick={() => setModelId(defaultModelId)}
+                    >
+                      Use Default
+                    </button>
+                  </div>
+                  <div className="assistant-model-controls-status">
+                    {isModelOverrideActive
+                      ? `Override active for new runs: ${normalizedModelId}`
+                      : "No override active. New runs will use the model defined by the backend agent."}
+                  </div>
                 </div>
-                <div className="assistant-model-controls-inputs">
-                  <input
-                    type="text"
-                    className="assistant-model-input"
-                    value={modelId}
-                    disabled={isStreaming}
-                    onChange={(event) => setModelId(event.target.value)}
-                    placeholder={defaultModelId || "Leave blank to use the backend-defined model"}
-                  />
-                  <button
-                    className="button secondary"
-                    type="button"
-                    disabled={isStreaming || modelId.trim() === defaultModelId.trim()}
-                    onClick={() => setModelId(defaultModelId)}
-                  >
-                    Use Default
-                  </button>
-                </div>
-                <div className="assistant-model-controls-status">
-                  {isModelOverrideActive
-                    ? `Override active for new runs: ${normalizedModelId}`
-                    : "No override active. New runs will use the model defined by the backend agent."}
-                </div>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="assistant-ui-composer-row">
             <label className="field assistant-ui-input-wrap">
               <textarea
@@ -1427,23 +1449,31 @@ export function AgentChatPanel({
             </label>
           </div>
           <div className="assistant-ui-composer-footer">
-            <div
-              className={`assistant-model-banner${isModelOverrideActive ? " is-override" : ""}`}
-              aria-live="polite"
-            >
-              {isModelOverrideActive ? (
-                <>
-                  Next run will override the backend-defined model with <code>{normalizedModelId}</code>.
-                </>
-              ) : (
-                <>
-                  Next run will use the backend-defined model <code>{defaultModelId || "agent default"}</code>.
-                </>
-              )}
-            </div>
+            {showModelControls ? (
+              <div
+                className={`assistant-model-banner${isModelOverrideActive ? " is-override" : ""}`}
+                aria-live="polite"
+              >
+                {isModelOverrideActive ? (
+                  <>
+                    Next run will override the backend-defined model with <code>{normalizedModelId}</code>.
+                  </>
+                ) : (
+                  <>
+                    Next run will use the backend-defined model <code>{defaultModelId || "agent default"}</code>.
+                  </>
+                )}
+              </div>
+            ) : null}
             <div className="assistant-ui-composer-hint">Ctrl+Enter to send. Enter for a new line.</div>
-            <button className="button secondary" type="button" onClick={() => void handleCopyConversation()}>
-              {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy Failed" : "Copy Conversation"}
+            <button
+              className="assistant-copy-icon-button"
+              type="button"
+              aria-label="Copy conversation"
+              title="Copy conversation"
+              onClick={() => void handleCopyConversation()}
+            >
+              <span aria-hidden="true">{copyState === "copied" ? "✓" : "⎘"}</span>
             </button>
             <button className="button secondary" type="button" onClick={handleNewChat} disabled={isStreaming && !messages.length}>
               {isStreaming ? "Stop & Reset" : "New Chat"}
@@ -1451,7 +1481,6 @@ export function AgentChatPanel({
           </div>
           {showPublicAssistantFooter ? (
             <div className="assistant-ui-powered-footer">
-              <span>Powered by Gridics.</span>
               <span>Copyright © {currentYear} Gridics. All rights reserved.</span>
               <a href="https://gridics.com/privacy/" target="_blank" rel="noreferrer">
                 Privacy

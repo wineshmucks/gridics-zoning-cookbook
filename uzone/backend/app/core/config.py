@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     cache_default_ttl_seconds: int = 300
     admin_config_cache_ttl_seconds: int = 120
     tenant_config_ttl_seconds: int = 300
+    embed_session_signing_secret: str | None = None
+    embed_session_issuer: str = "uzone"
+    embed_session_audience: str = "uzone-embed-widget"
+    embed_session_ttl_seconds: int = 3600
     enable_agent_os: bool = True
     require_agent_os: bool = False
     zoning_embedder_provider: str = "gemini"

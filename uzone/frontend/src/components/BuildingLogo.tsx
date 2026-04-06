@@ -1,3 +1,7 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+
 import { buildApiUrl } from '../lib/api'
 
 type Props = {
@@ -6,9 +10,24 @@ type Props = {
 }
 
 export function BuildingLogo({ logoUrl, alt = 'Logo' }: Props) {
-  if (logoUrl) {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [logoUrl])
+
+  if (logoUrl && !hasError) {
     const resolvedLogoUrl = logoUrl.startsWith('/') ? buildApiUrl(logoUrl) : logoUrl
-    return <img src={resolvedLogoUrl} alt={alt} className="building-logo building-logo-image" />
+    return (
+      <img
+        src={resolvedLogoUrl}
+        alt={alt}
+        className="building-logo building-logo-image"
+        onError={() => {
+          setHasError(true)
+        }}
+      />
+    )
   }
 
   return (

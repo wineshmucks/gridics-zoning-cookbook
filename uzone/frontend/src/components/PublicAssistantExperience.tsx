@@ -15,6 +15,7 @@ type Props = {
   disclaimerText: string
   disclaimerScopeId: string
   initialAccepted: boolean
+  requestHeaders?: Record<string, string>
 }
 
 export function PublicAssistantExperience({
@@ -24,6 +25,7 @@ export function PublicAssistantExperience({
   disclaimerText,
   disclaimerScopeId,
   initialAccepted,
+  requestHeaders,
 }: Props) {
   const [isPending, startTransition] = useTransition()
   const [isAccepted, setIsAccepted] = useState(initialAccepted)
@@ -112,6 +114,10 @@ export function PublicAssistantExperience({
         title=""
         description=""
         variant="chatgpt"
+        requestHeaders={requestHeaders}
+        showEmptyStateHint={false}
+        showBrandingFooter={false}
+        showModelControls={false}
       />
     </>
   )

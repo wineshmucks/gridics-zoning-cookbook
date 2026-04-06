@@ -213,6 +213,7 @@ $(emit_secret_arn_if_set "GROQ_API_KEY" "uzone/groq-api-key" "${GROQ_API_KEY:-}"
 $(emit_secret_arn_if_set "GRIDICS_API_KEY" "uzone/gridics-api-key" "${GRIDICS_API_KEY:-}")
 $(emit_secret_arn_if_set "GRIDICS_CONSUMER_KEY" "uzone/gridics-consumer-key" "${GRIDICS_CONSUMER_KEY:-}")
 $(emit_secret_arn_if_set "GRIDICS_CONSUMER_SECRET" "uzone/gridics-consumer-secret" "${GRIDICS_CONSUMER_SECRET:-}")
+$(emit_secret_arn_if_set "UZONE_EMBED_SESSION_SIGNING_SECRET" "uzone/embed-session-signing-secret" "${UZONE_EMBED_SESSION_SIGNING_SECRET:-}")
 }
 
 frontend_secret_arns = {

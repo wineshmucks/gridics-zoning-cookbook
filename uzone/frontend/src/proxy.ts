@@ -180,7 +180,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  if (!isExcludedRoute && isUnscopedCustomerRoute) {
+  if (!isExcludedRoute && isUnscopedCustomerRoute && !isScopedRoute) {
     const redirectUrl = req.nextUrl.clone()
     const barePath = req.nextUrl.pathname.startsWith('/') ? req.nextUrl.pathname : `/${req.nextUrl.pathname}`
     const scopePrefix = effectiveScopePath || normalizeScopePath(`/${effectiveOrgId}`)

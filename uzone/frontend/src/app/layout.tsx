@@ -23,6 +23,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const orgId = await getCurrentOrgId()
   const currentScopePath = await getCurrentScopePath()
+  const isEmbedSurface = currentScopePath?.startsWith('/embed') ?? false
   const isSuperAdminScope = currentScopePath?.startsWith('/super-admin') ?? false
   const tenant = await getTenantConfig()
   const permissions = await getPermissionContext(clerkEnabled)
@@ -34,34 +35,38 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="en" className={inter.variable}>
       <body>
         <ClerkShell clerkEnabled={clerkEnabled}>
-          <main>
-            <div className="shell shell-wide">
-              <header className="topbar topbar-public">
-                <HeaderBrand
-                  clerkEnabled={clerkEnabled}
-                  cityName={displayCityName}
-                  departmentName={displayDepartmentName}
-                  logoUrl={logoUrl}
-                  brandVariant={isSuperAdminScope ? 'gridics' : 'tenant'}
-                  currentScopePath={currentScopePath}
-                  currentCustomerName={permissions.currentClientMembership?.organizationName || null}
-                  adminMemberships={permissions.adminMemberships}
-                  selectedAdminOrganizationId={permissions.selectedAdminMembership?.organizationId || null}
-                />
-                <div className="topbar-actions">
-                  <PublicNav orgId={orgId} scopePath={currentScopePath} />
-                  <AuthControls
+          {isEmbedSurface ? (
+            <main>{children}</main>
+          ) : (
+            <main>
+              <div className="shell shell-wide">
+                <header className="topbar topbar-public">
+                  <HeaderBrand
                     clerkEnabled={clerkEnabled}
-                    canAccessAdminScreens={permissions.canAccessAdminScreens}
-                    isSuperAdmin={permissions.isSuperAdmin}
-                    currentOrgId={orgId}
+                    cityName={displayCityName}
+                    departmentName={displayDepartmentName}
+                    logoUrl={logoUrl}
+                    brandVariant={isSuperAdminScope ? 'gridics' : 'tenant'}
                     currentScopePath={currentScopePath}
+                    currentCustomerName={permissions.currentClientMembership?.organizationName || null}
+                    adminMemberships={permissions.adminMemberships}
+                    selectedAdminOrganizationId={permissions.selectedAdminMembership?.organizationId || null}
                   />
-                </div>
-              </header>
-              {children}
-            </div>
-          </main>
+                  <div className="topbar-actions">
+                    <PublicNav orgId={orgId} scopePath={currentScopePath} />
+                    <AuthControls
+                      clerkEnabled={clerkEnabled}
+                      canAccessAdminScreens={permissions.canAccessAdminScreens}
+                      isSuperAdmin={permissions.isSuperAdmin}
+                      currentOrgId={orgId}
+                      currentScopePath={currentScopePath}
+                    />
+                  </div>
+                </header>
+                {children}
+              </div>
+            </main>
+          )}
         </ClerkShell>
       </body>
     </html>

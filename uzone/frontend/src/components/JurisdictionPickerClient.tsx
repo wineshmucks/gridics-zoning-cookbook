@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
 import { appendScopePathToHref } from '../lib/org-url'
@@ -34,6 +33,12 @@ export function JurisdictionPickerClient({ customers, returnTo }: Props) {
         .includes(normalizedQuery),
     )
   }, [customers, query])
+
+  const buildCustomerHref = (customer: CustomerChoice) => {
+    const scopedHref = appendScopePathToHref(returnTo, customer.path_alias || `/${customer.orgid}`)
+    return scopedHref !== '/' && scopedHref.endsWith('/') ? scopedHref.slice(0, -1) : scopedHref
+  }
+
   return (
     <div className="jurisdiction-picker-stack">
       <div className="jurisdiction-picker-toolbar">
@@ -84,13 +89,12 @@ export function JurisdictionPickerClient({ customers, returnTo }: Props) {
             </div>
 
             <div className="jurisdiction-picker-actions">
-              <Link
+              <a
                 className="button jurisdiction-picker-button-primary"
-                href={appendScopePathToHref(returnTo, customer.path_alias || `/${customer.orgid}`)}
-                prefetch={false}
+                href={buildCustomerHref(customer)}
               >
                 Select jurisdiction
-              </Link>
+              </a>
             </div>
           </article>
         ))}

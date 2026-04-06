@@ -15,7 +15,8 @@ import {
   type RemoveAdminState,
 } from '../app/admin/actions'
 import { buildApiUrl } from '../lib/api'
-import { SuperAdminCustomerHeader } from './SuperAdminCustomerIcons'
+import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
+import { BuildingLogo } from './BuildingLogo'
 
 type AdminMember = {
   userId: string
@@ -68,14 +69,8 @@ export function SuperAdminCustomerManageClient({
   adminMembers: AdminMember[]
   pendingInvites: PendingInvite[]
 }) {
-  const [inviteState, inviteAction, invitePending] = useActionState(
-    inviteClientAdminAction,
-    initialInviteState,
-  )
-  const [removeState, removeAction, removePending] = useActionState(
-    removeClientAdminAction,
-    initialRemoveState,
-  )
+  const [inviteState, inviteAction, invitePending] = useActionState(inviteClientAdminAction, initialInviteState)
+  const [removeState, removeAction, removePending] = useActionState(removeClientAdminAction, initialRemoveState)
   const [statusState, statusAction, statusPending] = useActionState(
     setCustomerActiveStateAction,
     initialCustomerMutationState,
@@ -148,30 +143,37 @@ export function SuperAdminCustomerManageClient({
     customer.isActive === true ? 'is-active' : customer.isActive === false ? 'is-inactive' : 'is-draft'
   const currentLogoUrl = customer.logoPath ? buildApiUrl(customer.logoPath) : null
   const previewLogoUrl = selectedLogoPreviewUrl || currentLogoUrl
+  const summaryTitle = activeSection === 'admin-users' ? 'Admin Users' : 'General'
+  const summaryIcon = activeSection === 'admin-users' ? 'admin-users' : 'jurisdiction-details'
 
   return (
-    <div className="panel-stack">
-      {activeSection === 'general' ? (
-        <div className="panel-stack">
-          <section className="card">
-            <SuperAdminCustomerHeader
-              icon="jurisdiction-details"
-              eyebrow="Jurisdiction Details"
-              title={customer.name}
-              description="Review the jurisdiction profile, account context, and whether this jurisdiction is live for public tenant resolution."
-            />
-            <div style={{ marginTop: 14 }}>
-              <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
+    <div className="panel-stack super-admin-panel-stack">
+      <section className="super-admin-summary-card">
+        <CompactSummaryHeader
+          title={summaryTitle}
+          icon={summaryIcon}
+          status={<span className={`status-pill ${statusTone}`}>{statusLabel}</span>}
+          meta={
+            <div className="compact-summary-meta-list">
+              <div>
+                <span>Admins</span>
+                <strong>{adminMembers.length}</strong>
+              </div>
+              <div>
+                <span>Invites</span>
+                <strong>{pendingInvites.length}</strong>
+              </div>
             </div>
-          </section>
+          }
+        />
+      </section>
 
-          <div className="admin-list">
-            <div className="admin-list-heading">General</div>
-            <div style={{ color: 'var(--muted)' }}>
-              Jurisdiction details and lifecycle controls for {customer.name}.
-            </div>
-            <form action={generalAction} className="admin-form" encType="multipart/form-data">
-              <input type="hidden" name="organizationId" value={customer.id} />
+      {activeSection === 'general' ? (
+        <section className="super-admin-content-panel">
+          <form id="customer-general-form" action={generalAction} className="admin-form admin-form-compact super-admin-general-form">
+            <input type="hidden" name="organizationId" value={customer.id} />
+
+            <div className="admin-form-grid admin-form-grid-2">
               <label className="field">
                 <span>Organization ID</span>
                 <input name="clientId" defaultValue={customer.clientId} required />
@@ -200,264 +202,180 @@ export function SuperAdminCustomerManageClient({
                 <span>Public path alias</span>
                 <input name="pathAlias" defaultValue={customer.pathAlias || ''} placeholder="/us/fl/miami" />
               </label>
-              <label className="field">
-                <span>Jurisdiction logo</span>
-                <input
-                  name="logoFile"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  onChange={(event) => {
-                    const nextFile = event.target.files?.[0] || null
-                    setSelectedLogoPreviewUrl((currentValue) => {
-                      if (currentValue) {
-                        URL.revokeObjectURL(currentValue)
-                      }
-                      return nextFile ? URL.createObjectURL(nextFile) : null
-                    })
-                  }}
-                />
-              </label>
-              {previewLogoUrl ? (
-                <div className="jurisdiction-logo-preview">
-                  <img src={previewLogoUrl} alt={`${customer.name} logo preview`} className="jurisdiction-logo-preview-image" />
-                  <div style={{ color: 'var(--muted)' }}>
-                    {selectedLogoPreviewUrl ? 'New logo preview selected.' : 'Current uploaded logo.'}{' '}
-                    {currentLogoUrl ? (
-                      <a href={currentLogoUrl} target="_blank" rel="noreferrer">
-                        Open full image
-                      </a>
-                    ) : null}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ color: 'var(--muted)' }}>
-                  No jurisdiction logo uploaded yet. The default building icon will be used.
-                </div>
-              )}
-              {customer.logoPath ? (
-                <div className="admin-action-row">
-                  <input type="hidden" name="customerName" value={customer.name} />
-                  <div style={{ color: 'var(--muted)' }}>
-                    Remove the uploaded logo and revert the header to the default building icon.
-                  </div>
-                  <button
-                    className="button secondary"
-                    type="submit"
-                    formAction={removeLogoAction}
-                    disabled={removeLogoPending}
-                  >
-                    {removeLogoPending ? 'Removing…' : 'Remove Logo'}
-                  </button>
-                </div>
-              ) : null}
-              <dl className="detail-list">
-                <div>
-                  <dt>Organization ID</dt>
-                  <dd>{customer.clientId || customer.customerId || 'Organization ID unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Slug</dt>
-                  <dd>{customer.slug || 'No slug configured'}</dd>
-                </div>
-                <div>
-                  <dt>Public alias</dt>
-                  <dd>{customer.pathAlias || 'No public alias configured'}</dd>
-                </div>
-                <div>
-                  <dt>Admin users</dt>
-                  <dd>{adminMembers.length}</dd>
-                </div>
-                <div>
-                  <dt>Pending invites</dt>
-                  <dd>{pendingInvites.length}</dd>
-                </div>
-                <div>
-                  <dt>Current status</dt>
-                  <dd>
-                    <span className={`status-pill ${statusTone}`}>{statusLabel}</span>
-                  </dd>
-                </div>
-              </dl>
-              <button className="button" type="submit" disabled={generalPending}>
-                {generalPending ? 'Saving…' : 'Save Details'}
-              </button>
-            </form>
-            {generalState.error ? (
-              <div className="status-banner status-banner-error">{generalState.error}</div>
-            ) : null}
-            {generalState.success ? (
-              <div className="status-banner status-banner-success">{generalState.success}</div>
-            ) : null}
-            {removeLogoState.error ? (
-              <div className="status-banner status-banner-error">{removeLogoState.error}</div>
-            ) : null}
-            {removeLogoState.success ? (
-              <div className="status-banner status-banner-success">{removeLogoState.success}</div>
-            ) : null}
-          </div>
+            </div>
 
-          <div className="admin-list">
-            <div className="admin-list-heading">Jurisdiction controls</div>
-            <div className="panel-stack">
-              <form action={statusAction} className="admin-form">
-                <input type="hidden" name="organizationId" value={customer.id} />
-                <input type="hidden" name="customerName" value={customer.name} />
-                <div className="admin-action-row">
-                  <div>
-                    <div style={{ fontWeight: 700 }}>Public availability</div>
-                    <div style={{ color: 'var(--muted)' }}>
-                      Active jurisdictions appear in the public selector and resolve tenant configuration. Inactive ones stay in admin but are hidden from the public flow.
-                    </div>
-                  </div>
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
+            <FormSection title="Logo" icon="assistant-setup">
+              <div className="settings-logo-stack">
+                <label className="field settings-logo-upload-field">
+                  <span>Upload logo</span>
+                  <input
+                    name="logoFile"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={(event) => {
+                      const nextFile = event.target.files?.[0] || null
+                      setSelectedLogoPreviewUrl((currentValue) => {
+                        if (currentValue) {
+                          URL.revokeObjectURL(currentValue)
+                        }
+                        return nextFile ? URL.createObjectURL(nextFile) : null
+                      })
                     }}
-                  >
-                    <span>Status</span>
-                    <select
-                      name="isActive"
-                      defaultValue={customer.isActive === false ? 'false' : 'true'}
-                    >
-                      <option value="true">Active</option>
-                      <option value="false">Inactive</option>
-                    </select>
-                  </label>
+                  />
+                </label>
+                <div className="settings-logo-preview">
+                  {previewLogoUrl ? (
+                    <BuildingLogo logoUrl={previewLogoUrl} alt={`${customer.name} logo preview`} />
+                  ) : (
+                    <span>No logo selected.</span>
+                  )}
                 </div>
-                <button className="button secondary" type="submit" disabled={statusPending}>
-                  {statusPending ? 'Updating…' : 'Save Status'}
-                </button>
-              </form>
+                {customer.logoPath ? (
+                  <div className="settings-logo-actions">
+                    <input type="hidden" name="customerName" value={customer.name} />
+                    <button
+                      className="button button-link"
+                      type="submit"
+                      formAction={removeLogoAction}
+                      disabled={removeLogoPending}
+                    >
+                      {removeLogoPending ? 'Removing…' : 'Remove logo'}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </FormSection>
 
-              <form action={deleteAction} className="admin-action-row">
+            {generalState.error ? <div className="status-banner status-banner-error">{generalState.error}</div> : null}
+            {generalState.success ? <div className="status-banner status-banner-success">{generalState.success}</div> : null}
+            {removeLogoState.error ? <div className="status-banner status-banner-error">{removeLogoState.error}</div> : null}
+            {removeLogoState.success ? <div className="status-banner status-banner-success">{removeLogoState.success}</div> : null}
+          </form>
+
+          <FormSection title="Status" icon="jurisdiction-details">
+            <form action={statusAction} className="admin-form admin-form-compact super-admin-status-form">
+              <input type="hidden" name="organizationId" value={customer.id} />
+              <input type="hidden" name="customerName" value={customer.name} />
+              <div className="super-admin-status-inline">
+                <div className="admin-inline-title">Public availability</div>
+                <label className="field field-inline super-admin-status-field">
+                  <select aria-label="Status" name="isActive" defaultValue={customer.isActive === false ? 'false' : 'true'}>
+                    <option value="true">Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </label>
+              </div>
+              <div className="admin-form-actions admin-form-actions-end">
+                <button className="button secondary" type="submit" disabled={statusPending}>
+                  {statusPending ? 'Updating…' : 'Update Status'}
+                </button>
+              </div>
+            </form>
+            {statusState.error ? <div className="status-banner status-banner-error">{statusState.error}</div> : null}
+            {statusState.success ? <div className="status-banner status-banner-success">{statusState.success}</div> : null}
+          </FormSection>
+
+          <FormSection title="Danger Zone" className="is-danger">
+            <div className="super-admin-danger-zone">
+              <div className="admin-inline-title">Delete jurisdiction</div>
+              <form action={deleteAction} className="super-admin-danger-zone-actions">
                 <input type="hidden" name="organizationId" value={customer.id} />
                 <input type="hidden" name="customerName" value={customer.name} />
-                <div>
-                  <div style={{ fontWeight: 700 }}>Delete jurisdiction</div>
-                  <div style={{ color: 'var(--muted)' }}>
-                    Remove the Clerk organization and delete its tenant mapping.
-                  </div>
-                </div>
-                <button className="button secondary" type="submit" disabled={deletePending}>
+                <button className="button secondary super-admin-danger-button" type="submit" disabled={deletePending}>
                   {deletePending ? 'Deleting…' : 'Delete'}
                 </button>
               </form>
             </div>
-            {statusState.error ? (
-              <div className="status-banner status-banner-error">{statusState.error}</div>
-            ) : null}
-            {statusState.success ? (
-              <div className="status-banner status-banner-success">{statusState.success}</div>
-            ) : null}
-            {deleteState.error ? (
-              <div className="status-banner status-banner-error">{deleteState.error}</div>
-            ) : null}
-            {deleteState.success ? (
-              <div className="status-banner status-banner-success">{deleteState.success}</div>
-            ) : null}
+            {deleteState.error ? <div className="status-banner status-banner-error">{deleteState.error}</div> : null}
+            {deleteState.success ? <div className="status-banner status-banner-success">{deleteState.success}</div> : null}
+          </FormSection>
+
+          <div className="admin-form-actions admin-form-actions-end super-admin-form-footer">
+            <button className="button" type="submit" form="customer-general-form" disabled={generalPending}>
+              {generalPending ? 'Saving…' : 'Save Changes'}
+            </button>
           </div>
-        </div>
+        </section>
       ) : null}
 
       {activeSection === 'admin-users' ? (
-        <div className="panel-stack">
-          <section className="card">
-            <SuperAdminCustomerHeader
-              icon="admin-users"
-              eyebrow="Admin Users"
-              title={customer.name}
-              description="Manage admin access, invitations, and active assignments for this jurisdiction."
-            />
-          </section>
+        <section className="super-admin-content-panel">
+          <FormSection title="Admin Users" icon="admin-users" hideHeader>
+            <div className="admin-form-shell">
+              <form action={inviteAction} className="admin-form admin-form-compact">
+                <input type="hidden" name="organizationId" value={customer.id} />
+                <label className="field field-full">
+                  <span>Email address</span>
+                  <input name="emailAddress" type="email" placeholder="planning-admin@example.gov" required />
+                </label>
+                <div className="admin-form-actions">
+                  <button className="button" type="submit" disabled={invitePending}>
+                    {invitePending ? 'Sending…' : 'Send Admin Invite'}
+                  </button>
+                </div>
+                {inviteState.error ? <div className="status-banner status-banner-error">{inviteState.error}</div> : null}
+                {inviteState.success ? <div className="status-banner status-banner-success">{inviteState.success}</div> : null}
+              </form>
 
-          <div className="admin-list">
-            <div className="admin-list-heading">Invite admin user</div>
-            <form action={inviteAction} className="admin-form">
-              <input type="hidden" name="organizationId" value={customer.id} />
-              <label className="field">
-                <span>Email address</span>
-                <input
-                  name="emailAddress"
-                  type="email"
-                  placeholder="planning-admin@example.gov"
-                  required
-                />
-              </label>
-              <button className="button" type="submit" disabled={invitePending}>
-                {invitePending ? 'Sending…' : 'Send Admin Invite'}
-              </button>
-              {inviteState.error ? (
-                <div className="status-banner status-banner-error">{inviteState.error}</div>
-              ) : null}
-              {inviteState.success ? (
-                <div className="status-banner status-banner-success">{inviteState.success}</div>
-              ) : null}
-            </form>
-          </div>
+              <div className="admin-form-divider" />
 
-          <div className="admin-list">
-            <div className="admin-list-heading">Admin users</div>
-            {adminMembers.length ? (
-              <div className="panel-stack">
-                {adminMembers.map((member) => (
-                  <div key={member.userId} className="admin-list-item admin-action-row">
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{member.name}</div>
-                      <div style={{ color: 'var(--muted)' }}>
-                        {member.identifier} · {member.role}
+              <div className="admin-form-shell">
+                <div className="admin-inline-title">Assigned admins</div>
+                {adminMembers.length ? (
+                  <div className="admin-member-list">
+                    {adminMembers.map((member) => (
+                      <div key={member.userId} className="admin-member-row">
+                        <div>
+                          <div className="admin-inline-title">{member.name}</div>
+                          <div className="admin-form-note">{member.identifier} · {member.role}</div>
+                        </div>
+                        <form action={removeAction}>
+                          <input type="hidden" name="organizationId" value={customer.id} />
+                          <input type="hidden" name="userId" value={member.userId} />
+                          <button className="button secondary" type="submit" disabled={removePending}>
+                            Remove
+                          </button>
+                        </form>
                       </div>
-                    </div>
-                    <form action={removeAction}>
-                      <input type="hidden" name="organizationId" value={customer.id} />
-                      <input type="hidden" name="userId" value={member.userId} />
-                      <button className="button secondary" type="submit" disabled={removePending}>
-                        Remove Admin
-                      </button>
-                    </form>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div className="admin-form-note">No admins.</div>
+                )}
+                {removeState.error ? <div className="status-banner status-banner-error">{removeState.error}</div> : null}
+                {removeState.success ? <div className="status-banner status-banner-success">{removeState.success}</div> : null}
               </div>
-            ) : (
-              <div style={{ color: 'var(--muted)' }}>No admin users are assigned yet.</div>
-            )}
-            {removeState.error ? (
-              <div className="status-banner status-banner-error">{removeState.error}</div>
-            ) : null}
-            {removeState.success ? (
-              <div className="status-banner status-banner-success">{removeState.success}</div>
-            ) : null}
-          </div>
 
-          <div className="admin-list">
-            <div className="admin-list-heading">Pending admin invites</div>
-            {pendingInvites.length ? (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingInvites.map((invite) => (
-                    <tr key={invite.id}>
-                      <td>{invite.emailAddress}</td>
-                      <td>{invite.role}</td>
-                      <td>{invite.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div style={{ color: 'var(--muted)' }}>No pending admin invites.</div>
-            )}
-          </div>
-        </div>
+              <div className="admin-form-divider" />
+
+              <div className="admin-form-shell">
+                <div className="admin-inline-title">Pending invites</div>
+                {pendingInvites.length ? (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingInvites.map((invite) => (
+                        <tr key={invite.id}>
+                          <td>{invite.emailAddress}</td>
+                          <td>{invite.role}</td>
+                          <td>{invite.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="admin-form-note">No invites.</div>
+                )}
+              </div>
+            </div>
+          </FormSection>
+        </section>
       ) : null}
     </div>
   )

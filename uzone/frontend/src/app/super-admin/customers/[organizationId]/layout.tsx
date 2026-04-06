@@ -19,11 +19,9 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
-      <section className="card">
+      <section className="super-admin-empty-state">
         <h1 className="section-title">Super Admin Access Required</h1>
-        <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only super admins can manage customers.
-        </p>
+        <p style={{ color: 'var(--muted)', margin: 0 }}>Only super admins can manage customers.</p>
       </section>
     )
   }
@@ -41,19 +39,21 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
     notFound()
   }
 
+  const displayName = organization?.name || tenantRecord?.city_name || organizationId
+
   return (
-    <section className="card admin-stack" style={{ marginBottom: 18 }}>
+    <div className="super-admin-shell">
       <div className="super-admin-layout">
         <SuperAdminCustomerSidebar
           customer={{
             id: organizationId,
-            name: tenantRecord?.city_name || organization?.name || organizationId,
+            name: displayName,
             slug: organization?.slug || null,
             customerId: organization?.id || tenantRecord?.clerk_organization_id || organizationId,
           }}
         />
         <div className="super-admin-content">{children}</div>
       </div>
-    </section>
+    </div>
   )
 }

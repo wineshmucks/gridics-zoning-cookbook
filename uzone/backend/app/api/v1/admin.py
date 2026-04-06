@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -60,6 +61,12 @@ from app.core.config import settings
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
 from app.services.cache_service import get_cache_service
 from app.services.clerk_service import get_clerk_organization
+from app.services.embed_service import (
+    generate_embed_secret,
+    get_tenant_embed_settings,
+    hash_embed_secret,
+    merge_tenant_embed_settings,
+)
 from app.services.logo_storage import (
     delete_asset,
     delete_asset_namespace,
@@ -102,6 +109,33 @@ LOGO_FILE_EXTENSION_BY_CONTENT_TYPE = {
     "image/svg+xml": ".svg",
 }
 MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024
+
+
+class TenantEmbedSettingsRead(BaseModel):
+    is_active: bool
+    allowed_origins: list[str] = Field(default_factory=list)
+    widget_title: str | None = None
+    launcher_label: str | None = None
+    accent_color: str | None = None
+    has_secret: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class TenantEmbedSettingsUpdate(BaseModel):
+    allowed_origins: list[str] = Field(default_factory=list)
+    widget_title: str | None = Field(default=None, max_length=255)
+    launcher_label: str | None = Field(default=None, max_length=255)
+    accent_color: str | None = Field(default=None, max_length=50)
+    is_active: bool = True
+
+
+class TenantEmbedSettingsCreateResponse(TenantEmbedSettingsRead):
+    secret: str
+
+
+class TenantEmbedPreviewSecretResponse(BaseModel):
+    secret: str
 
 
 def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
@@ -674,6 +708,71 @@ def update_tenant_experience_settings(
         debug_received_assistant_model_targets=payload.assistant_model_targets,
         debug_merged_settings_json=merged_settings,
     )
+
+
+@router.get("/clients/{organization_id}/assistant-embed", response_model=TenantEmbedSettingsRead)
+def get_tenant_assistant_embed_settings(
+    organization_id: str,
+    db: Session = Depends(get_db),
+) -> TenantEmbedSettingsRead:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    embed_settings = get_tenant_embed_settings(tenant_client.settings_json)
+    return TenantEmbedSettingsRead(
+        is_active=embed_settings.is_active,
+        allowed_origins=embed_settings.allowed_origins,
+        widget_title=embed_settings.widget_title,
+        launcher_label=embed_settings.launcher_label,
+        accent_color=embed_settings.accent_color,
+        has_secret=bool(embed_settings.secret_hash),
+        created_at=embed_settings.created_at,
+        updated_at=embed_settings.updated_at,
+    )
+
+
+@router.post("/clients/{organization_id}/assistant-embed", response_model=TenantEmbedSettingsCreateResponse)
+def upsert_tenant_assistant_embed_settings(
+    organization_id: str,
+    payload: TenantEmbedSettingsUpdate,
+    db: Session = Depends(get_db),
+) -> TenantEmbedSettingsCreateResponse:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    secret = generate_embed_secret()
+    secret_hash = hash_embed_secret(secret)
+    merged_settings = merge_tenant_embed_settings(
+        tenant_client.settings_json,
+        secret_hash=secret_hash,
+        allowed_origins=payload.allowed_origins,
+        widget_title=payload.widget_title,
+        launcher_label=payload.launcher_label,
+        accent_color=payload.accent_color,
+        is_active=payload.is_active,
+    )
+    tenant_client.settings_json = merged_settings
+    db.commit()
+    db.refresh(tenant_client)
+    invalidate_tenant_cache()
+
+    embed_settings = get_tenant_embed_settings(tenant_client.settings_json)
+    return TenantEmbedSettingsCreateResponse(
+        secret=secret,
+        is_active=embed_settings.is_active,
+        allowed_origins=embed_settings.allowed_origins,
+        widget_title=embed_settings.widget_title,
+        launcher_label=embed_settings.launcher_label,
+        accent_color=embed_settings.accent_color,
+        has_secret=bool(embed_settings.secret_hash),
+        created_at=embed_settings.created_at,
+        updated_at=embed_settings.updated_at,
+    )
+
+
+@router.post("/clients/{organization_id}/assistant-embed/preview-secret", response_model=TenantEmbedPreviewSecretResponse)
+def create_tenant_assistant_embed_preview_secret(
+    organization_id: str,
+    db: Session = Depends(get_db),
+) -> TenantEmbedPreviewSecretResponse:
+    _get_tenant_client_by_org_id(db, organization_id)
+    return TenantEmbedPreviewSecretResponse(secret=generate_embed_secret())
 
 
 @router.get("/clients/{organization_id}/zoning-knowledge", response_model=ZoningKnowledgeStatusRead)

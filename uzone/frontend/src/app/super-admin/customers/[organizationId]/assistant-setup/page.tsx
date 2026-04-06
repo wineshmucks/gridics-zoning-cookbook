@@ -1,11 +1,11 @@
 import { notFound } from 'next/navigation'
 
 import {
+  fetchCustomerEmbedSettings,
   fetchCustomerExperienceSettings,
   fetchCustomerZoningKnowledgeStatus,
 } from '../../../../admin/actions'
 import { CustomerAssistantSetupPanel } from '../../../../../components/CustomerAssistantSetupPanel'
-import { SuperAdminCustomerHeader } from '../../../../../components/SuperAdminCustomerIcons'
 import { getClerkManagementClient } from '../../../../../lib/clerk'
 import { getPermissionContext } from '../../../../../lib/permissions'
 
@@ -21,11 +21,9 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params }: P
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
-      <section className="card">
+      <section className="super-admin-empty-state">
         <h1 className="section-title">Super Admin Access Required</h1>
-        <p style={{ color: 'var(--muted)', margin: 0 }}>
-          Only super admins can manage jurisdiction assistant setup.
-        </p>
+        <p style={{ color: 'var(--muted)', margin: 0 }}>Only super admins can manage jurisdiction agent setup.</p>
       </section>
     )
   }
@@ -42,32 +40,24 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params }: P
     notFound()
   }
 
-  const [experienceSettings, zoningKnowledgeStatus] = await Promise.all([
+  const displayName = organization.name
+  const [experienceSettings, embedSettings, zoningKnowledgeStatus] = await Promise.all([
     fetchCustomerExperienceSettings(organizationId),
+    fetchCustomerEmbedSettings(organizationId),
     fetchCustomerZoningKnowledgeStatus(organizationId),
   ])
 
   return (
-    <div className="panel-stack">
-      <section className="card">
-        <SuperAdminCustomerHeader
-          icon="assistant-setup"
-          eyebrow="Assistant Setup"
-          title={organization.name}
-          description="Save the zoning code source, run ingestion, and inspect the jurisdiction knowledge base."
-        />
-      </section>
-
-      <CustomerAssistantSetupPanel
-        customer={{
-          id: organization.id,
-          name: organization.name,
-          slug: organization.slug,
-          customerId: organization.id,
-        }}
-        experienceSettings={experienceSettings}
-        zoningKnowledgeStatus={zoningKnowledgeStatus}
-      />
-    </div>
+    <CustomerAssistantSetupPanel
+      customer={{
+        id: organization.id,
+        name: displayName,
+        slug: organization.slug,
+        customerId: organization.id,
+      }}
+      experienceSettings={experienceSettings}
+      embedSettings={embedSettings}
+      zoningKnowledgeStatus={zoningKnowledgeStatus}
+    />
   )
 }

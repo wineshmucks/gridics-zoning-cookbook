@@ -1,17 +1,22 @@
 'use client'
 
 import { useActionState, useEffect, useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import {
   ingestCustomerZoningKnowledgeAction,
+  saveCustomerEmbedSettingsAction,
   reindexCustomerZoningKnowledgeAction,
+  type CustomerEmbedSettings,
+  type CustomerEmbedSettingsState,
   type CustomerExperienceSettings,
   type CustomerExperienceSettingsState,
   type CustomerZoningKnowledgeMutationState,
   type CustomerZoningKnowledgeStatus,
 } from '../app/admin/actions'
 import { buildApiUrl } from '../lib/api'
+import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
+import { CustomerAssistantEmbedPreview } from './CustomerAssistantEmbedPreview'
 
 type SelectedCustomer = {
   id: string
@@ -19,6 +24,8 @@ type SelectedCustomer = {
   slug: string | null
   customerId: string | null
 }
+
+type AgenticSection = 'general' | 'llm' | 'knowledge' | 'integrations'
 
 const providerFields = [
   { id: 'gemini', label: 'Gemini API key', fieldName: 'providerKeyGemini' },
@@ -31,7 +38,6 @@ const modelTargetFields = [
   {
     id: 'customer-zoning-agent',
     label: 'Lead team',
-    description: 'Controls the customer zoning lead agent that orchestrates the run.',
     providerFieldName: 'targetProviderCustomerZoningAgent',
     modelFieldName: 'targetModelCustomerZoningAgent',
     baseUrlFieldName: 'targetBaseUrlCustomerZoningAgent',
@@ -39,7 +45,6 @@ const modelTargetFields = [
   {
     id: 'parcel-data-agent',
     label: 'Parcel data agent',
-    description: 'Controls the member that fetches and summarizes Gridics parcel context.',
     providerFieldName: 'targetProviderParcelDataAgent',
     modelFieldName: 'targetModelParcelDataAgent',
     baseUrlFieldName: 'targetBaseUrlParcelDataAgent',
@@ -47,7 +52,6 @@ const modelTargetFields = [
   {
     id: 'code-researcher-agent',
     label: 'Code researcher agent',
-    description: 'Controls the member that queries the zoning knowledge base for citations.',
     providerFieldName: 'targetProviderCodeResearcherAgent',
     modelFieldName: 'targetModelCodeResearcherAgent',
     baseUrlFieldName: 'targetBaseUrlCodeResearcherAgent',
@@ -60,6 +64,13 @@ const initialExperienceSettingsState: CustomerExperienceSettingsState = {
   settings: null,
 }
 
+const initialEmbedSettingsState: CustomerEmbedSettingsState = {
+  error: null,
+  success: null,
+  secret: null,
+  settings: null,
+}
+
 const initialZoningKnowledgeMutationState: CustomerZoningKnowledgeMutationState = {
   error: null,
   success: null,
@@ -68,13 +79,16 @@ const initialZoningKnowledgeMutationState: CustomerZoningKnowledgeMutationState 
 export function CustomerAssistantSetupPanel({
   customer,
   experienceSettings,
+  embedSettings,
   zoningKnowledgeStatus,
 }: {
   customer: SelectedCustomer
   experienceSettings: CustomerExperienceSettings
+  embedSettings: CustomerEmbedSettings
   zoningKnowledgeStatus: CustomerZoningKnowledgeStatus
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [liveZoningKnowledgeStatus, setLiveZoningKnowledgeStatus] =
     useState<CustomerZoningKnowledgeStatus>(zoningKnowledgeStatus)
   const [experienceState, setExperienceState] =
@@ -88,15 +102,68 @@ export function CustomerAssistantSetupPanel({
     reindexCustomerZoningKnowledgeAction,
     initialZoningKnowledgeMutationState,
   )
+  const [embedState, embedAction, embedPending] = useActionState(
+    saveCustomerEmbedSettingsAction,
+    initialEmbedSettingsState,
+  )
   const [showProviderKeys, setShowProviderKeys] = useState(false)
+  const [copiedEmbedSnippet, setCopiedEmbedSnippet] = useState(false)
+  const [frontendOrigin, setFrontendOrigin] = useState('https://your-uzone-domain')
+  const backendBase =
+    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+  const sectionParam = searchParams.get('section')
+  const activeSection: AgenticSection =
+    sectionParam === 'llm' || sectionParam === 'knowledge' || sectionParam === 'integrations'
+      ? sectionParam
+      : 'general'
   const latestRun = liveZoningKnowledgeStatus.latest_run
   const zoningRunActive = latestRun?.status === 'queued' || latestRun?.status === 'running'
   const providerKeys = experienceSettings.assistant_provider_keys || {}
   const modelTargets = experienceSettings.assistant_model_targets || {}
+  const currentExperienceSettings = experienceState.settings || experienceSettings
+  const currentDisclaimer = currentExperienceSettings.assistant_disclaimer_text
+  const currentZoningCodeUrl = currentExperienceSettings.zoning_code_url || ''
+  const currentProviderKeys = currentExperienceSettings.assistant_provider_keys || providerKeys
+  const currentModelTargets = currentExperienceSettings.assistant_model_targets || modelTargets
+  const currentEmbedSettings = embedState.settings || embedSettings
+  const previewOrigin = currentEmbedSettings.allowed_origins[0] || ''
+  const previewUrl = `/super-admin/customers/${customer.id}/assistant-embed${
+    embedState.secret
+      ? `?secret=${encodeURIComponent(embedState.secret)}${previewOrigin ? `&origin=${encodeURIComponent(previewOrigin)}` : ''}`
+      : previewOrigin
+        ? `?origin=${encodeURIComponent(previewOrigin)}`
+        : ''
+  }`
+  const iframeSnippet =
+    `<iframe src="${frontendOrigin}/embed#token=TOKEN_FROM_YOUR_SERVER" ` +
+    'style="position:fixed;right:20px;bottom:20px;width:420px;height:700px;border:0;z-index:2147483647;" ' +
+    'allow="clipboard-read; clipboard-write"></iframe>'
+  const sectionDetails: Record<
+    AgenticSection,
+    {
+      title: string
+      icon: 'jurisdiction-details' | 'assistant-setup' | 'assistant'
+    }
+  > = {
+    general: { title: 'General', icon: 'jurisdiction-details' },
+    llm: { title: 'LLM Setup', icon: 'assistant-setup' },
+    knowledge: { title: 'Knowledge', icon: 'assistant' },
+    integrations: { title: 'Integrations', icon: 'assistant-setup' },
+  }
 
   useEffect(() => {
     setLiveZoningKnowledgeStatus(zoningKnowledgeStatus)
   }, [zoningKnowledgeStatus])
+
+  useEffect(() => {
+    if (embedState.settings) {
+      setCopiedEmbedSnippet(false)
+    }
+  }, [embedState.settings])
+
+  useEffect(() => {
+    setFrontendOrigin(window.location.origin)
+  }, [])
 
   useEffect(() => {
     if (!experienceState.success) {
@@ -218,236 +285,401 @@ export function CustomerAssistantSetupPanel({
     }
   }
 
-  return (
-    <div className="panel-stack">
-      <div className="admin-list">
-        <div className="admin-list-heading">Assistant setup</div>
-        <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form">
-          <input type="hidden" name="organizationId" value={customer.id} />
-          <label className="field">
-            <span>Zoning code URL</span>
+  const copyEmbedSnippet = async () => {
+    await navigator.clipboard.writeText(iframeSnippet)
+    setCopiedEmbedSnippet(true)
+    window.setTimeout(() => setCopiedEmbedSnippet(false), 2000)
+  }
+
+  const renderExperienceHiddenFields = (options: {
+    includeZoningCodeUrl?: boolean
+    includeDisclaimer?: boolean
+    includeProviderKeys?: boolean
+    includeModelTargets?: boolean
+  }) => (
+    <>
+      <input type="hidden" name="organizationId" value={customer.id} />
+      {options.includeZoningCodeUrl ? (
+        <input type="hidden" name="zoningCodeUrl" value={currentZoningCodeUrl} />
+      ) : null}
+      {options.includeDisclaimer ? (
+        <input type="hidden" name="assistantDisclaimerText" value={currentDisclaimer} />
+      ) : null}
+      {options.includeProviderKeys
+        ? providerFields.map((provider) => (
             <input
-              name="zoningCodeUrl"
-              type="url"
-              placeholder="https://library.municode.com/.../zoning"
-              defaultValue={experienceSettings.zoning_code_url || ''}
+              key={provider.id}
+              type="hidden"
+              name={provider.fieldName}
+              value={currentProviderKeys[provider.id] || ''}
             />
-          </label>
-          <div style={{ color: 'var(--muted)' }}>
-            Save the public zoning code source for {customer.name}. Ingestion uses this URL to build
-            the tenant-specific knowledge base.
-          </div>
-          <label className="field">
-            <span>Assistant disclaimer</span>
-            <textarea
-              name="assistantDisclaimerText"
-              rows={5}
-              placeholder="Explain that the assistant can make mistakes and that users should verify important information."
-              defaultValue={experienceSettings.assistant_disclaimer_text}
-            />
-          </label>
-          <div style={{ color: 'var(--muted)' }}>
-            This text appears as a first-visit acknowledgement when someone opens the public
-            assistant for this jurisdiction.
-          </div>
-          <div className="panel-stack">
-            <div className="admin-list-heading">Provider API keys</div>
-            <div style={{ color: 'var(--muted)' }}>
-              These keys are saved for this jurisdiction only and are used when a model target below
-              points at that provider. Leave any field blank to keep using the server environment for
-              that provider.
-            </div>
-            <label className="field" style={{ gap: 8 }}>
-              <span>Show saved key values</span>
-              <input
-                type="checkbox"
-                checked={showProviderKeys}
-                onChange={(event) => setShowProviderKeys(event.target.checked)}
-              />
-            </label>
-            <div className="panel-stack">
-              {providerFields.map((provider) => (
-                <label key={provider.id} className="field">
-                  <span>{provider.label}</span>
+          ))
+        : null}
+      {options.includeModelTargets
+        ? modelTargetFields.map((target) => {
+            const targetSettings = currentModelTargets[target.id] || {
+              provider: null,
+              model_id: null,
+              base_url: null,
+            }
+
+            return (
+              <span key={target.id}>
+                <input
+                  type="hidden"
+                  name={target.providerFieldName}
+                  value={targetSettings.provider || ''}
+                />
+                <input
+                  type="hidden"
+                  name={target.modelFieldName}
+                  value={targetSettings.model_id || ''}
+                />
+                <input
+                  type="hidden"
+                  name={target.baseUrlFieldName}
+                  value={targetSettings.base_url || ''}
+                />
+              </span>
+            )
+          })
+        : null}
+    </>
+  )
+
+  return (
+    <div className="panel-stack super-admin-panel-stack">
+      <section className="super-admin-summary-card">
+        <CompactSummaryHeader
+          title={sectionDetails[activeSection].title}
+          icon={sectionDetails[activeSection].icon}
+        />
+      </section>
+
+      <section className="super-admin-content-panel">
+        {activeSection === 'general' ? (
+          <FormSection title="Disclaimer" icon="jurisdiction-details" hideHeader>
+            <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
+              {renderExperienceHiddenFields({
+                includeZoningCodeUrl: true,
+                includeProviderKeys: true,
+                includeModelTargets: true,
+              })}
+              <label className="field field-full">
+                <span>Disclaimer</span>
+                <textarea
+                  name="assistantDisclaimerText"
+                  rows={5}
+                  placeholder="Explain that the assistant can make mistakes and that users should verify important information."
+                  defaultValue={currentDisclaimer}
+                />
+              </label>
+              <div className="admin-form-actions">
+                <button className="button button-fit" type="submit" disabled={experiencePending}>
+                  {experiencePending ? 'Saving…' : 'Save disclaimer'}
+                </button>
+              </div>
+              {experienceState.error ? (
+                <div className="status-banner status-banner-error">{experienceState.error}</div>
+              ) : null}
+              {experienceState.success ? (
+                <div className="status-banner status-banner-success">{experienceState.success}</div>
+              ) : null}
+            </form>
+          </FormSection>
+        ) : null}
+
+        {activeSection === 'llm' ? (
+          <>
+            <FormSection title="LLM Setup" icon="assistant-setup" hideHeader>
+              <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
+                {renderExperienceHiddenFields({
+                  includeZoningCodeUrl: true,
+                  includeDisclaimer: true,
+                })}
+                <label className="field field-inline">
+                  <span>Show saved key values</span>
                   <input
-                    name={provider.fieldName}
-                    type={showProviderKeys ? 'text' : 'password'}
-                    autoComplete="off"
-                    placeholder={`Optional ${provider.id} key for ${customer.name}`}
-                    defaultValue={providerKeys[provider.id] || ''}
+                    type="checkbox"
+                    checked={showProviderKeys}
+                    onChange={(event) => setShowProviderKeys(event.target.checked)}
                   />
                 </label>
-              ))}
-            </div>
-          </div>
-          <div className="panel-stack">
-            <div className="admin-list-heading">Assistant model targets</div>
-            <div style={{ color: 'var(--muted)' }}>
-              Configure each team or member independently. Leave a target blank to keep the model
-              defined in code. Set a provider and model together to override that target for this
-              customer.
-            </div>
-            <div className="panel-stack">
-              {modelTargetFields.map((target) => {
-                const targetSettings = modelTargets[target.id] || {
-                  provider: null,
-                  model_id: null,
-                  base_url: null,
-                }
+                <div className="admin-form-grid admin-form-grid-2">
+                  {providerFields.map((provider) => (
+                    <label key={provider.id} className="field">
+                      <span>{provider.label}</span>
+                      <input
+                        name={provider.fieldName}
+                        type={showProviderKeys ? 'text' : 'password'}
+                        autoComplete="off"
+                        placeholder={`Optional ${provider.id} key for ${customer.name}`}
+                        defaultValue={currentProviderKeys[provider.id] || ''}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="admin-form-actions">
+                  <button className="button button-fit" type="submit" disabled={experiencePending}>
+                    {experiencePending ? 'Saving…' : 'Save provider keys'}
+                  </button>
+                </div>
+                {experienceState.error ? <div className="status-banner status-banner-error">{experienceState.error}</div> : null}
+                {experienceState.success ? (
+                  <div className="status-banner status-banner-success">{experienceState.success}</div>
+                ) : null}
+              </form>
+            </FormSection>
 
-                return (
-                  <div key={target.id} className="assistant-target-card">
-                    <div className="assistant-target-card-header">
-                      <strong>{target.label}</strong>
-                      <span>{target.description}</span>
+            <FormSection title="Model Targets" icon="assistant">
+              <div className="admin-form-grid admin-form-grid-single">
+                {modelTargetFields.map((target) => {
+                  const targetSettings = currentModelTargets[target.id] || {
+                    provider: null,
+                    model_id: null,
+                    base_url: null,
+                  }
+
+                  return (
+                    <div key={target.id} className="admin-target-row">
+                      <div className="admin-target-row-head">
+                        <strong>{target.label}</strong>
+                      </div>
+                      <div className="admin-form-grid admin-form-grid-3">
+                        <label className="field">
+                          <span>Provider</span>
+                          <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
+                            <option value="">Use code default</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="openrouter">OpenRouter</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="groq">Groq</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Model ID</span>
+                          <input
+                            name={target.modelFieldName}
+                            type="text"
+                            placeholder="Use code default"
+                            defaultValue={targetSettings.model_id || ''}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Base URL</span>
+                          <input
+                            name={target.baseUrlFieldName}
+                            type="text"
+                            placeholder="Optional custom base URL"
+                            defaultValue={targetSettings.base_url || ''}
+                          />
+                        </label>
+                      </div>
                     </div>
-                    <div className="assistant-target-card-fields">
-                      <label className="field">
-                        <span>Provider</span>
-                        <select
-                          name={target.providerFieldName}
-                          defaultValue={targetSettings.provider || ''}
-                        >
-                          <option value="">Use code default</option>
-                          <option value="gemini">Gemini</option>
-                          <option value="openrouter">OpenRouter</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="groq">Groq</option>
-                        </select>
-                      </label>
-                      <label className="field">
-                        <span>Model ID</span>
-                        <input
-                          name={target.modelFieldName}
-                          type="text"
-                          placeholder="Use code default"
-                          defaultValue={targetSettings.model_id || ''}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Base URL</span>
-                        <input
-                          name={target.baseUrlFieldName}
-                          type="text"
-                          placeholder="Optional custom base URL"
-                          defaultValue={targetSettings.base_url || ''}
-                        />
-                      </label>
-                    </div>
+                  )
+                })}
+              </div>
+            </FormSection>
+          </>
+        ) : null}
+
+        {activeSection === 'knowledge' ? (
+          <>
+            <FormSection title="Knowledge" icon="assistant" hideHeader>
+              <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
+                {renderExperienceHiddenFields({
+                  includeDisclaimer: true,
+                  includeProviderKeys: true,
+                  includeModelTargets: true,
+                })}
+                <label className="field field-full">
+                  <span>Zoning code URL</span>
+                  <input
+                    name="zoningCodeUrl"
+                    type="url"
+                    placeholder="https://library.municode.com/.../zoning"
+                    defaultValue={currentZoningCodeUrl}
+                  />
+                </label>
+                <div className="admin-form-actions">
+                  <button className="button button-fit" type="submit" disabled={experiencePending}>
+                    {experiencePending ? 'Saving…' : 'Save knowledge settings'}
+                  </button>
+                </div>
+                {experienceState.error ? <div className="status-banner status-banner-error">{experienceState.error}</div> : null}
+                {experienceState.success ? (
+                  <div className="status-banner status-banner-success">{experienceState.success}</div>
+                ) : null}
+              </form>
+            </FormSection>
+
+            <FormSection title="Ingestion status" icon="jurisdiction-details">
+              <div className="assistant-setup-stats">
+                <div className="assistant-setup-stat">
+                  <span>Documents</span>
+                  <strong>{liveZoningKnowledgeStatus.documents}</strong>
+                </div>
+                <div className="assistant-setup-stat">
+                  <span>Sections</span>
+                  <strong>{liveZoningKnowledgeStatus.sections}</strong>
+                </div>
+                <div className="assistant-setup-stat">
+                  <span>Chunks</span>
+                  <strong>{liveZoningKnowledgeStatus.chunks}</strong>
+                </div>
+              </div>
+
+              <div className="assistant-setup-meta">
+                <div>
+                  <strong>Source URL</strong>
+                  <div>{liveZoningKnowledgeStatus.zoning_code_url || 'Not set.'}</div>
+                </div>
+                <div>
+                  <strong>Client binding</strong>
+                  <div>{liveZoningKnowledgeStatus.client_id}</div>
+                </div>
+              </div>
+
+              {liveZoningKnowledgeStatus.latest_run ? (
+                <div className="assistant-setup-run">
+                  <strong>{zoningRunActive ? 'Current run' : 'Last run'}</strong>
+                  <div>
+                    {liveZoningKnowledgeStatus.latest_run.mode} · {liveZoningKnowledgeStatus.latest_run.status}
                   </div>
-                )
-              })}
+                </div>
+              ) : null}
+
+              {latestRun?.status === 'failed' && latestRun.error_message ? (
+                <div className="status-banner status-banner-error">{latestRun.error_message}</div>
+              ) : null}
+
+              {zoningRunActive ? (
+                <div className="status-banner status-banner-success">
+                  {latestRun?.status === 'queued' ? 'Queued.' : 'Running.'}
+                </div>
+              ) : null}
+
+              <div className="button-row">
+                <form action={ingestAction}>
+                  <input type="hidden" name="organizationId" value={customer.id} />
+                  <button className="button" type="submit" disabled={ingestPending || zoningRunActive}>
+                    {ingestPending ? 'Starting…' : zoningRunActive ? 'Ingest Running…' : 'Ingest'}
+                  </button>
+                </form>
+
+                <form action={reindexAction}>
+                  <input type="hidden" name="organizationId" value={customer.id} />
+                  <button className="button secondary" type="submit" disabled={reindexPending || zoningRunActive}>
+                    {reindexPending ? 'Starting…' : zoningRunActive ? 'Run In Progress…' : 'Reindex'}
+                  </button>
+                </form>
+              </div>
+
+              {ingestState.error ? <div className="status-banner status-banner-error">{ingestState.error}</div> : null}
+              {ingestState.success ? <div className="status-banner status-banner-success">{ingestState.success}</div> : null}
+              {reindexState.error ? <div className="status-banner status-banner-error">{reindexState.error}</div> : null}
+              {reindexState.success ? <div className="status-banner status-banner-success">{reindexState.success}</div> : null}
+            </FormSection>
+          </>
+        ) : null}
+
+        {activeSection === 'integrations' ? (
+          <FormSection title="Integrations" icon="assistant-setup" hideHeader>
+            <form action={embedAction} className="admin-form admin-form-compact">
+              <input type="hidden" name="organizationId" value={customer.id} />
+              <div className="admin-form-grid admin-form-grid-2">
+                <label className="field field-full">
+                  <span>Allowed origins</span>
+                  <textarea
+                    name="allowedOrigins"
+                    rows={4}
+                    placeholder="https://partner.example.com"
+                    defaultValue={currentEmbedSettings.allowed_origins.join('\n')}
+                  />
+                </label>
+                <label className="field">
+                  <span>Widget title</span>
+                  <input
+                    name="widgetTitle"
+                    type="text"
+                    placeholder={`Ask ${customer.name}`}
+                    defaultValue={currentEmbedSettings.widget_title || ''}
+                  />
+                </label>
+                <label className="field">
+                  <span>Launcher label</span>
+                  <input
+                    name="launcherLabel"
+                    type="text"
+                    placeholder="Have a question?"
+                    defaultValue={currentEmbedSettings.launcher_label || ''}
+                  />
+                </label>
+                <label className="field">
+                  <span>Accent color</span>
+                  <input
+                    name="accentColor"
+                    type="text"
+                    placeholder="#0b67c2"
+                    defaultValue={currentEmbedSettings.accent_color || ''}
+                  />
+                </label>
+                <label className="field field-inline">
+                  <span>Enable widget</span>
+                  <input name="isActive" type="checkbox" defaultChecked={currentEmbedSettings.is_active} />
+                </label>
+              </div>
+              <div className="admin-form-actions">
+                <button className="button button-fit" type="submit" disabled={embedPending}>
+                  {embedPending ? 'Saving…' : 'Save embed settings'}
+                </button>
+              </div>
+            </form>
+
+            {embedState.error ? <div className="status-banner status-banner-error">{embedState.error}</div> : null}
+            {embedState.success ? <div className="status-banner status-banner-success">{embedState.success}</div> : null}
+            {embedState.secret ? (
+              <div className="assistant-settings-debug">
+                <strong>Secret</strong>
+                <pre>{embedState.secret}</pre>
+              </div>
+            ) : null}
+            <div className="assistant-setup-inline-preview">
+              <div className="admin-list-heading">Super Admin preview</div>
+              <div className="assistant-setup-inline-preview-note">
+                Preview the embedded assistant directly inside Super Admin using the current embed
+                settings.
+              </div>
+              <CustomerAssistantEmbedPreview
+                backendBase={backendBase}
+                customer={{
+                  id: customer.id,
+                  name: customer.name,
+                }}
+                embedSettings={currentEmbedSettings}
+                embedSecret={embedState.secret}
+                initialOrigin={previewOrigin || null}
+              />
             </div>
-          </div>
-          <button className="button button-fit" type="submit" disabled={experiencePending}>
-            {experiencePending ? 'Saving…' : 'Save'}
-          </button>
-          {experienceState.error ? (
-            <div className="status-banner status-banner-error">{experienceState.error}</div>
-          ) : null}
-          {experienceState.success ? (
-            <div className="status-banner status-banner-success">{experienceState.success}</div>
-          ) : null}
-          <div className="assistant-settings-debug">
-            <strong>Loaded settings from backend</strong>
-            <pre>{JSON.stringify(experienceSettings, null, 2)}</pre>
-          </div>
-          {experienceState.settings ? (
             <div className="assistant-settings-debug">
-              <strong>Save response from backend</strong>
-              <pre>{JSON.stringify(experienceState.settings, null, 2)}</pre>
+              <strong>Backend flow</strong>
+              <pre>{`POST /api/public/embed/sessions\nHeaders: X-UZone-Embed-Secret: <your embed secret>\nBody: { "client_id": "${customer.id}", "origin": "${previewOrigin || 'https://partner.example.com'}" }`}</pre>
             </div>
-          ) : null}
-        </form>
-      </div>
-
-      <div className="admin-list">
-        <div className="admin-list-heading">Zoning knowledge</div>
-        <div className="panel-stack">
-          <div className="assistant-setup-stats">
-            <div className="assistant-setup-stat">
-              <span>Documents</span>
-              <strong>{liveZoningKnowledgeStatus.documents}</strong>
-            </div>
-            <div className="assistant-setup-stat">
-              <span>Sections</span>
-              <strong>{liveZoningKnowledgeStatus.sections}</strong>
-            </div>
-            <div className="assistant-setup-stat">
-              <span>Chunks</span>
-              <strong>{liveZoningKnowledgeStatus.chunks}</strong>
-            </div>
-          </div>
-
-          <div className="assistant-setup-meta">
-            <div>
-              <strong>Source URL</strong>
-              <div>{liveZoningKnowledgeStatus.zoning_code_url || 'No zoning code URL configured.'}</div>
-            </div>
-            <div>
-              <strong>Client binding</strong>
-              <div>{liveZoningKnowledgeStatus.client_id}</div>
-            </div>
-          </div>
-
-          {liveZoningKnowledgeStatus.latest_run ? (
-            <div className="assistant-setup-run">
-              <strong>{zoningRunActive ? 'Current run' : 'Last run'}</strong>
-              <div>
-                {liveZoningKnowledgeStatus.latest_run.mode} · {liveZoningKnowledgeStatus.latest_run.status}
-              </div>
-              <div>
-                Crawled {liveZoningKnowledgeStatus.latest_run.pages_crawled} pages, extracted{' '}
-                {liveZoningKnowledgeStatus.latest_run.documents_extracted} documents,{' '}
-                {liveZoningKnowledgeStatus.latest_run.sections_extracted} sections, and upserted{' '}
-                {liveZoningKnowledgeStatus.latest_run.chunks_upserted} chunks.
+            <div className="assistant-settings-debug">
+              <strong>Iframe</strong>
+              <pre>{iframeSnippet}</pre>
+              <div className="button-row admin-form-actions">
+                <button type="button" className="button secondary" onClick={() => void copyEmbedSnippet()}>
+                  {copiedEmbedSnippet ? 'Copied' : 'Copy iframe snippet'}
+                </button>
+                <a className="button" href={previewUrl}>
+                  Open embed preview
+                </a>
               </div>
             </div>
-          ) : (
-            <div style={{ color: 'var(--muted)' }}>No zoning knowledge ingestion has run yet.</div>
-          )}
-
-          {latestRun?.status === 'failed' && latestRun.error_message ? (
-            <div className="status-banner status-banner-error">{latestRun.error_message}</div>
-          ) : null}
-
-          {zoningRunActive ? (
-            <div className="status-banner status-banner-success">
-              {latestRun?.status === 'queued' ? 'Ingestion is queued.' : 'Ingestion is running.'} This page refreshes
-              automatically every few seconds.
-            </div>
-          ) : null}
-
-          <div className="button-row">
-            <form action={ingestAction}>
-              <input type="hidden" name="organizationId" value={customer.id} />
-              <button className="button" type="submit" disabled={ingestPending || zoningRunActive}>
-                {ingestPending ? 'Starting…' : zoningRunActive ? 'Ingest Running…' : 'Ingest'}
-              </button>
-            </form>
-
-            <form action={reindexAction}>
-              <input type="hidden" name="organizationId" value={customer.id} />
-              <button className="button secondary" type="submit" disabled={reindexPending || zoningRunActive}>
-                {reindexPending ? 'Starting…' : zoningRunActive ? 'Run In Progress…' : 'Reindex'}
-              </button>
-            </form>
-          </div>
-
-          {ingestState.error ? (
-            <div className="status-banner status-banner-error">{ingestState.error}</div>
-          ) : null}
-          {ingestState.success ? (
-            <div className="status-banner status-banner-success">{ingestState.success}</div>
-          ) : null}
-          {reindexState.error ? (
-            <div className="status-banner status-banner-error">{reindexState.error}</div>
-          ) : null}
-          {reindexState.success ? (
-            <div className="status-banner status-banner-success">{reindexState.success}</div>
-          ) : null}
-        </div>
-      </div>
+          </FormSection>
+        ) : null}
+      </section>
     </div>
   )
 }

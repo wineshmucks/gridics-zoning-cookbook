@@ -11,7 +11,6 @@ type Props = {
     name: string
   }
   embedSettings: CustomerEmbedSettings
-  embedSecret: string | null
   initialOrigin: string | null
 }
 
@@ -29,20 +28,29 @@ type EmbedSessionCreateResponse = {
   origin: string | null
 }
 
+function normalizeBackendBase(base: string): string {
+  return base.replace(/\/+$/, '').replace(/\/api$/, '')
+}
+
+function buildPreviewApiUrl(base: string, path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  return `${normalizeBackendBase(base)}${normalizedPath}`
+}
+
 export function CustomerAssistantEmbedPreview({
   backendBase,
   customer,
   embedSettings,
-  embedSecret,
   initialOrigin,
 }: Props) {
   const [origin, setOrigin] = useState(initialOrigin || embedSettings.allowed_origins[0] || '')
-  const [secret, setSecret] = useState(embedSecret || '')
+  const [secret, setSecret] = useState('')
   const [iframeSrc, setIframeSrc] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copiedSecret, setCopiedSecret] = useState(false)
   const [copiedLive, setCopiedLive] = useState(false)
   const [frontendOrigin, setFrontendOrigin] = useState('https://your-uzone-domain')
 
@@ -61,12 +69,6 @@ export function CustomerAssistantEmbedPreview({
   }, [embedSettings.allowed_origins, initialOrigin])
 
   useEffect(() => {
-    if (embedSecret) {
-      setSecret(embedSecret)
-    }
-  }, [embedSecret])
-
-  useEffect(() => {
     setFrontendOrigin(window.location.origin)
   }, [])
 
@@ -75,7 +77,7 @@ export function CustomerAssistantEmbedPreview({
     'style="position:fixed;right:20px;bottom:20px;width:420px;height:700px;border:0;z-index:2147483647;" ' +
     'allow="clipboard-read; clipboard-write"></iframe>'
 
-  const hostTokenSnippet = `fetch('${backendBase}/api/public/embed/sessions', {
+  const hostTokenSnippet = `fetch('${buildPreviewApiUrl(backendBase, '/api/public/embed/sessions')}', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -88,20 +90,17 @@ export function CustomerAssistantEmbedPreview({
   })`
 
   const loadPreviewSecret = async () => {
-    if (secret.trim()) {
-      return secret.trim()
-    }
+    const response = await fetch(
+      buildPreviewApiUrl(backendBase, `/api/admin/clients/${customer.id}/assistant-embed/preview-secret`),
+      {
+        method: 'POST',
+      },
+    )
 
-    const response = await fetch(`${backendBase}/api/admin/clients/${customer.id}/assistant-embed/preview-secret`, {
-      method: 'POST',
-    })
     const payload = (await response.json().catch(() => null)) as { secret?: string; detail?: string } | null
-
     if (!response.ok) {
       throw new Error(
-        typeof payload?.detail === 'string'
-          ? payload.detail
-          : 'Unable to generate a preview secret.',
+        typeof payload?.detail === 'string' ? payload.detail : 'Unable to generate a preview secret.',
       )
     }
 
@@ -125,18 +124,19 @@ export function CustomerAssistantEmbedPreview({
     setStatus(null)
 
     try {
-      const activeSecret = await loadPreviewSecret()
-      const response = await fetch(`${backendBase}/api/public/embed/sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-UZone-Embed-Secret': activeSecret,
+      const generatedSecret = await loadPreviewSecret()
+      const response = await fetch(
+        buildPreviewApiUrl(backendBase, `/api/admin/clients/${customer.id}/assistant-embed/preview-session`),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            origin: origin.trim(),
+          }),
         },
-        body: JSON.stringify({
-          client_id: customer.id,
-          origin: origin.trim(),
-        }),
-      })
+      )
 
       const payload = (await response.json().catch(() => null)) as EmbedSessionCreateResponse | null
       const errorPayload = payload as { detail?: string } | null
@@ -159,7 +159,8 @@ export function CustomerAssistantEmbedPreview({
       }
 
       setIframeSrc(`${frontendOrigin}/embed#token=${encodeURIComponent(token)}`)
-      setStatus(`Preview token minted for ${origin.trim()}.`)
+      setStatus(`Preview token minted for ${origin.trim()}. Embed secret generated for this preview session.`)
+      setSecret(generatedSecret)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to mint preview token.')
     } finally {
@@ -173,19 +174,20 @@ export function CustomerAssistantEmbedPreview({
     }
   }, [origin])
 
-  useEffect(() => {
-    if (!embedSecret || !origin.trim() || iframeSrc) {
-      return
-    }
-
-    void mintPreviewToken()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedSecret, origin, iframeSrc])
-
   const copyIframeSnippet = async () => {
     await navigator.clipboard.writeText(iframeSnippet)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 2000)
+  }
+
+  const copySecret = async () => {
+    if (!secret.trim()) {
+      return
+    }
+
+    await navigator.clipboard.writeText(secret.trim())
+    setCopiedSecret(true)
+    window.setTimeout(() => setCopiedSecret(false), 2000)
   }
 
   const liveIframeSnippet = iframeSrc
@@ -207,24 +209,10 @@ export function CustomerAssistantEmbedPreview({
       <div className="admin-list">
         <div className="admin-list-heading">Preview controls</div>
         <div style={{ color: 'var(--muted)' }}>
-          Use a trusted origin that is allowed in the embed settings. If no secret is entered, the
-          preview will generate one automatically for this session.
-        </div>
-        <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.45 }}>
-          The preview also requires the backend env var <code>UZONE_EMBED_SESSION_SIGNING_SECRET</code>.
-          Set it in <code>uzone/.env</code> or your backend container, then restart the backend.
+          Use a trusted origin that you want to preview from. The preview session is minted
+          directly from your Super Admin session, so it does not require saved embed settings.
         </div>
         <div className="admin-form">
-          <label className="field">
-            <span>Embed secret</span>
-            <input
-              value={secret}
-              onChange={(event) => setSecret(event.target.value)}
-              placeholder="uz_embed_..."
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </label>
           <label className="field">
             <span>Preview origin</span>
             <input
@@ -233,6 +221,24 @@ export function CustomerAssistantEmbedPreview({
               placeholder="https://partner.example.com"
             />
           </label>
+        </div>
+        <div className="assistant-settings-debug">
+          <strong>Embed secret</strong>
+          <div style={{ color: 'var(--muted)', marginTop: 6, marginBottom: 8 }}>
+            Clicking <strong>Load preview</strong> will generate a preview secret automatically and
+            show it here for reuse.
+          </div>
+          <pre>{secret || 'Not generated yet.'}</pre>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => void copySecret()}
+              disabled={!secret.trim()}
+            >
+              {copiedSecret ? 'Copied' : 'Copy secret'}
+            </button>
+          </div>
         </div>
         <div className="button-row">
           <button type="button" className="button" onClick={() => void mintPreviewToken()} disabled={loading}>

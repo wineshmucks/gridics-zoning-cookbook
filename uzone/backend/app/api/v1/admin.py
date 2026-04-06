@@ -62,8 +62,10 @@ from app.services.email_template_service import get_default_email_templates, get
 from app.services.cache_service import get_cache_service
 from app.services.clerk_service import get_clerk_organization
 from app.services.embed_service import (
+    build_embed_widget_payload,
     generate_embed_secret,
     get_tenant_embed_settings,
+    issue_embed_session_token,
     hash_embed_secret,
     merge_tenant_embed_settings,
 )
@@ -136,6 +138,24 @@ class TenantEmbedSettingsCreateResponse(TenantEmbedSettingsRead):
 
 class TenantEmbedPreviewSecretResponse(BaseModel):
     secret: str
+
+
+class TenantEmbedPreviewSessionRequest(BaseModel):
+    origin: str = Field(min_length=1, max_length=255)
+
+
+class TenantEmbedPreviewSessionResponse(BaseModel):
+    token: str
+    expires_at: str
+    client_id: str
+    city_name: str
+    department_name: str
+    assistant_disclaimer_text: str
+    widget_title: str
+    launcher_label: str
+    accent_color: str
+    allowed_origins: list[str]
+    origin: str | None = None
 
 
 def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
@@ -773,6 +793,38 @@ def create_tenant_assistant_embed_preview_secret(
 ) -> TenantEmbedPreviewSecretResponse:
     _get_tenant_client_by_org_id(db, organization_id)
     return TenantEmbedPreviewSecretResponse(secret=generate_embed_secret())
+
+
+@router.post("/clients/{organization_id}/assistant-embed/preview-session", response_model=TenantEmbedPreviewSessionResponse)
+def create_tenant_assistant_embed_preview_session(
+    organization_id: str,
+    payload: TenantEmbedPreviewSessionRequest,
+    db: Session = Depends(get_db),
+) -> TenantEmbedPreviewSessionResponse:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    embed_settings = get_tenant_embed_settings(tenant_client.settings_json)
+    assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
+    normalized_origin = payload.origin.strip()
+    if not normalized_origin:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid origin")
+
+    token, expires_at = issue_embed_session_token(
+        tenant_client=tenant_client,
+        embed_origin=normalized_origin,
+        assistant_disclaimer_text=assistant_disclaimer_text,
+        widget_title=embed_settings.widget_title,
+        launcher_label=embed_settings.launcher_label,
+        accent_color=embed_settings.accent_color,
+    )
+    response_payload = build_embed_widget_payload(
+        tenant_client=tenant_client,
+        embed_settings=embed_settings,
+        token=token,
+        expires_at=expires_at,
+        assistant_disclaimer_text=assistant_disclaimer_text,
+        embed_origin=normalized_origin,
+    )
+    return TenantEmbedPreviewSessionResponse(**response_payload)
 
 
 @router.get("/clients/{organization_id}/zoning-knowledge", response_model=ZoningKnowledgeStatusRead)

@@ -41,6 +41,10 @@ function readTokenFromLocation(): string {
   return (hashParams.get('token') || '').trim()
 }
 
+function normalizeBackendBase(base: string): string {
+  return base.replace(/\/+$/, '').replace(/\/api$/, '')
+}
+
 export function EmbedAssistantWidget({ backendBase }: Props) {
   const [token, setToken] = useState('')
   const [session, setSession] = useState<EmbedSession | null>(null)
@@ -66,7 +70,7 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
 
     void (async () => {
       try {
-        const response = await fetch(`${backendBase}/api/public/embed/session`, {
+        const response = await fetch(`${normalizeBackendBase(backendBase)}/api/public/embed/session`, {
           cache: 'no-store',
           headers: {
             'X-UZone-Embed-Token': token,

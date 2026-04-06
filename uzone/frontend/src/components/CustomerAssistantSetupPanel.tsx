@@ -647,8 +647,7 @@ export function CustomerAssistantSetupPanel({
             <div className="assistant-setup-inline-preview">
               <div className="admin-list-heading">Super Admin preview</div>
               <div className="assistant-setup-inline-preview-note">
-                Preview the embedded assistant directly inside Super Admin using the current embed
-                settings.
+                Preview the embedded assistant directly inside Super Admin.
               </div>
               <CustomerAssistantEmbedPreview
                 backendBase={backendBase}
@@ -657,7 +656,6 @@ export function CustomerAssistantSetupPanel({
                   name: customer.name,
                 }}
                 embedSettings={currentEmbedSettings}
-                embedSecret={embedState.secret}
                 initialOrigin={previewOrigin || null}
               />
             </div>

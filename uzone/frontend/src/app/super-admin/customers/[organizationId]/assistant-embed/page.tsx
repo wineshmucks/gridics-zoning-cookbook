@@ -35,9 +35,6 @@ export default async function SuperAdminCustomerAssistantEmbedPage({ params, sea
 
   const { organizationId } = await params
   const resolvedSearchParams = searchParams ? await searchParams : {}
-  const embedSecret = Array.isArray(resolvedSearchParams.secret)
-    ? resolvedSearchParams.secret[0] || null
-    : resolvedSearchParams.secret || null
   const initialOrigin = Array.isArray(resolvedSearchParams.origin)
     ? resolvedSearchParams.origin[0] || null
     : resolvedSearchParams.origin || null
@@ -73,7 +70,6 @@ export default async function SuperAdminCustomerAssistantEmbedPage({ params, sea
           name: displayName,
         }}
         embedSettings={embedSettings}
-        embedSecret={embedSecret}
         initialOrigin={initialOrigin}
       />
     </div>

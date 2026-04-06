@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi import FastAPI
 from fastapi import HTTPException, status
 
@@ -69,27 +67,6 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
             token = parse_embed_token_from_header(f"Bearer {embed_token}")
             claims = decode_embed_session_token(token)
             request.state.embed_session = claims
-
-            if request.method.upper() == "POST":
-                content_type = request.headers.get("content-type", "")
-                if "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
-                    form = await request.form()
-                    dependencies_raw = form.get("dependencies")
-                    if isinstance(dependencies_raw, str) and dependencies_raw.strip():
-                        try:
-                            dependencies = json.loads(dependencies_raw)
-                        except json.JSONDecodeError as exc:
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Invalid assistant dependencies payload",
-                            ) from exc
-                        if isinstance(dependencies, dict):
-                            dependency_client_id = str(dependencies.get("client_id") or "").strip()
-                            if dependency_client_id and dependency_client_id != str(claims.get("client_id") or ""):
-                                raise HTTPException(
-                                    status_code=status.HTTP_403_FORBIDDEN,
-                                    detail="Embed session client does not match the requested tenant",
-                                )
 
         if path == "/api/config" or path.startswith("/api/config/"):
             rewritten = path[4:]

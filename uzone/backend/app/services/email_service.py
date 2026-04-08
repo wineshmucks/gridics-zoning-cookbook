@@ -91,6 +91,36 @@ class PostmarkEmailProvider(EmailProvider):
         )
 
 
+class MandrillEmailProvider(EmailProvider):
+    name = "mandrill"
+
+    def send(self, *, to: str, subject: str, html: str, text: str | None = None) -> EmailSendResult:
+        if not settings.mandrill_api_key:
+            raise ValueError("Mandrill provider selected but UZONE_MANDRILL_API_KEY is not configured")
+        response = httpx.post(
+            "https://mandrillapp.com/api/1.0/messages/send.json",
+            json={
+                "key": settings.mandrill_api_key,
+                "message": {
+                    "from_email": settings.email_from,
+                    "to": [{"email": to, "type": "to"}],
+                    "subject": subject,
+                    "html": html,
+                    "text": text or "",
+                },
+            },
+            timeout=20.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        first = payload[0] if isinstance(payload, list) and payload else {}
+        return EmailSendResult(
+            provider=self.name,
+            provider_message_id=str(first.get("_id")) if first.get("_id") is not None else None,
+            status=str(first.get("status") or "sent"),
+        )
+
+
 def get_email_provider() -> EmailProvider:
     provider = settings.email_provider.strip().lower()
     if provider == "console":
@@ -99,6 +129,8 @@ def get_email_provider() -> EmailProvider:
         return ResendEmailProvider()
     if provider == "postmark":
         return PostmarkEmailProvider()
+    if provider == "mandrill":
+        return MandrillEmailProvider()
     raise ValueError(f"Unsupported email provider '{provider}'")
 
 

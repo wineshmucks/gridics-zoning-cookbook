@@ -3,10 +3,12 @@
 import { useMemo, useState } from 'react'
 
 import { appendScopePathToHref } from '../lib/org-url'
+import { BuildingLogo } from './BuildingLogo'
 
 type CustomerChoice = {
   orgid: string
   path_alias?: string | null
+  logo_path?: string | null
   client_id: string
   city_name: string
   department_name: string
@@ -77,9 +79,14 @@ export function JurisdictionPickerClient({ customers, returnTo }: Props) {
             </div>
 
             <div className="jurisdiction-picker-card-body">
-              <div>
-                <h2 className="jurisdiction-picker-card-title">{customer.city_name}</h2>
-                <p className="jurisdiction-picker-card-copy">{customer.department_name}</p>
+              <div className="jurisdiction-picker-card-identity">
+                <div className={`jurisdiction-picker-card-logo${customer.logo_path ? ' has-image' : ''}`}>
+                  <BuildingLogo logoUrl={customer.logo_path || null} alt={`${customer.city_name} logo`} />
+                </div>
+                <div>
+                  <h2 className="jurisdiction-picker-card-title">{customer.city_name}</h2>
+                  <p className="jurisdiction-picker-card-copy">{customer.department_name}</p>
+                </div>
               </div>
               <div className="jurisdiction-picker-metadata" aria-label="Available tools">
                 <span className="jurisdiction-picker-meta-item">Letters available</span>

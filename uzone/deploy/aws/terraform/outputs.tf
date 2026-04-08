@@ -1,6 +1,6 @@
 output "alb_dns_name" {
-  description = "Public DNS name of the application load balancer."
-  value       = aws_lb.app.dns_name
+  description = "Public DNS name of the application load balancer, either dedicated or reused."
+  value       = local.effective_alb_dns_name
 }
 
 output "backend_ecr_repository_url" {

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     email_from: str = "noreply@uzone.local"
     resend_api_key: str | None = None
     postmark_server_token: str | None = None
+    mandrill_api_key: str | None = None
     aws_region: str | None = None
     artifacts_dir: str = "/tmp/uzone-artifacts"
     assets_bucket: str | None = None

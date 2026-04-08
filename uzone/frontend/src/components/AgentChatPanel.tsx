@@ -718,6 +718,7 @@ export function AgentChatPanel({
   description,
   variant = "default",
   requestHeaders,
+  embedSessionToken,
   showEmptyStateHint = true,
   showBrandingFooter = true,
   showModelControls = true,
@@ -732,6 +733,7 @@ export function AgentChatPanel({
   description: string
   variant?: "default" | "chatgpt"
   requestHeaders?: Record<string, string>
+  embedSessionToken?: string
   showEmptyStateHint?: boolean
   showBrandingFooter?: boolean
   showModelControls?: boolean
@@ -869,6 +871,7 @@ export function AgentChatPanel({
         surface,
         client_id: clientId,
         assistant_model_id: modelId.trim() || undefined,
+        embed_token: embedSessionToken || undefined,
       }),
     )
 
@@ -1145,14 +1148,20 @@ export function AgentChatPanel({
     }
 
     try {
+      const runHeaders = embedSessionToken
+        ? {
+            Accept: "text/event-stream",
+          }
+        : {
+            Accept: "text/event-stream",
+            ...(requestHeaders || {}),
+          }
+
       const response = await fetch(`${backendBase}/agents/${agentId}/runs`, {
         method: "POST",
         body,
         signal: controller.signal,
-        headers: {
-          Accept: "text/event-stream",
-          ...(requestHeaders || {}),
-        },
+        headers: runHeaders,
       })
 
       if (!response.ok) {

@@ -117,10 +117,11 @@ The embed signing secret is required for the live Super Admin embed preview and 
 - `UZONE_PAYMENT_PROVIDERS=manual,stripe`
 - `UZONE_DEFAULT_PAYMENT_PROVIDER=manual`
 - `UZONE_STRIPE_SECRET_KEY=...`
-- `UZONE_EMAIL_PROVIDER=console|resend|postmark`
+- `UZONE_EMAIL_PROVIDER=console|resend|postmark|mandrill`
 - `UZONE_EMAIL_FROM=noreply@yourdomain.com`
 - `UZONE_RESEND_API_KEY=...`
 - `UZONE_POSTMARK_SERVER_TOKEN=...`
+- `UZONE_MANDRILL_API_KEY=...`
 - `UZONE_ARTIFACTS_DIR=/app/artifacts`
 
 ## Clerk

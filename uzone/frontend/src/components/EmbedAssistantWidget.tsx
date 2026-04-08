@@ -227,6 +227,7 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
                   disclaimerScopeId={session.client_id}
                   initialAccepted={false}
                   requestHeaders={backendHeaders}
+                  embedSessionToken={token}
                 />
               </div>
             ) : (

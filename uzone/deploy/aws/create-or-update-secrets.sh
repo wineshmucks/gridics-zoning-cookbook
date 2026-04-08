@@ -49,6 +49,10 @@ if [[ -n "${UZONE_RESEND_API_KEY:-}" ]]; then
   put_secret "uzone/resend-api-key" "${UZONE_RESEND_API_KEY}"
 fi
 
+if [[ -n "${UZONE_MANDRILL_API_KEY:-}" ]]; then
+  put_secret "uzone/mandrill-api-key" "${UZONE_MANDRILL_API_KEY}"
+fi
+
 if [[ -n "${UZONE_ZONING_EMBEDDER_API_KEY:-}" ]]; then
   put_secret "uzone/zoning-embedder-api-key" "${UZONE_ZONING_EMBEDDER_API_KEY}"
 fi
@@ -96,6 +100,7 @@ arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/clerk-secret
 $(if [[ -n "${UZONE_STRIPE_SECRET_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/stripe-secret"; fi)
 $(if [[ -n "${UZONE_STRIPE_WEBHOOK_SECRET:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/stripe-webhook"; fi)
 $(if [[ -n "${UZONE_RESEND_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/resend-api-key"; fi)
+$(if [[ -n "${UZONE_MANDRILL_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/mandrill-api-key"; fi)
 $(if [[ -n "${UZONE_ZONING_EMBEDDER_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/zoning-embedder-api-key"; fi)
 $(if [[ -n "${UZONE_ZONING_AGENT_LLM_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/zoning-agent-llm-api-key"; fi)
 $(if [[ -n "${GOOGLE_API_KEY:-}" ]]; then echo "arn:aws:secretsmanager:${AWS_REGION}:${ACCOUNT_ID}:secret:uzone/google-api-key"; fi)

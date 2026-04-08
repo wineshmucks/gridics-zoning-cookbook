@@ -1,11 +1,12 @@
 """Unit tests for request status email delivery."""
 
+import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 from app.db.models import EmailTemplate, Jurisdiction, PropertySnapshot, Request, TenantClient
-from app.services.email_service import send_request_status_email
+from app.services.email_service import MandrillEmailProvider, send_request_status_email
 from app.services.email_template_service import ensure_default_email_templates
 
 
@@ -124,3 +125,50 @@ def test_send_request_status_email_uses_customer_override(monkeypatch) -> None:
         assert "100 Main Street" in event.body_rendered
     finally:
         db.close()
+
+
+def test_mandrill_provider_sends_expected_payload(monkeypatch) -> None:
+    from app.services import email_service
+
+    captured: dict[str, object] = {}
+
+    def fake_post(url: str, *, json: dict, timeout: float):
+        captured["url"] = url
+        captured["json"] = json
+        captured["timeout"] = timeout
+
+        class Response:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return [{"_id": "mandrill-123", "status": "queued"}]
+
+        return Response()
+
+    monkeypatch.setattr(email_service.settings, "mandrill_api_key", "mandrill-test-key")
+    monkeypatch.setattr(email_service.settings, "email_from", "noreply@example.com")
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    result = MandrillEmailProvider().send(
+        to="user@example.com",
+        subject="Test subject",
+        html="<p>Hello</p>",
+        text="Hello",
+    )
+
+    assert result.provider == "mandrill"
+    assert result.provider_message_id == "mandrill-123"
+    assert result.status == "queued"
+    assert captured["url"] == "https://mandrillapp.com/api/1.0/messages/send.json"
+    assert captured["timeout"] == 20.0
+    assert captured["json"] == {
+        "key": "mandrill-test-key",
+        "message": {
+            "from_email": "noreply@example.com",
+            "to": [{"email": "user@example.com", "type": "to"}],
+            "subject": "Test subject",
+            "html": "<p>Hello</p>",
+            "text": "Hello",
+        },
+    }

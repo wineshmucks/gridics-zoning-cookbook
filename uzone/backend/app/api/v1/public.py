@@ -19,6 +19,7 @@ from app.services.embed_service import (
 from app.services.clerk_service import clerk_organization_exists
 from app.services.tenant_service import (
     get_tenant_path_alias,
+    get_tenant_logo_path,
     get_tenant_assistant_disclaimer_text,
     normalize_tenant_path_alias,
     resolve_tenant_public_config,
@@ -157,6 +158,7 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
                 "orgid": public_org_id,
                 "client_id": customer.client_id,
                 "path_alias": get_tenant_path_alias(customer.settings_json),
+                "logo_path": get_tenant_logo_path(customer.settings_json),
                 "city_name": customer.city_name,
                 "department_name": customer.department_name,
             }

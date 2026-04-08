@@ -19,6 +19,11 @@ data "aws_availability_zones" "available" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_lb" "existing" {
+  count = var.use_existing_alb ? 1 : 0
+  arn   = var.existing_alb_arn
+}
+
 locals {
   name_prefix = "${var.project}-${var.environment}"
   common_tags = merge(
@@ -35,7 +40,16 @@ locals {
     cidrsubnet(var.vpc_cidr, 4, 1),
   ]
 
-  assets_bucket_name = "gridics-uzones"
+  assets_bucket_name = var.assets_bucket_name
+
+  effective_vpc_id             = var.use_existing_vpc ? (trimspace(var.existing_vpc_id) != "" ? var.existing_vpc_id : data.aws_lb.existing[0].vpc_id) : aws_vpc.main[0].id
+  effective_public_subnet_ids  = var.use_existing_vpc ? var.existing_public_subnet_ids : aws_subnet.public[*].id
+  effective_private_subnet_ids = var.use_existing_vpc ? var.existing_private_subnet_ids : aws_subnet.private[*].id
+  effective_alb_dns_name       = var.use_existing_alb ? data.aws_lb.existing[0].dns_name : aws_lb.app[0].dns_name
+  effective_alb_security_groups = var.use_existing_alb ? data.aws_lb.existing[0].security_groups : [aws_security_group.alb[0].id]
+  effective_alb_scheme         = var.use_existing_alb ? (trimspace(var.existing_alb_https_listener_arn) != "" ? "https" : "http") : (var.certificate_arn != "" ? "https" : "http")
+  effective_public_base_url    = trimspace(var.public_base_url) != "" ? trimsuffix(trimspace(var.public_base_url), "/") : "${local.effective_alb_scheme}://${local.effective_alb_dns_name}"
+  frontend_api_base_url        = "${local.effective_public_base_url}/api"
 
   private_subnet_cidrs = [
     cidrsubnet(var.vpc_cidr, 4, 8),
@@ -72,7 +86,7 @@ locals {
     for name, value in merge(
       {
         NODE_ENV                   = "production"
-        UZONE_API_BASE             = "http://${aws_lb.app.dns_name}/api"
+        UZONE_API_BASE             = local.frontend_api_base_url
         NEXT_PUBLIC_UZONE_API_BASE = "/api"
       },
       var.frontend_environment
@@ -91,6 +105,8 @@ locals {
 }
 
 resource "aws_vpc" "main" {
+  count = var.use_existing_vpc ? 0 : 1
+
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
@@ -101,7 +117,9 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
+  count = var.use_existing_vpc ? 0 : 1
+
+  vpc_id = aws_vpc.main[0].id
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-igw"
@@ -109,9 +127,9 @@ resource "aws_internet_gateway" "main" {
 }
 
 resource "aws_subnet" "public" {
-  count = 2
+  count = var.use_existing_vpc ? 0 : 2
 
-  vpc_id                  = aws_vpc.main.id
+  vpc_id                  = aws_vpc.main[0].id
   cidr_block              = local.public_subnet_cidrs[count.index]
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
@@ -123,9 +141,9 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_subnet" "private" {
-  count = 2
+  count = var.use_existing_vpc ? 0 : 2
 
-  vpc_id            = aws_vpc.main.id
+  vpc_id            = aws_vpc.main[0].id
   cidr_block        = local.private_subnet_cidrs[count.index]
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
@@ -136,11 +154,13 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
+  count = var.use_existing_vpc ? 0 : 1
+
+  vpc_id = aws_vpc.main[0].id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main.id
+    gateway_id = aws_internet_gateway.main[0].id
   }
 
   tags = merge(local.common_tags, {
@@ -149,15 +169,15 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  count = 2
+  count = var.use_existing_vpc ? 0 : 2
 
   subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
+  route_table_id = aws_route_table.public[0].id
 }
 
 resource "aws_db_subnet_group" "postgres" {
   name       = "${local.name_prefix}-db-subnets"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = local.effective_private_subnet_ids
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-db-subnets"
@@ -165,9 +185,11 @@ resource "aws_db_subnet_group" "postgres" {
 }
 
 resource "aws_security_group" "alb" {
+  count = var.use_existing_alb ? 0 : 1
+
   name        = "${local.name_prefix}-alb"
   description = "ALB ingress"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.effective_vpc_id
 
   ingress {
     from_port   = 80
@@ -201,13 +223,13 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "frontend" {
   name        = "${local.name_prefix}-frontend"
   description = "Frontend ECS tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.effective_vpc_id
 
   ingress {
     from_port       = 3001
     to_port         = 3001
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = local.effective_alb_security_groups
   }
 
   egress {
@@ -225,13 +247,13 @@ resource "aws_security_group" "frontend" {
 resource "aws_security_group" "backend" {
   name        = "${local.name_prefix}-backend"
   description = "Backend ECS tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.effective_vpc_id
 
   ingress {
     from_port       = 8000
     to_port         = 8000
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = local.effective_alb_security_groups
   }
 
   egress {
@@ -249,7 +271,7 @@ resource "aws_security_group" "backend" {
 resource "aws_security_group" "postgres" {
   name        = "${local.name_prefix}-postgres"
   description = "Postgres access from backend tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.effective_vpc_id
 
   ingress {
     from_port       = 5432
@@ -473,11 +495,13 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 resource "aws_lb" "app" {
+  count = var.use_existing_alb ? 0 : 1
+
   name               = substr("${local.name_prefix}-alb", 0, 32)
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  security_groups    = [aws_security_group.alb[0].id]
+  subnets            = local.effective_public_subnet_ids
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-alb"
@@ -489,7 +513,7 @@ resource "aws_lb_target_group" "frontend" {
   port        = 3001
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.effective_vpc_id
 
   health_check {
     enabled             = true
@@ -509,7 +533,7 @@ resource "aws_lb_target_group" "backend" {
   port        = 8000
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.effective_vpc_id
 
   health_check {
     enabled             = true
@@ -525,7 +549,9 @@ resource "aws_lb_target_group" "backend" {
 }
 
 resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.app.arn
+  count = var.use_existing_alb ? 0 : 1
+
+  load_balancer_arn = aws_lb.app[0].arn
   port              = 80
   protocol          = "HTTP"
 
@@ -536,9 +562,9 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_lb_listener" "https" {
-  count = var.certificate_arn == "" ? 0 : 1
+  count = var.use_existing_alb || var.certificate_arn == "" ? 0 : 1
 
-  load_balancer_arn = aws_lb.app.arn
+  load_balancer_arn = aws_lb.app[0].arn
   port              = 443
   protocol          = "HTTPS"
   certificate_arn   = var.certificate_arn
@@ -551,7 +577,9 @@ resource "aws_lb_listener" "https" {
 }
 
 resource "aws_lb_listener_rule" "api_http" {
-  listener_arn = aws_lb_listener.http.arn
+  count = var.use_existing_alb ? 0 : 1
+
+  listener_arn = aws_lb_listener.http[0].arn
   priority     = 10
 
   action {
@@ -567,7 +595,7 @@ resource "aws_lb_listener_rule" "api_http" {
 }
 
 resource "aws_lb_listener_rule" "api_https" {
-  count = var.certificate_arn == "" ? 0 : 1
+  count = var.use_existing_alb || var.certificate_arn == "" ? 0 : 1
 
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 10
@@ -575,6 +603,102 @@ resource "aws_lb_listener_rule" "api_https" {
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "frontend_http_existing" {
+  count = var.use_existing_alb && trimspace(var.existing_alb_http_listener_arn) != "" ? 1 : 0
+
+  listener_arn = var.existing_alb_http_listener_arn
+  priority     = var.existing_alb_frontend_rule_priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+
+  condition {
+    host_header {
+      values = [var.existing_alb_host_header]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "api_http_existing" {
+  count = var.use_existing_alb && trimspace(var.existing_alb_http_listener_arn) != "" ? 1 : 0
+
+  listener_arn = var.existing_alb_http_listener_arn
+  priority     = var.existing_alb_api_rule_priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    host_header {
+      values = [var.existing_alb_host_header]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "frontend_https_existing" {
+  count = var.use_existing_alb && trimspace(var.existing_alb_https_listener_arn) != "" ? 1 : 0
+
+  listener_arn = var.existing_alb_https_listener_arn
+  priority     = var.existing_alb_frontend_rule_priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+
+  condition {
+    host_header {
+      values = [var.existing_alb_host_header]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "api_https_existing" {
+  count = var.use_existing_alb && trimspace(var.existing_alb_https_listener_arn) != "" ? 1 : 0
+
+  listener_arn = var.existing_alb_https_listener_arn
+  priority     = var.existing_alb_api_rule_priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    host_header {
+      values = [var.existing_alb_host_header]
+    }
   }
 
   condition {
@@ -669,7 +793,7 @@ resource "aws_ecs_service" "backend" {
 
   network_configuration {
     assign_public_ip = true
-    subnets          = aws_subnet.public[*].id
+    subnets          = local.effective_public_subnet_ids
     security_groups  = [aws_security_group.backend.id]
   }
 
@@ -687,6 +811,9 @@ resource "aws_ecs_service" "backend" {
   depends_on = [
     aws_lb_listener.http,
     aws_lb_listener_rule.api_http,
+    aws_lb_listener_rule.api_https,
+    aws_lb_listener_rule.api_http_existing,
+    aws_lb_listener_rule.api_https_existing,
   ]
 
   tags = local.common_tags
@@ -703,7 +830,7 @@ resource "aws_ecs_service" "frontend" {
 
   network_configuration {
     assign_public_ip = true
-    subnets          = aws_subnet.public[*].id
+    subnets          = local.effective_public_subnet_ids
     security_groups  = [aws_security_group.frontend.id]
   }
 
@@ -720,6 +847,8 @@ resource "aws_ecs_service" "frontend" {
 
   depends_on = [
     aws_lb_listener.http,
+    aws_lb_listener_rule.frontend_http_existing,
+    aws_lb_listener_rule.frontend_https_existing,
   ]
 
   tags = local.common_tags

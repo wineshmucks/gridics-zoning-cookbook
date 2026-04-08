@@ -1,7 +1,21 @@
 aws_region          = "us-east-1"
 environment         = "prod"
 app_allowed_origins = "https://uzone.example.com"
+use_existing_vpc    = false
+use_existing_alb    = false
+existing_vpc_id     = ""
+existing_public_subnet_ids  = []
+existing_private_subnet_ids = []
+existing_alb_arn                = ""
+existing_alb_http_listener_arn  = ""
+existing_alb_https_listener_arn = ""
+existing_alb_host_header        = ""
+existing_alb_frontend_rule_priority = 110
+existing_alb_api_rule_priority      = 100
+assets_bucket_name  = "gridics-uzones"
+public_base_url     = "https://uzone.example.com"
 
+db_name     = "uzone"
 db_username = "uzone"
 db_password = "replace-me"
 

@@ -580,7 +580,7 @@ main {
 .jurisdiction-picker-page {
   width: 100%;
   min-height: calc(100vh - 120px);
-  padding: 28px 0 56px;
+  padding: 24px 0 48px;
   background:
     linear-gradient(180deg, #f7fbf7 0%, #ffffff 38%),
     radial-gradient(circle at top left, rgba(55, 124, 54, 0.14), transparent 24%),
@@ -589,43 +589,46 @@ main {
 
 .jurisdiction-picker-shell {
   display: grid;
-  gap: 16px;
+  gap: 14px;
+  width: min(1120px, calc(100vw - 48px));
+  margin: 0 auto;
 }
 
 .jurisdiction-picker-hero {
-  padding: 24px 28px;
+  padding: 20px 28px;
   border: 1px solid rgba(55, 124, 54, 0.2);
-  border-radius: 28px;
+  border-radius: 20px;
   background:
     linear-gradient(135deg, rgba(55, 124, 54, 0.16), rgba(255, 255, 255, 0.96)),
     var(--surface);
-  box-shadow: 0 20px 48px rgba(17, 24, 39, 0.08);
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
 }
 
 .jurisdiction-picker-title {
-  margin: 0 0 10px;
-  font-size: clamp(32px, 4.2vw, 48px);
-  line-height: 1.02;
+  margin: 0 0 8px;
+  font-size: clamp(30px, 3.8vw, 46px);
+  line-height: 1.04;
 }
 
 .jurisdiction-picker-subtitle {
-  max-width: 760px;
+  max-width: 700px;
   margin-bottom: 0;
-  font-size: 17px;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .jurisdiction-picker-stack {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .jurisdiction-picker-toolbar {
   display: block;
-  padding: 16px 18px;
+  padding: 14px 18px;
   border: 1px solid var(--border-subtle);
-  border-radius: 24px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.06);
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.04);
 }
 
 .jurisdiction-picker-search {
@@ -635,11 +638,11 @@ main {
 .jurisdiction-picker-search-field {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 52px;
-  padding: 0 14px;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: 14px;
   background: white;
   transition:
     border-color 0.18s ease,
@@ -648,9 +651,9 @@ main {
 }
 
 .jurisdiction-picker-search-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   color: var(--text-secondary);
   pointer-events: none;
 }
@@ -697,21 +700,22 @@ main {
 .jurisdiction-picker-search-note {
   color: var(--text-secondary);
   font-size: 12px;
+  margin-top: 4px;
 }
 
 .jurisdiction-picker-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .jurisdiction-picker-card {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
-  padding: 18px 20px;
+  padding: 16px 20px;
   border: 1px solid #d3ddd2;
-  border-radius: 24px;
+  border-radius: 18px;
   background:
     linear-gradient(180deg, rgba(244, 244, 244, 0.62), rgba(255, 255, 255, 1)),
     var(--surface);
@@ -724,9 +728,9 @@ main {
 .jurisdiction-picker-card:hover,
 .jurisdiction-picker-card:focus-within,
 .jurisdiction-picker-card.is-expanded {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: rgba(55, 124, 54, 0.42);
-  box-shadow: 0 22px 42px rgba(17, 24, 39, 0.12);
+  box-shadow: 0 14px 28px rgba(17, 24, 39, 0.08);
 }
 
 .jurisdiction-picker-card-top {
@@ -739,8 +743,8 @@ main {
 .jurisdiction-picker-status {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 12px;
+  min-height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent-strong);
@@ -751,37 +755,75 @@ main {
 }
 
 .jurisdiction-picker-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.95fr);
+  align-items: center;
+  gap: 16px 24px;
+}
+
+.jurisdiction-picker-card-identity {
   display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 18px;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.jurisdiction-picker-card-logo {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border: 1px solid rgba(55, 124, 54, 0.12);
+  border-radius: 14px;
+  background: rgba(55, 124, 54, 0.08);
+  color: var(--accent-strong);
+}
+
+.jurisdiction-picker-card-logo.has-image {
+  background: #fff;
+  color: inherit;
+}
+
+.jurisdiction-picker-card-logo .building-logo {
+  width: 22px;
+  height: 22px;
+}
+
+.jurisdiction-picker-card-logo .building-logo-image {
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  object-fit: contain;
 }
 
 .jurisdiction-picker-card-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1.1;
   font-weight: 700;
 }
 
 .jurisdiction-picker-card-copy {
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.45;
   margin: 0;
+  margin-top: 4px;
 }
 
 .jurisdiction-picker-metadata {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  align-content: center;
 }
 
 .jurisdiction-picker-meta-item {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 11px;
   border: 1px solid rgba(55, 124, 54, 0.14);
   border-radius: 999px;
   background: rgba(55, 124, 54, 0.05);
@@ -797,7 +839,8 @@ main {
 }
 
 .jurisdiction-picker-button-primary {
-  min-width: 180px;
+  min-width: 164px;
+  min-height: 38px;
 }
 
 .jurisdiction-picker-empty,
@@ -806,7 +849,7 @@ main {
 }
 
 .jurisdiction-picker-support {
-  padding: 4px 2px 0;
+  padding: 8px 2px 0;
   color: var(--text-secondary);
   font-size: 14px;
 }
@@ -3962,6 +4005,10 @@ main {
     gap: 12px;
   }
 
+  .jurisdiction-picker-card-identity {
+    align-items: flex-start;
+  }
+
   .jurisdiction-picker-metadata {
     justify-content: flex-start;
   }
@@ -5124,6 +5171,31 @@ main {
 .assistant-setup-meta,
 .assistant-setup-run {
   padding: 12px 0;
+}
+
+.assistant-setup-run {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.assistant-setup-run strong {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.assistant-setup-run div {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .assistant-settings-debug {

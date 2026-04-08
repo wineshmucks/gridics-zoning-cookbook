@@ -21,10 +21,161 @@ variable "vpc_cidr" {
   default     = "10.42.0.0/20"
 }
 
+variable "use_existing_vpc" {
+  description = "When true, attach resources to an existing VPC and subnets instead of creating a new network."
+  type        = bool
+  default     = false
+}
+
+variable "use_existing_alb" {
+  description = "When true, attach UZone to an existing Application Load Balancer instead of creating a dedicated ALB."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = var.use_existing_alb == false || var.use_existing_vpc == true
+    error_message = "use_existing_alb requires use_existing_vpc=true so ECS services and target groups live in the same VPC as the shared ALB."
+  }
+}
+
+variable "existing_alb_arn" {
+  description = "Existing ALB ARN to use when use_existing_alb is true."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.use_existing_alb == false ||
+      trimspace(var.existing_alb_arn) != ""
+    )
+    error_message = "When use_existing_alb is true, existing_alb_arn must be set."
+  }
+}
+
+variable "existing_alb_http_listener_arn" {
+  description = "Optional existing ALB HTTP listener ARN for shared-ALB routing."
+  type        = string
+  default     = ""
+}
+
+variable "existing_alb_https_listener_arn" {
+  description = "Optional existing ALB HTTPS listener ARN for shared-ALB routing."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.use_existing_alb == false ||
+      trimspace(var.existing_alb_http_listener_arn) != "" ||
+      trimspace(var.existing_alb_https_listener_arn) != ""
+    )
+    error_message = "When use_existing_alb is true, set at least one of existing_alb_http_listener_arn or existing_alb_https_listener_arn."
+  }
+}
+
+variable "existing_alb_host_header" {
+  description = "Host header to match when routing UZone through an existing shared ALB, for example staging.example.com."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.use_existing_alb == false ||
+      trimspace(var.existing_alb_host_header) != ""
+    )
+    error_message = "When use_existing_alb is true, existing_alb_host_header must be set so listener rules only match UZone traffic."
+  }
+}
+
+variable "existing_alb_frontend_rule_priority" {
+  description = "Listener rule priority for frontend traffic on a shared ALB."
+  type        = number
+  default     = 110
+}
+
+variable "existing_alb_api_rule_priority" {
+  description = "Listener rule priority for /api traffic on a shared ALB."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.existing_alb_api_rule_priority != var.existing_alb_frontend_rule_priority
+    error_message = "existing_alb_api_rule_priority and existing_alb_frontend_rule_priority must be different."
+  }
+
+  validation {
+    condition     = var.existing_alb_api_rule_priority < var.existing_alb_frontend_rule_priority
+    error_message = "existing_alb_api_rule_priority should be lower than existing_alb_frontend_rule_priority so /api rules win before the frontend catch-all rule."
+  }
+}
+
+variable "existing_vpc_id" {
+  description = "Existing VPC ID to use when use_existing_vpc is true."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.use_existing_vpc == false ||
+      var.use_existing_alb == true ||
+      trimspace(var.existing_vpc_id) != ""
+    )
+    error_message = "When use_existing_vpc is true, existing_vpc_id must be set unless use_existing_alb is also true and Terraform can derive the VPC from the shared ALB."
+  }
+}
+
+variable "existing_public_subnet_ids" {
+  description = "Existing public subnet IDs to use when use_existing_vpc is true."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = (
+      var.use_existing_vpc == false ||
+      length(var.existing_public_subnet_ids) >= 2
+    )
+    error_message = "When use_existing_vpc is true, existing_public_subnet_ids must include at least two subnet IDs."
+  }
+}
+
+variable "existing_private_subnet_ids" {
+  description = "Existing private subnet IDs to use when use_existing_vpc is true."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = (
+      var.use_existing_vpc == false ||
+      length(var.existing_private_subnet_ids) >= 2
+    )
+    error_message = "When use_existing_vpc is true, existing_private_subnet_ids must include at least two subnet IDs."
+  }
+}
+
+variable "assets_bucket_name" {
+  description = "S3 bucket name for jurisdiction assets."
+  type        = string
+  default     = "gridics-uzones"
+}
+
 variable "certificate_arn" {
   description = "Optional ACM certificate ARN for HTTPS on the ALB."
   type        = string
   default     = ""
+}
+
+variable "public_base_url" {
+  description = "Canonical public base URL for the deployed app, for example https://staging.example.com."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.use_existing_alb == false ||
+      trimspace(var.public_base_url) != ""
+    )
+    error_message = "When use_existing_alb is true, public_base_url must be set so the frontend can resolve the backend through the shared ALB hostname."
+  }
 }
 
 variable "app_allowed_origins" {

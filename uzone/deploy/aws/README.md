@@ -14,10 +14,30 @@ This directory contains a pragmatic AWS deployment baseline for `uzone/`:
 - `images`: Amazon ECR
 - `assets`: Amazon S3
 
+The default Terraform path creates its own VPC, subnets, and ALB. For staging in an existing AWS network, set:
+
+- `use_existing_vpc = true`
+- `existing_vpc_id`
+- `existing_public_subnet_ids`
+- `existing_private_subnet_ids`
+- optionally `assets_bucket_name` if `gridics-uzones` is already taken in the target account
+
+If you also need to reuse an existing shared ALB, set:
+
+- `use_existing_alb = true`
+- `existing_alb_arn`
+- at least one of:
+  - `existing_alb_http_listener_arn`
+  - `existing_alb_https_listener_arn`
+- `existing_alb_host_header`
+- `public_base_url`
+
 Routing is path-based:
 
 - `/` -> frontend
 - `/api/*` -> backend
+
+For a shared ALB, those routes are additionally scoped by the host header you configure in `existing_alb_host_header`, for example `staging.example.com`.
 
 ## Prerequisites
 
@@ -142,8 +162,28 @@ Minimum values:
 
 - `aws_region`
 - `app_allowed_origins`
+- `db_name`
 - `db_username`
 - `db_password`
+
+For an existing staging VPC, also set:
+
+- `use_existing_vpc = true`
+- `existing_vpc_id`
+- `existing_public_subnet_ids`
+- `existing_private_subnet_ids`
+- `assets_bucket_name` if you want a non-default S3 bucket name
+
+For an existing shared ALB, also set:
+
+- `use_existing_alb = true`
+- `existing_alb_arn`
+- `existing_alb_host_header`
+- `public_base_url`
+- `existing_alb_http_listener_arn` and/or `existing_alb_https_listener_arn`
+- optional listener rule priorities if the defaults conflict:
+  - `existing_alb_api_rule_priority`
+  - `existing_alb_frontend_rule_priority`
 
 For the current app configuration in [uzone/.env](/workspaces/gridics-zoning-cookbook/uzone/.env), also set:
 
@@ -201,17 +241,19 @@ frontend_image_tag = "20260309010101"
 terraform apply
 ```
 
-7. Open the deployed ALB hostname.
+7. Open the deployed entrypoint.
 
 ```bash
 terraform output -raw alb_dns_name
 ```
 
-This first URL will look like:
+If Terraform created a dedicated ALB, this first URL will look like:
 
 - `http://<alb-name>.us-east-1.elb.amazonaws.com`
 
 Use it for infrastructure validation only.
+
+If you reused an existing shared ALB, `alb_dns_name` will return that existing ALB hostname. In that mode, the preferred validation path is still your configured `public_base_url`. If DNS is not ready yet, the deploy script can also smoke test the ALB hostname with the matching host header.
 
 If you want the deploy script to smoke test a real custom domain instead of the ALB hostname, override it explicitly:
 
@@ -287,7 +329,10 @@ Common frontend variables:
 ## Notes
 
 - This baseline keeps ECS tasks in public subnets to avoid NAT Gateway cost and complexity. Security groups still limit inbound traffic to the ALB.
+- For AWS deploys, use `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` as the database inputs. Terraform builds `UZONE_DATABASE_URL` for ECS automatically from the RDS instance it creates.
 - Backend migrations run automatically on container startup.
 - Demo seed data is disabled in production containers.
 - If you need HTTPS, issue an ACM certificate and set `certificate_arn`.
 - If you need a custom domain, attach Route 53 records to the ALB after the initial deploy.
+- If you are deploying into an existing staging VPC, supply the VPC and subnet IDs through `use_existing_vpc` / `existing_*_subnet_ids` instead of letting Terraform create a new network.
+- If you are deploying through an existing shared ALB, also supply `use_existing_alb`, the ALB ARN, at least one listener ARN, a host header, and `public_base_url`.

@@ -9,6 +9,7 @@ from app.agents.factory import build_agent_model, create_agent, get_model_trace
 from app.agents.tools import analyze_customer_zoning_request, query_customer_zoning_code
 from app.db.models import TenantClient
 from app.db.session import SessionLocal
+from app.services.embed_service import decode_embed_session_token
 from app.services.tenant_service import get_tenant_assistant_settings
 
 _MODEL_OVERRIDE_METADATA_KEY = "assistant_model_id"
@@ -41,6 +42,20 @@ _CODE_DEFAULT_TARGET_CONFIG = {
 
 
 def _get_run_client_id(run_context: Any) -> str | None:
+    metadata = getattr(run_context, "metadata", None)
+    if isinstance(metadata, dict):
+        embed_token = str(metadata.get("embed_token") or "").strip()
+        if embed_token:
+            try:
+                payload = decode_embed_session_token(embed_token)
+            except Exception:
+                payload = None
+
+            if isinstance(payload, dict):
+                token_client_id = str(payload.get("client_id") or "").strip()
+                if token_client_id:
+                    return token_client_id
+
     dependencies = getattr(run_context, "dependencies", None)
     if not isinstance(dependencies, dict):
         return None

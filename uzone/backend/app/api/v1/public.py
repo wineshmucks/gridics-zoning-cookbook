@@ -1,13 +1,16 @@
 """Public tenant configuration routes."""
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_db, get_optional_auth_context
+from app.core.security import AuthContext
 from app.core.config import settings
-from app.db.models import TenantClient
+from app.db.models import AssistantMessageFeedback, TenantClient
 from app.services.embed_service import (
     build_embed_widget_payload,
     decode_embed_session_token,
@@ -40,6 +43,7 @@ class EmbedSessionCreateResponse(BaseModel):
     client_id: str
     city_name: str
     department_name: str
+    logo_path: str | None = None
     assistant_disclaimer_text: str
     widget_title: str
     launcher_label: str
@@ -52,6 +56,7 @@ class EmbedSessionReadResponse(BaseModel):
     client_id: str
     city_name: str
     department_name: str
+    logo_path: str | None = None
     assistant_disclaimer_text: str
     widget_title: str
     launcher_label: str
@@ -59,6 +64,23 @@ class EmbedSessionReadResponse(BaseModel):
     allowed_origins: list[str]
     origin: str | None = None
     expires_at: str
+
+
+class AssistantMessageFeedbackUpsertRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=100)
+    agent_id: str = Field(min_length=1, max_length=100)
+    surface: str = Field(default="public-assistant", min_length=1, max_length=100)
+    conversation_id: str = Field(min_length=1, max_length=255)
+    message_id: str = Field(min_length=1, max_length=255)
+    run_id: str | None = Field(default=None, max_length=255)
+    feedback_value: Literal["up", "down"] | None = None
+    message_excerpt: str | None = Field(default=None, max_length=4000)
+
+
+class AssistantMessageFeedbackUpsertResponse(BaseModel):
+    message_id: str
+    conversation_id: str
+    feedback_value: Literal["up", "down"] | None = None
 
 
 def _ensure_tenant_client_for_organization(db: Session, organization_id: str | None) -> TenantClient | None:
@@ -88,6 +110,67 @@ def _ensure_tenant_client_for_organization(db: Session, organization_id: str | N
     db.commit()
     db.refresh(tenant_client)
     return tenant_client
+
+
+@router.put("/assistant-feedback", response_model=AssistantMessageFeedbackUpsertResponse)
+def upsert_assistant_feedback(
+    payload: AssistantMessageFeedbackUpsertRequest,
+    db: Session = Depends(get_db),
+    auth: AuthContext | None = Depends(get_optional_auth_context),
+) -> dict:
+    tenant_client = db.scalar(select(TenantClient).where(TenantClient.client_id == payload.client_id.strip()))
+    if tenant_client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    existing = db.scalar(
+        select(AssistantMessageFeedback).where(
+            AssistantMessageFeedback.tenant_client_id == tenant_client.id,
+            AssistantMessageFeedback.conversation_id == payload.conversation_id.strip(),
+            AssistantMessageFeedback.message_id == payload.message_id.strip(),
+        )
+    )
+
+    if payload.feedback_value is None:
+        if existing is not None:
+            db.delete(existing)
+            db.commit()
+        return {
+            "message_id": payload.message_id.strip(),
+            "conversation_id": payload.conversation_id.strip(),
+            "feedback_value": None,
+        }
+
+    clerk_user_id = auth.user_id if auth is not None and auth.provider == "clerk" else None
+    message_excerpt = payload.message_excerpt.strip() if payload.message_excerpt else None
+
+    if existing is None:
+        existing = AssistantMessageFeedback(
+            tenant_client_id=tenant_client.id,
+            clerk_user_id=clerk_user_id,
+            agent_id=payload.agent_id.strip(),
+            surface=payload.surface.strip(),
+            conversation_id=payload.conversation_id.strip(),
+            message_id=payload.message_id.strip(),
+            run_id=payload.run_id.strip() if payload.run_id else None,
+            feedback_value=payload.feedback_value,
+            message_excerpt=message_excerpt,
+            metadata_json=None,
+        )
+        db.add(existing)
+    else:
+        existing.clerk_user_id = clerk_user_id or existing.clerk_user_id
+        existing.agent_id = payload.agent_id.strip()
+        existing.surface = payload.surface.strip()
+        existing.run_id = payload.run_id.strip() if payload.run_id else None
+        existing.feedback_value = payload.feedback_value
+        existing.message_excerpt = message_excerpt
+
+    db.commit()
+    return {
+        "message_id": existing.message_id,
+        "conversation_id": existing.conversation_id,
+        "feedback_value": existing.feedback_value,
+    }
 
 
 @router.get("/client-config")
@@ -247,6 +330,7 @@ def read_embed_session(request: Request) -> dict:
         client_id=str(payload.get("client_id") or ""),
         city_name=str(payload.get("city_name") or ""),
         department_name=str(payload.get("department_name") or ""),
+        logo_path=str(payload.get("logo_path") or "") if payload.get("logo_path") else None,
         assistant_disclaimer_text=str(payload.get("assistant_disclaimer_text") or ""),
         widget_title=str(payload.get("widget_title") or f"Ask {payload.get('city_name') or 'UZone'}"),
         launcher_label=str(payload.get("launcher_label") or "Have a question?"),

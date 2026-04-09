@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getAssistantContent, getAssistantContentDebug, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent.js'
@@ -47,9 +47,78 @@ type ChatMessage = {
   content: string
   steps?: StreamStep[]
   toolCalls?: StreamToolCall[]
+  runId?: string
   status?: 'streaming' | 'complete' | 'error'
   error?: string | null
 }
+
+type MessageFeedback = 'up' | 'down'
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <rect x="5" y="3" width="8" height="10" rx="1.8" />
+      <path d="M3.5 10.5H3A1.5 1.5 0 0 1 1.5 9V4A1.5 1.5 0 0 1 3 2.5h5" />
+    </svg>
+  )
+}
+
+function ThumbUpIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6.5 6 8.9 2.8c.3-.4.9-.3 1 .2l.2 2c.1.7.6 1.2 1.3 1.2h1.4c.9 0 1.6.8 1.4 1.7l-.8 4A1.8 1.8 0 0 1 11.6 13H6.5" />
+      <path d="M2 6h2.5v7H2z" />
+    </svg>
+  )
+}
+
+function ThumbDownIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.5 10 7.1 13.2c-.3.4-.9.3-1-.2l-.2-2c-.1-.7-.6-1.2-1.3-1.2H3.2c-.9 0-1.6-.8-1.4-1.7l.8-4A1.8 1.8 0 0 1 4.4 3H9.5" />
+      <path d="M12 3h2.5v7H12z" />
+    </svg>
+  )
+}
+
+function TimelineIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 3.5v9" />
+      <path d="M8 3.5v9" />
+      <path d="M13 3.5v9" />
+      <path d="M1.5 6h3" />
+      <path d="M6.5 10h3" />
+      <path d="M11.5 5h3" />
+    </svg>
+  )
+}
+
+function ToolsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6.5 3.5a2 2 0 1 0-2.8 1.8L8 9.6l1.6-1.6-4.2-4.2A2 2 0 0 0 6.5 3.5Z" />
+      <path d="m9.5 6.5 2.8-2.8 1.5 1.5-2.8 2.8" />
+      <path d="M8.4 9.6 5 13l-2-2 3.4-3.4" />
+    </svg>
+  )
+}
+
+const SUGGESTED_PROMPTS = [
+  'What can I build on this lot?',
+  'What are the setback requirements?',
+  'Is an ADU allowed here?',
+  'What parking is required?',
+  'Explain this zoning district',
+  'What overlays apply?',
+]
+
+const FOLLOW_UP_ACTIONS = [
+  'Check permitted uses',
+  'View related regulations',
+  'Create zoning letter',
+  'Ask follow-up',
+]
 
 type SSEEvent = {
   event: string
@@ -608,6 +677,8 @@ function RunSteps({ steps, status }: { steps?: StreamStep[]; status?: ChatMessag
     return null
   }
 
+  const isThinking = status === 'streaming'
+
   return (
     <div className="assistant-run-steps">
       <button
@@ -616,8 +687,18 @@ function RunSteps({ steps, status }: { steps?: StreamStep[]; status?: ChatMessag
         onClick={() => setIsOpen((current) => !current)}
         aria-expanded={isOpen}
       >
-        <span className="assistant-run-steps-label">{status === "complete" ? "Run timeline" : "In progress"}</span>
+        <span className={`assistant-run-toggle-icon${isThinking ? ' is-thinking' : ''}`} aria-hidden="true">
+          <TimelineIcon />
+        </span>
+        <span className="assistant-run-steps-label">{status === "complete" ? "Timeline" : "In progress"}</span>
         <span className="assistant-run-toggle-copy">
+          {isThinking ? (
+            <span className="assistant-run-thinking" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          ) : null}
           {steps.length} step{steps.length === 1 ? "" : "s"}
         </span>
         <span className="assistant-run-toggle-chevron" aria-hidden="true">
@@ -648,6 +729,8 @@ function ToolCallList({ toolCalls }: { toolCalls?: StreamToolCall[] }) {
     return null
   }
 
+  const isThinking = toolCalls.some((toolCall) => toolCall.status === 'running')
+
   return (
     <div className="assistant-run-steps assistant-tool-calls">
       <button
@@ -656,8 +739,18 @@ function ToolCallList({ toolCalls }: { toolCalls?: StreamToolCall[] }) {
         onClick={() => setIsOpen((current) => !current)}
         aria-expanded={isOpen}
       >
-        <span className="assistant-run-steps-label">Tool activity</span>
+        <span className={`assistant-run-toggle-icon${isThinking ? ' is-thinking' : ''}`} aria-hidden="true">
+          <ToolsIcon />
+        </span>
+        <span className="assistant-run-steps-label">Tools</span>
         <span className="assistant-run-toggle-copy">
+          {isThinking ? (
+            <span className="assistant-run-thinking" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          ) : null}
           {toolCalls.length} tool{toolCalls.length === 1 ? "" : "s"}
         </span>
         <span className="assistant-run-toggle-chevron" aria-hidden="true">
@@ -707,6 +800,49 @@ function ToolCallList({ toolCalls }: { toolCalls?: StreamToolCall[] }) {
   )
 }
 
+function collectSourceChips(message: ChatMessage): string[] {
+  const labels = [
+    ...(message.toolCalls ?? []).map((toolCall) => toolCall.label),
+    ...(message.steps ?? [])
+      .map((step) => step.label)
+      .filter((label) => label !== 'Preparing answer' && label !== 'Drafting response'),
+  ]
+
+  return [...new Set(labels)].slice(0, 3)
+}
+
+function ChatEmptyState({
+  customerName,
+  onSelectPrompt,
+}: {
+  customerName: string
+  onSelectPrompt: (prompt: string) => void
+}) {
+  return (
+    <div className="assistant-chat-empty-state">
+      <div className="assistant-chat-empty-intro">
+        <h2 className="assistant-chat-empty-title">Ask anything about {customerName} zoning</h2>
+        <p className="assistant-chat-empty-copy">
+          Get quick guidance on districts, setbacks, parking, overlays, and related regulations before you
+          move into a deeper review.
+        </p>
+      </div>
+      <div className="assistant-chat-suggestion-grid" role="list" aria-label="Suggested prompts">
+        {SUGGESTED_PROMPTS.map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            className="assistant-chat-suggestion"
+            onClick={() => onSelectPrompt(prompt)}
+          >
+            <span className="assistant-chat-suggestion-label">{prompt}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function AgentChatPanel({
   agentId,
   backendBase,
@@ -719,6 +855,7 @@ export function AgentChatPanel({
   variant = "default",
   requestHeaders,
   embedSessionToken,
+  embeddedLayout = false,
   showEmptyStateHint = true,
   showBrandingFooter = true,
   showModelControls = true,
@@ -734,6 +871,7 @@ export function AgentChatPanel({
   variant?: "default" | "chatgpt"
   requestHeaders?: Record<string, string>
   embedSessionToken?: string
+  embeddedLayout?: boolean
   showEmptyStateHint?: boolean
   showBrandingFooter?: boolean
   showModelControls?: boolean
@@ -743,9 +881,11 @@ export function AgentChatPanel({
   const [isStreaming, setIsStreaming] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle")
+  const [messageFeedback, setMessageFeedback] = useState<Record<string, MessageFeedback | undefined>>({})
   const [modelId, setModelId] = useState(defaultModelId)
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const modelPickerRef = useRef<HTMLDivElement | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const runIdRef = useRef<string | null>(null)
@@ -756,6 +896,14 @@ export function AgentChatPanel({
     Boolean(normalizedModelId) && normalizedModelId !== normalizedDefaultModelId
   const showPublicAssistantFooter = showBrandingFooter && surface === "public-assistant"
   const currentYear = new Date().getFullYear()
+  const isPublicAssistantSurface = surface === "public-assistant"
+  const chatTitle = variant === "chatgpt" ? 'AI-assisted zoning guidance' : title
+  const chatSubtitle = variant === "chatgpt" ? 'Planning & zoning guidance' : description
+
+  const assistantMessageCount = useMemo(
+    () => messages.filter((message) => message.role === 'assistant').length,
+    [messages],
+  )
 
   useEffect(() => {
     setModelId((currentModelId) => {
@@ -773,6 +921,17 @@ export function AgentChatPanel({
     }
     viewport.scrollTop = viewport.scrollHeight
   }, [messages])
+
+  useEffect(() => {
+    const textarea = composerRef.current
+    if (!textarea) {
+      return
+    }
+
+    textarea.style.height = '0px'
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 56), 180)
+    textarea.style.height = `${nextHeight}px`
+  }, [input])
 
   useEffect(() => {
     if (!isModelPickerOpen) {
@@ -801,14 +960,41 @@ export function AgentChatPanel({
     }
   }, [isModelPickerOpen])
 
+  useEffect(() => {
+    if (!embeddedLayout) {
+      return
+    }
+
+    const handleEmbedAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail
+      if (!detail?.action) {
+        return
+      }
+
+      if (detail.action === 'new-chat') {
+        handleNewChat()
+        return
+      }
+
+      if (detail.action === 'copy') {
+        void handleCopyConversation()
+      }
+    }
+
+    window.addEventListener('uzone-embed-chat-action', handleEmbedAction as EventListener)
+    return () => {
+      window.removeEventListener('uzone-embed-chat-action', handleEmbedAction as EventListener)
+    }
+  }, [embeddedLayout, messages, isStreaming])
+
   const updateAssistantMessage = (messageId: string, updater: (message: ChatMessage) => ChatMessage): void => {
     setMessages((prevMessages) =>
       prevMessages.map((message) => (message.id === messageId ? updater(message) : message)),
     )
   }
 
-  const sendMessage = async () => {
-    const trimmed = input.trim()
+  const sendMessage = async (overrideMessage?: string) => {
+    const trimmed = (overrideMessage ?? input).trim()
     if (!trimmed || isStreaming) {
       return
     }
@@ -900,6 +1086,10 @@ export function AgentChatPanel({
       }
       if (maybeRunId) {
         runIdRef.current = maybeRunId
+        updateAssistantMessage(assistantMessageId, (message) => ({
+          ...message,
+          runId: maybeRunId,
+        }))
       }
 
       if (eventMatches(event.event, "RunStarted")) {
@@ -1288,6 +1478,7 @@ export function AgentChatPanel({
     setInput("")
     setComposerError(null)
     setIsStreaming(false)
+    setMessageFeedback({})
   }
 
   const handleCopyConversation = async () => {
@@ -1308,6 +1499,76 @@ export function AgentChatPanel({
     }, 2000)
   }
 
+  const handleCopyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+    } catch {
+      // Ignore copy errors for inline message tools.
+    }
+  }
+
+  const handleFeedbackToggle = async (message: ChatMessage, direction: MessageFeedback) => {
+    if (!clientId || !clientId.trim()) {
+      setComposerError("Tenant client configuration is missing for this assistant.")
+      return
+    }
+
+    const conversationId = sessionIdRef.current?.trim()
+    if (!conversationId) {
+      setComposerError("Feedback is available after the assistant session is established.")
+      return
+    }
+
+    const previous = messageFeedback[message.id]
+    const nextValue = previous === direction ? undefined : direction
+
+    setMessageFeedback((current) => ({
+      ...current,
+      [message.id]: nextValue,
+    }))
+
+    try {
+      const response = await fetch(`${backendBase}/public/assistant-feedback`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(embedSessionToken ? {} : (requestHeaders || {})),
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          agent_id: agentId,
+          surface,
+          conversation_id: conversationId,
+          message_id: message.id,
+          run_id: message.runId || undefined,
+          feedback_value: nextValue ?? null,
+          message_excerpt: message.content.slice(0, 4000),
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null
+        throw new Error(payload?.detail || "Unable to save feedback.")
+      }
+    } catch (error) {
+      setMessageFeedback((current) => ({
+        ...current,
+        [message.id]: previous,
+      }))
+      setComposerError(error instanceof Error ? error.message : "Unable to save feedback.")
+    }
+  }
+
+  const handleSuggestionClick = (prompt: string) => {
+    setInput(prompt)
+    void sendMessage(prompt)
+  }
+
+  const handleFollowUpClick = (prompt: string) => {
+    setInput(prompt)
+    composerRef.current?.focus()
+  }
+
   return (
     <div className={variant === "chatgpt" ? "assistant-chat-card" : "admin-list"}>
       {variant === "chatgpt" ? null : (
@@ -1318,48 +1579,137 @@ export function AgentChatPanel({
       )}
 
       <div className={`agent-chat-shell agent-chat-shell-${variant}`}>
+        {variant === "chatgpt" && !embeddedLayout ? (
+          <div className="assistant-chat-toolbar">
+            <div className="assistant-chat-toolbar-copy">
+              <div className="assistant-chat-toolbar-title">{chatTitle}</div>
+              {chatSubtitle ? <div className="assistant-chat-toolbar-subtitle">{chatSubtitle}</div> : null}
+            </div>
+            <div className="assistant-chat-toolbar-actions">
+              <span className="assistant-chat-toolbar-stat">
+                {assistantMessageCount} answer{assistantMessageCount === 1 ? '' : 's'}
+              </span>
+              <button
+                className="assistant-chat-toolbar-icon-button"
+                type="button"
+                aria-label="Copy conversation"
+                title="Copy conversation"
+                onClick={() => void handleCopyConversation()}
+              >
+                <span aria-hidden="true">{copyState === "copied" ? "✓" : "⎘"}</span>
+              </button>
+              <button
+                className="assistant-chat-toolbar-button"
+                type="button"
+                onClick={handleNewChat}
+                disabled={isStreaming && !messages.length}
+              >
+                {isStreaming ? 'Stop & Reset' : 'New Chat'}
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div ref={viewportRef} className={`agent-chat-log agent-chat-log-${variant}`}>
           {messages.length === 0 ? (
-            <div className="agent-chat-empty">
-              <div className="agent-chat-empty-title">Ask anything about {customerName} zoning</div>
-              {showEmptyStateHint ? (
-                <p>
-                  Answers stream in as they are generated, and the assistant exposes its live lookup
-                  steps while it works.
-                </p>
-              ) : null}
-            </div>
+            <ChatEmptyState customerName={customerName} onSelectPrompt={handleSuggestionClick} />
           ) : (
             messages.map((message) => (
               <div
                 key={message.id}
-                className={`agent-chat-message agent-chat-message-${message.role}`}
+                className={`agent-chat-message-row agent-chat-message-row-${message.role}`}
                 data-message-id={message.id}
               >
-                <div className="agent-chat-message-header">
-                  <div className="agent-chat-message-role">
-                    {message.role === "user" ? "You" : `${customerName} Assistant`}
+                <div className={`agent-chat-message agent-chat-message-${message.role}`}>
+                  <div className="agent-chat-message-header">
+                    <div className="agent-chat-message-role-block">
+                      <div className="agent-chat-message-role">
+                        {message.role === "user" ? "You" : `${customerName} Assistant`}
+                      </div>
+                      {message.role === "assistant" && message.status === "streaming" ? (
+                        <div className="agent-chat-message-status">
+                          <span className="assistant-streaming-dots" aria-hidden="true">
+                            <span />
+                            <span />
+                            <span />
+                          </span>
+                          Streaming
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                  {message.role === "assistant" && message.status === "streaming" ? (
-                    <div className="agent-chat-message-status">Streaming</div>
+                  <div className="assistant-ui-message-content">
+                    {message.role === "user" ? (
+                      <div className="assistant-ui-user-content">{message.content}</div>
+                    ) : message.content ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                    ) : message.status === "streaming" ? (
+                      <div className="assistant-answer-placeholder">Reviewing zoning context and preparing an answer…</div>
+                    ) : (
+                      <div className="assistant-answer-placeholder">No answer text was returned.</div>
+                    )}
+                  </div>
+                  {message.role === 'assistant' ? (
+                    <div className="assistant-message-tools">
+                      <div className="assistant-message-tools-primary">
+                        <button
+                          className="assistant-message-tool-button"
+                          type="button"
+                          aria-label="Copy answer"
+                          title="Copy answer"
+                          onClick={() => void handleCopyMessage(message.content)}
+                        >
+                          <CopyIcon />
+                        </button>
+                        <button
+                          className={`assistant-message-tool-button${messageFeedback[message.id] === 'up' ? ' is-active' : ''}`}
+                          type="button"
+                          aria-label="Helpful response"
+                          title="Helpful response"
+                          onClick={() => void handleFeedbackToggle(message, 'up')}
+                        >
+                          <ThumbUpIcon />
+                        </button>
+                        <button
+                          className={`assistant-message-tool-button${messageFeedback[message.id] === 'down' ? ' is-active is-negative' : ''}`}
+                          type="button"
+                          aria-label="Unhelpful response"
+                          title="Unhelpful response"
+                          onClick={() => void handleFeedbackToggle(message, 'down')}
+                        >
+                          <ThumbDownIcon />
+                        </button>
+                      </div>
+                      {collectSourceChips(message).length ? (
+                        <div className="assistant-source-chip-row">
+                          {collectSourceChips(message).map((chip) => (
+                            <span key={chip} className="assistant-source-chip">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {message.role === "assistant" ? <ToolCallList toolCalls={message.toolCalls} /> : null}
+                  {message.role === "assistant" ? <RunSteps steps={message.steps} status={message.status} /> : null}
+                  {message.role === "assistant" && message.status === 'complete' ? (
+                    <div className="assistant-follow-up-row">
+                      {FOLLOW_UP_ACTIONS.map((action) => (
+                        <button
+                          key={action}
+                          type="button"
+                          className="assistant-follow-up-chip"
+                          onClick={() => handleFollowUpClick(action)}
+                        >
+                          {action}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {message.role === "assistant" && message.error ? (
+                    <div className="status-banner status-banner-error">{message.error}</div>
                   ) : null}
                 </div>
-                <div className="assistant-ui-message-content">
-                  {message.role === "user" ? (
-                    <div className="assistant-ui-user-content">{message.content}</div>
-                  ) : message.content ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-                  ) : message.status === "streaming" ? (
-                    <div className="assistant-answer-placeholder">Preparing final answer...</div>
-                  ) : (
-                    <div className="assistant-answer-placeholder">No answer text was returned.</div>
-                  )}
-                </div>
-                {message.role === "assistant" ? <ToolCallList toolCalls={message.toolCalls} /> : null}
-                {message.role === "assistant" ? <RunSteps steps={message.steps} status={message.status} /> : null}
-                {message.role === "assistant" && message.error ? (
-                  <div className="status-banner status-banner-error">{message.error}</div>
-                ) : null}
               </div>
             ))
           )}
@@ -1428,17 +1778,18 @@ export function AgentChatPanel({
             </div>
           ) : null}
           <div className="assistant-ui-composer-row">
-            <label className="field assistant-ui-input-wrap">
+            <label className="assistant-ui-input-wrap">
               <textarea
+                ref={composerRef}
                 name="input"
                 className="assistant-ui-input"
                 rows={1}
-                placeholder="Ask about setbacks, ADUs, parking, overlays, lot coverage, or permitted uses..."
+                placeholder="Ask about setbacks, overlays, parking, lot coverage, or permitted uses"
                 value={input}
                 disabled={isStreaming}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                  if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault()
                     void sendMessage()
                   }
@@ -1453,41 +1804,49 @@ export function AgentChatPanel({
                 }}
                 disabled={isStreaming || !input.trim()}
               >
-                {isStreaming ? "..." : "->"}
+                {isStreaming ? "..." : "↑"}
               </button>
             </label>
           </div>
-          <div className="assistant-ui-composer-footer">
-            {showModelControls ? (
-              <div
-                className={`assistant-model-banner${isModelOverrideActive ? " is-override" : ""}`}
-                aria-live="polite"
-              >
-                {isModelOverrideActive ? (
-                  <>
-                    Next run will override the backend-defined model with <code>{normalizedModelId}</code>.
-                  </>
-                ) : (
-                  <>
-                    Next run will use the backend-defined model <code>{defaultModelId || "agent default"}</code>.
-                  </>
-                )}
-              </div>
-            ) : null}
-            <div className="assistant-ui-composer-hint">Ctrl+Enter to send. Enter for a new line.</div>
-            <button
-              className="assistant-copy-icon-button"
-              type="button"
-              aria-label="Copy conversation"
-              title="Copy conversation"
-              onClick={() => void handleCopyConversation()}
-            >
-              <span aria-hidden="true">{copyState === "copied" ? "✓" : "⎘"}</span>
-            </button>
-            <button className="button secondary" type="button" onClick={handleNewChat} disabled={isStreaming && !messages.length}>
-              {isStreaming ? "Stop & Reset" : "New Chat"}
-            </button>
-          </div>
+          {showModelControls || !embeddedLayout ? (
+            <div className="assistant-ui-composer-footer">
+              {showModelControls ? (
+                <div
+                  className={`assistant-model-banner${isModelOverrideActive ? " is-override" : ""}`}
+                  aria-live="polite"
+                >
+                  {isModelOverrideActive ? (
+                    <>
+                      Next run will override the backend-defined model with <code>{normalizedModelId}</code>.
+                    </>
+                  ) : (
+                    <>
+                      Next run will use the backend-defined model <code>{defaultModelId || "agent default"}</code>.
+                    </>
+                  )}
+                </div>
+              ) : null}
+              {!embeddedLayout ? (
+                <div className="assistant-ui-composer-meta">
+                  <div className="assistant-ui-composer-hint">Enter to send. Shift+Enter for a new line.</div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {isPublicAssistantSurface ? (
+            <div className="assistant-chat-footer-note">
+              This assistant provides informational guidance only and may not reflect final determinations. By
+              continuing, you agree to the{' '}
+              <a href="https://gridics.com/terms/" target="_blank" rel="noreferrer">
+                Terms of Service
+              </a>{' '}
+              and{' '}
+              <a href="https://gridics.com/privacy/" target="_blank" rel="noreferrer">
+                Privacy Policy
+              </a>
+              .
+            </div>
+          ) : null}
           {showPublicAssistantFooter ? (
             <div className="assistant-ui-powered-footer">
               <span>Copyright © {currentYear} Gridics. All rights reserved.</span>

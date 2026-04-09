@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { appendScopePathToHref, buildAssistantHref } from '../lib/org-url'
+import { buildAssistantHref, buildLettersHref } from '../lib/org-url'
+import type { UzoneProduct } from '../lib/product-routing'
 
 type NavItem = {
   href: string
@@ -19,12 +20,26 @@ const navItems: NavItem[] = [
   { href: '/#cta-section', label: 'Contact', requiresJurisdiction: true },
 ]
 
-export function PublicNav({ orgId, scopePath }: { orgId: string | null, scopePath: string | null }) {
+export function PublicNav({
+  orgId,
+  scopePath,
+  currentHost,
+  currentProduct,
+}: {
+  orgId: string | null
+  scopePath: string | null
+  currentHost: string | null
+  currentProduct: UzoneProduct
+}) {
   const pathname = usePathname()
   const isAssistantSurface =
     pathname === '/ai-assistant' ||
     pathname.startsWith('/ai-assistant/') ||
-    (scopePath ? pathname === `${scopePath}/assistant` || pathname.startsWith(`${scopePath}/assistant/`) : false)
+    (scopePath
+      ? pathname === `${scopePath}/assistant` ||
+        pathname.startsWith(`${scopePath}/assistant/`) ||
+        (currentProduct === 'assistant' && pathname === scopePath)
+      : false)
   const isJurisdictionPicker = pathname === '/select-jurisdiction'
 
   if (isAssistantSurface || isJurisdictionPicker) {
@@ -36,14 +51,25 @@ export function PublicNav({ orgId, scopePath }: { orgId: string | null, scopePat
       {navItems.map((item) => {
         const href =
           item.href === '/ai-assistant'
-            ? buildAssistantHref(scopePath)
-            : appendScopePathToHref(item.href, scopePath)
+            ? buildAssistantHref(scopePath, currentHost)
+            : buildLettersHref(item.href, scopePath, currentHost)
         const normalizedHref = item.href.split('#', 1)[0]
         const isActive =
           normalizedHref === '/'
-            ? pathname === '/' || (scopePath ? pathname === scopePath : pathname === `/${orgId}`)
-            : normalizedHref !== '' &&
-              (scopePath ? pathname === `${scopePath}${normalizedHref}` || pathname.startsWith(`${scopePath}${normalizedHref}/`) : pathname.startsWith(normalizedHref))
+            ? currentProduct === 'letters' &&
+              (pathname === '/' || (scopePath ? pathname === scopePath : pathname === `/${orgId}`))
+            : normalizedHref === '/ai-assistant'
+              ? currentProduct === 'assistant' &&
+                Boolean(scopePath) &&
+                (pathname === scopePath ||
+                  pathname === `${scopePath}/assistant` ||
+                  pathname.startsWith(`${scopePath}/assistant/`) ||
+                  pathname.startsWith('/ai-assistant/'))
+              : normalizedHref !== '' &&
+                currentProduct === 'letters' &&
+                (scopePath
+                  ? pathname === `${scopePath}${normalizedHref}` || pathname.startsWith(`${scopePath}${normalizedHref}/`)
+                  : pathname.startsWith(normalizedHref))
         const isDisabled = item.requiresJurisdiction && !orgId
 
         if (isDisabled) {
@@ -63,8 +89,6 @@ export function PublicNav({ orgId, scopePath }: { orgId: string | null, scopePat
           <Link
             key={item.label}
             href={href}
-            target={item.href === '/ai-assistant' ? '_blank' : undefined}
-            rel={item.href === '/ai-assistant' ? 'noreferrer' : undefined}
             className={`nav-public-link${isActive ? ' is-active' : ''}`}
           >
             {item.label}

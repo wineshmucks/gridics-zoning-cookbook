@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 
 import { AdminDashboardClient } from '../../components/AdminDashboardClient'
 import { getCurrentOrgId, getCurrentScopePath } from '../../lib/org-context'
+import { buildInternalOrgScopePath } from '../../lib/org-url'
 import { getPermissionContext } from '../../lib/permissions'
 
 export default async function AdminPage() {
@@ -25,7 +26,7 @@ export default async function AdminPage() {
   const selectedOrganizationId = permissions.selectedAdminMembership?.organizationId || null
 
   if (selectedOrganizationId && requestedOrgId !== selectedOrganizationId) {
-    redirect(`/${encodeURIComponent(selectedOrganizationId)}/admin`)
+    redirect(`${buildInternalOrgScopePath(selectedOrganizationId)}/admin`)
   }
 
   return <AdminDashboardClient clerkEnabled={clerkEnabled} currentScopePath={currentScopePath} />

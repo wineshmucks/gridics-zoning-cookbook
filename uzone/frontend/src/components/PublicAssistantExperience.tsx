@@ -118,6 +118,7 @@ export function PublicAssistantExperience({
         variant="chatgpt"
         requestHeaders={requestHeaders}
         embedSessionToken={embedSessionToken}
+        embeddedLayout={Boolean(embedSessionToken)}
         showEmptyStateHint={false}
         showBrandingFooter={false}
         showModelControls={false}

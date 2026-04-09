@@ -71,6 +71,10 @@ npm install
 UZONE_API_BASE=http://localhost:8000 NEXT_PUBLIC_UZONE_API_BASE=http://localhost:8000 npm run dev
 ```
 
+For local testing of the split host routing model (`agentic` vs `zvl`) with Windows or Linux hosts files, see:
+
+- [routing-matrix.md](/home/ben/gprojects/gridics-zoning-cookbook/uzone/docs/routing-matrix.md)
+
 ## Current Scope
 
 Implemented:
@@ -107,7 +111,13 @@ Backend:
 - `UZONE_AUTH_PROVIDER=local|clerk`
 - `UZONE_CLERK_PEM_PUBLIC_KEY=...`
 - `UZONE_CLERK_JWKS_URL=...`
-- `UZONE_CLERK_AUTHORIZED_PARTIES=http://localhost:3001,...`
+- `UZONE_CLERK_AUTHORIZED_PARTIES=http://localhost:3001,http://st1-agentic.gridics.local:3001,http://st1-zvl.gridics.local:3001,...`
+
+For host-based local testing, the backend also allows branded local origins such as:
+- `http://st1-agentic.gridics.local:3001`
+- `http://st1-zvl.gridics.local:3001`
+- `http://st1-agentic.gridics.test:3001`
+- `http://st1-zvl.gridics.test:3001`
 - `UZONE_EMBED_SESSION_SIGNING_SECRET=...`
 - `UZONE_EMBED_SESSION_ISSUER=uzone`
 - `UZONE_EMBED_SESSION_AUDIENCE=uzone-embed-widget`

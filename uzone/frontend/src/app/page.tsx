@@ -1,14 +1,15 @@
 import Link from 'next/link'
 
 import { BuildingLogo } from '../components/BuildingLogo'
-import { getCurrentOrgId, getCurrentScopePath } from '../lib/org-context'
-import { appendScopePathToHref, buildAssistantHref } from '../lib/org-url'
+import { getCurrentHost, getCurrentOrgId, getCurrentScopePath } from '../lib/org-context'
+import { appendScopePathToHref, buildAssistantHref, buildLettersHref } from '../lib/org-url'
 import { getTenantConfig } from '../lib/tenant'
 
 export default async function HomePage() {
   const tenant = await getTenantConfig()
   const orgId = await getCurrentOrgId()
   const currentScopePath = await getCurrentScopePath()
+  const currentHost = await getCurrentHost()
   const content = tenant.home_page_content
   const standardPrice = `$${(tenant.standard_letter_fee_cents / 100).toFixed(2)}`
   const comprehensivePrice = `$${(tenant.comprehensive_letter_fee_cents / 100).toFixed(2)}`
@@ -25,14 +26,12 @@ export default async function HomePage() {
             <h1 className="home-hero-title">{content.hero.title}</h1>
             <p className="home-hero-copy">{content.hero.subtitle}</p>
             <div className="button-row">
-              <Link className="button button-hero-light" href={appendScopePathToHref('/request/new', currentScopePath)}>
+              <Link className="button button-hero-light" href={buildLettersHref('/request/new', currentScopePath, currentHost)}>
                 {content.hero.primary_button_text}
               </Link>
               <Link
                 className="button button-hero-outline"
-                href={buildAssistantHref(currentScopePath)}
-                target="_blank"
-                rel="noreferrer"
+                href={buildAssistantHref(currentScopePath, currentHost)}
               >
                 {content.hero.secondary_button_text}
               </Link>
@@ -106,7 +105,7 @@ export default async function HomePage() {
                     Review Zoning Code
                   </a>
                 ) : null}
-                <Link className="button button-block" href={appendScopePathToHref('/request/new', currentScopePath)}>
+                <Link className="button button-block" href={buildLettersHref('/request/new', currentScopePath, currentHost)}>
                   {content.hero.primary_button_text}
                 </Link>
               </div>
@@ -171,7 +170,7 @@ export default async function HomePage() {
           <div className="cta-band">
             <h3>Ready to Get Started?</h3>
             <p>Request your zoning verification letter today</p>
-            <Link className="button button-hero-light" href={appendScopePathToHref('/request/new', currentScopePath)}>
+            <Link className="button button-hero-light" href={buildLettersHref('/request/new', currentScopePath, currentHost)}>
               {content.hero.primary_button_text}
             </Link>
           </div>
@@ -299,13 +298,13 @@ export default async function HomePage() {
               <h4>Quick Links</h4>
               <ul className="footer-list">
                 <li>
-                  <Link href={appendScopePathToHref('/request/new', currentScopePath)}>Request Letter</Link>
+                  <Link href={buildLettersHref('/request/new', currentScopePath, currentHost)}>Request Letter</Link>
                 </li>
                 <li>
-                  <Link href={appendScopePathToHref('/request/new', currentScopePath)}>Property Search</Link>
+                  <Link href={buildLettersHref('/request/new', currentScopePath, currentHost)}>Property Search</Link>
                 </li>
                 <li>
-                  <Link href={appendScopePathToHref('/account/requests', currentScopePath)}>Track Request</Link>
+                  <Link href={buildLettersHref('/account/requests', currentScopePath, currentHost)}>Track Request</Link>
                 </li>
                 <li>
                   <a href="#faq-section">FAQs</a>

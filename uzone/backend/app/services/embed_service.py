@@ -15,6 +15,7 @@ from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.db.models import TenantClient
+from app.services.tenant_service import get_tenant_logo_path
 
 EMBED_SETTINGS_KEY = "assistant_embed"
 EMBED_SECRET_HASH_SETTING_KEY = "secret_hash"
@@ -198,6 +199,7 @@ def issue_embed_session_token(
         "client_id": tenant_client.client_id,
         "city_name": tenant_client.city_name,
         "department_name": tenant_client.department_name,
+        "logo_path": get_tenant_logo_path(tenant_client.settings_json),
         "assistant_disclaimer_text": assistant_disclaimer_text,
         "origin": embed_origin,
         "widget_title": widget_title,
@@ -253,6 +255,7 @@ def build_embed_widget_payload(
         "client_id": tenant_client.client_id,
         "city_name": tenant_client.city_name,
         "department_name": tenant_client.department_name,
+        "logo_path": get_tenant_logo_path(tenant_client.settings_json),
         "assistant_disclaimer_text": assistant_disclaimer_text,
         "widget_title": embed_settings.widget_title or f"Ask {tenant_client.city_name}",
         "launcher_label": embed_settings.launcher_label or "Have a question?",
@@ -267,6 +270,7 @@ def sanitize_embed_widget_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "client_id",
         "city_name",
         "department_name",
+        "logo_path",
         "assistant_disclaimer_text",
         "widget_title",
         "launcher_label",

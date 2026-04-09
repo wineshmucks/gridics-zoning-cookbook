@@ -9,6 +9,7 @@ import {
   UNSCOPED_ROUTE_PREFIXES,
 } from './lib/org-constants'
 import { getServerBackendOrigin } from './lib/backend'
+import { inferProductFromHost } from './lib/product-routing'
 
 function isProtectedPath(pathname: string) {
   return (
@@ -31,6 +32,11 @@ function isAssistantAliasRoute(pathname: string, scopePath: string | null): bool
   }
 
   return pathname === `${scopePath}/assistant` || pathname.startsWith(`${scopePath}/assistant/`)
+}
+
+function isBrandedProductHost(host: string | null | undefined) {
+  const normalized = (host || '').toLowerCase()
+  return normalized.includes('agentic.') || normalized.includes('zvl.')
 }
 
 async function resolveAliasPrefix(
@@ -83,8 +89,11 @@ async function resolveAliasPrefix(
 
 async function runMiddlewareLogic(req: NextRequest, auth?: any) {
   const pathname = req.nextUrl.pathname
+  const requestHost = req.headers.get('host') || ''
+  const currentProduct = inferProductFromHost(requestHost)
   const firstSegment = pathname.split('/').filter(Boolean)[0] || ''
   const isAiAssistantRoute = pathname === '/ai-assistant' || pathname.startsWith('/ai-assistant/')
+  const isScopedAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/')
   const isExcludedRoute = EXCLUDED_ROUTE_PREFIXES.includes(firstSegment)
   const isHomepage = pathname === '/'
   const isUnscopedCustomerRoute = UNSCOPED_ROUTE_PREFIXES.includes(firstSegment)
@@ -111,6 +120,16 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
         effectiveOrgId = aliasMatch.orgId
         effectiveScopePath = aliasMatch.scopePath
       }
+    }
+  } else if (isScopedAdminRoute && pathname !== '/admin') {
+    const adminAliasPath = pathname.slice('/admin'.length) || '/'
+    const aliasMatch = await resolveAliasPrefix(req, adminAliasPath)
+    if (aliasMatch) {
+      effectiveOrgId = aliasMatch.orgId
+      effectiveScopePath = aliasMatch.scopePath
+      const adminSuffix = aliasMatch.scopedPathname === '/' ? '' : aliasMatch.scopedPathname
+      scopedPathname = `/admin${adminSuffix}`
+      isScopedRoute = true
     }
   } else if (pathname.startsWith(`/${INTERNAL_ORG_ROUTE_PREFIX}/`)) {
     const parts = pathname.split('/').filter(Boolean)
@@ -157,6 +176,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
   requestHeaders.set('x-uzone-orgid', effectiveOrgId)
   requestHeaders.set('x-uzone-scope-path', effectiveScopePath)
   requestHeaders.set('x-uzone-scoped-path', scopedPathname)
+  requestHeaders.set('x-uzone-product', currentProduct)
 
   const authPath = isScopedRoute ? scopedPathname : pathname
 
@@ -164,7 +184,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
     await auth.protect()
   }
 
-  if (!isExcludedRoute && isHomepage) {
+  if (!isExcludedRoute && isHomepage && !isBrandedProductHost(requestHost)) {
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = '/select-jurisdiction'
     redirectUrl.search = ''
@@ -184,13 +204,20 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
     const redirectUrl = req.nextUrl.clone()
     const barePath = req.nextUrl.pathname.startsWith('/') ? req.nextUrl.pathname : `/${req.nextUrl.pathname}`
     const scopePrefix = effectiveScopePath || normalizeScopePath(`/${effectiveOrgId}`)
-    redirectUrl.pathname = `${scopePrefix}${barePath === '/' ? '' : barePath}`
+    redirectUrl.pathname =
+      barePath === '/assistant'
+        ? scopePrefix || '/assistant'
+        : `${scopePrefix}${barePath === '/' ? '' : barePath}`
     return NextResponse.redirect(redirectUrl)
   }
 
   const rewriteUrl = req.nextUrl.clone()
   if (isScopedRoute) {
     rewriteUrl.pathname = scopedPathname
+  }
+
+  if (currentProduct === 'assistant' && isScopedRoute && scopedPathname === '/') {
+    rewriteUrl.pathname = `/ai-assistant${effectiveScopePath}`
   }
 
   if (isAssistantAliasRoute(pathname, effectiveScopePath)) {

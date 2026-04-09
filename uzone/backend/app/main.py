@@ -11,6 +11,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+LOCAL_BRANDED_ORIGIN_REGEX = r"^http://([a-z0-9-]+\.)*gridics\.(local|test):3001$"
+
 
 def create_app() -> FastAPI:
     base_app = FastAPI(
@@ -39,6 +41,7 @@ def create_app() -> FastAPI:
     base_app.add_middleware(
         CORSMiddleware,
         allow_origins=[origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()],
+        allow_origin_regex=LOCAL_BRANDED_ORIGIN_REGEX,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -19,6 +19,21 @@ if [[ -z "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]]; then
   exit 1
 fi
 
+DEPLOY_DOCKER_CONFIG_CREATED=0
+if [[ -z "${DOCKER_CONFIG:-}" ]]; then
+  export DOCKER_CONFIG
+  DOCKER_CONFIG="$(mktemp -d)"
+  DEPLOY_DOCKER_CONFIG_CREATED=1
+  printf '{ "auths": {} }\n' > "${DOCKER_CONFIG}/config.json"
+fi
+
+cleanup() {
+  if [[ "${DEPLOY_DOCKER_CONFIG_CREATED}" == "1" && -n "${DOCKER_CONFIG:-}" && -d "${DOCKER_CONFIG}" ]]; then
+    rm -rf "${DOCKER_CONFIG}"
+  fi
+}
+trap cleanup EXIT
+
 aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${BACKEND_REPO_URL%/*}"
 

@@ -137,6 +137,7 @@ celerybeat.pid
 # Environments
 .env
 .env-deploy
+.env-deploy.staging
 .envrc
 .venv
 env/
@@ -221,6 +222,7 @@ pnpm-debug.log*
 
 # gridics-forge generated spreadsheets
 /gridics-forge/cache/
+/uzone/frontend/cache/
 /gridics-forge/out/
 /gridics-forge/**/*.xlsx
 !/gridics-forge/data/templates/*.xlsx

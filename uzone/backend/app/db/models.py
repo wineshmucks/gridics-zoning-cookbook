@@ -119,6 +119,30 @@ class TenantDomain(Base, TimestampMixin):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class AssistantMessageFeedback(Base, TimestampMixin):
+    __tablename__ = "assistant_message_feedback"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_client_id",
+            "conversation_id",
+            "message_id",
+            name="uq_assistant_message_feedback_conversation_message",
+        ),
+    )
+
+    id: Mapped[str] = uuid_pk()
+    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("tenant_clients.id"), nullable=False)
+    clerk_user_id: Mapped[str | None] = mapped_column(String(255))
+    agent_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    surface: Mapped[str] = mapped_column(String(100), nullable=False, default="public-assistant")
+    conversation_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(255))
+    feedback_value: Mapped[str] = mapped_column(String(10), nullable=False)
+    message_excerpt: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON)
+
+
 class ZoningCodeIngestionRun(Base, TimestampMixin):
     __tablename__ = "zoning_code_ingestion_runs"
 

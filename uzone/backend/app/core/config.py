@@ -9,7 +9,14 @@ class Settings(BaseSettings):
 
     app_name: str = "UZone API"
     app_version: str = "0.1.0"
-    allowed_origins: str = "http://localhost:3001,http://127.0.0.1:3001"
+    allowed_origins: str = (
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001,"
+        "http://st1-agentic.gridics.local:3001,"
+        "http://st1-zvl.gridics.local:3001,"
+        "http://st1-agentic.gridics.test:3001,"
+        "http://st1-zvl.gridics.test:3001"
+    )
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/uzone"
     auth_provider: str = "local"
     clerk_secret_key: str | None = Field(
@@ -18,7 +25,14 @@ class Settings(BaseSettings):
     )
     clerk_pem_public_key: str | None = None
     clerk_jwks_url: str = "https://api.clerk.com/v1/jwks"
-    clerk_authorized_parties: str = "http://localhost:3001,http://127.0.0.1:3001"
+    clerk_authorized_parties: str = (
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001,"
+        "http://st1-agentic.gridics.local:3001,"
+        "http://st1-zvl.gridics.local:3001,"
+        "http://st1-agentic.gridics.test:3001,"
+        "http://st1-zvl.gridics.test:3001"
+    )
     gridics_clerk_organization_id: str | None = None
     payment_providers: str = "manual"
     default_payment_provider: str = "manual"

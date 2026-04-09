@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { AuthControls, ClerkShell } from '../components/ClerkShell'
 import { HeaderBrand } from '../components/HeaderBrand'
 import { PublicNav } from '../components/PublicNav'
-import { getCurrentOrgId, getCurrentScopePath } from '../lib/org-context'
+import { getCurrentHost, getCurrentOrgId, getCurrentProduct, getCurrentScopePath } from '../lib/org-context'
 import { getPermissionContext } from '../lib/permissions'
 import { getTenantConfig } from '../lib/tenant'
 
@@ -23,6 +23,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const orgId = await getCurrentOrgId()
   const currentScopePath = await getCurrentScopePath()
+  const currentHost = await getCurrentHost()
+  const currentProduct = await getCurrentProduct()
   const isEmbedSurface = currentScopePath?.startsWith('/embed') ?? false
   const isSuperAdminScope = currentScopePath?.startsWith('/super-admin') ?? false
   const tenant = await getTenantConfig()
@@ -32,7 +34,23 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const logoUrl = !isSuperAdminScope && orgId ? tenant.logo_path || null : null
 
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                try {
+                  var theme = localStorage.getItem('uzone-theme');
+                  if (theme === 'dark' || theme === 'light') {
+                    document.documentElement.dataset.theme = theme;
+                  }
+                } catch (error) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body>
         <ClerkShell clerkEnabled={clerkEnabled}>
           {isEmbedSurface ? (
@@ -53,7 +71,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     selectedAdminOrganizationId={permissions.selectedAdminMembership?.organizationId || null}
                   />
                   <div className="topbar-actions">
-                    <PublicNav orgId={orgId} scopePath={currentScopePath} />
+                    <PublicNav
+                      orgId={orgId}
+                      scopePath={currentScopePath}
+                      currentHost={currentHost}
+                      currentProduct={currentProduct}
+                    />
                     <AuthControls
                       clerkEnabled={clerkEnabled}
                       canAccessAdminScreens={permissions.canAccessAdminScreens}

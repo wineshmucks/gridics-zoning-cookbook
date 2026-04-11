@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment & Confirmation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>::-webkit-scrollbar { display: none;}</style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#377C36',
+                        secondary: '#F4F4F4',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-white font-sans">
+
+<header id="header" class="bg-white border-b border-gray-200">
+    <div class="max-w-[1440px] mx-auto px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-building text-white text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">City of Dream Town</h1>
+                <p class="text-xs text-gray-500">Planning & Zoning Department</p>
+            </div>
+        </div>
+        <nav class="flex items-center gap-8">
+            <a href="#" class="text-sm font-medium text-primary">Zoning Verification Letters</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Property Search</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Resources</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Contact</a>
+            <button class="px-5 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                <i class="fa-solid fa-user mr-2"></i>My Account
+            </button>
+        </nav>
+    </div>
+</header>
+
+<section id="progress-section" class="bg-secondary py-6">
+    <div class="max-w-[1440px] mx-auto px-8">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-check text-white text-sm"></i>
+                </div>
+                <span class="text-sm font-medium text-gray-700">Property Selected</span>
+                <div class="w-12 h-0.5 bg-primary"></div>
+                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-check text-white text-sm"></i>
+                </div>
+                <span class="text-sm font-medium text-gray-700">Request Details</span>
+                <div class="w-12 h-0.5 bg-primary"></div>
+                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                    <span class="text-white text-sm font-bold">3</span>
+                </div>
+                <span class="text-sm font-medium text-primary">Payment</span>
+                <div class="w-12 h-0.5 bg-gray-300"></div>
+                <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                    <span class="text-gray-500 text-sm font-bold">4</span>
+                </div>
+                <span class="text-sm font-medium text-gray-500">Confirmation</span>
+            </div>
+            <div class="text-right">
+                <p class="text-sm text-gray-600">Request #ZVL-2024-0156</p>
+                <p class="text-xs text-gray-500">January 16, 2024</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div id="payment-form-section" class="max-w-[1440px] mx-auto px-8 py-12">
+    <div class="grid grid-cols-3 gap-12">
+        <div class="col-span-2">
+            <div class="bg-white rounded-2xl border border-gray-200 p-8">
+                <div class="flex items-center gap-3 mb-8">
+                    <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-credit-card text-primary text-xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">Secure Payment</h2>
+                        <p class="text-gray-600">Complete your zoning verification letter request</p>
+                    </div>
+                </div>
+
+                <form id="payment-form" class="space-y-6">
+                    <!-- Payment Method Selection -->
+                    <div class="mb-8">
+                        <label class="block text-sm font-medium text-gray-700 mb-4">Payment Method</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <!-- Card Option -->
+                            <label class="cursor-pointer relative">
+                                <input type="radio" name="payment_method" value="card" class="peer sr-only" checked onchange="document.getElementById('card-fields').classList.remove('hidden'); document.getElementById('bank-fields').classList.add('hidden');">
+                                <div class="p-4 rounded-lg border border-gray-200 hover:border-primary peer-checked:border-primary peer-checked:bg-green-50 transition-all h-full flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <i class="fa-regular fa-credit-card text-gray-600 peer-checked:text-primary text-lg"></i>
+                                        <span class="font-medium text-gray-900">Credit/Debit Card</span>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                        <div class="w-2 h-2 bg-white rounded-full opacity-0 peer-checked:opacity-100"></div>
+                                    </div>
+                                </div>
+                            </label>
+                            
+                            <!-- Bank Option -->
+                            <label class="cursor-pointer relative">
+                                <input type="radio" name="payment_method" value="bank" class="peer sr-only" onchange="document.getElementById('card-fields').classList.add('hidden'); document.getElementById('bank-fields').classList.remove('hidden');">
+                                <div class="p-4 rounded-lg border border-gray-200 hover:border-primary peer-checked:border-primary peer-checked:bg-green-50 transition-all h-full flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <i class="fa-solid fa-building-columns text-gray-600 peer-checked:text-primary text-lg"></i>
+                                        <div>
+                                            <span class="block font-medium text-gray-900">Bank Transfer</span>
+                                            <span class="block text-xs text-gray-500">Direct bank account</span>
+                                        </div>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border border-gray-300 peer-checked:border-primary peer-checked:bg-primary flex items-center justify-center">
+                                        <div class="w-2 h-2 bg-white rounded-full opacity-0 peer-checked:opacity-100"></div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Card Payment Fields -->
+                    <div id="card-fields" class="space-y-6">
+                        <h3 class="text-lg font-semibold text-gray-900">Card Details</h3>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="John" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Smith" required>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Card Number *</label>
+                            <div class="relative">
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary pr-12" placeholder="1234 5678 9012 3456" required>
+                                <div class="absolute right-3 top-3 flex gap-1">
+                                    <i class="fa-brands fa-cc-visa text-blue-600 text-xl"></i>
+                                    <i class="fa-brands fa-cc-mastercard text-red-600 text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="MM/YY" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">CVV *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="123" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bank Transfer Fields (Hidden by default) -->
+                    <div id="bank-fields" class="space-y-6 hidden">
+                        <h3 class="text-lg font-semibold text-gray-900">Bank Account Details</h3>
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <div class="flex gap-3">
+                                <i class="fa-solid fa-circle-info text-blue-600 mt-0.5"></i>
+                                <div class="text-sm text-blue-800">
+                                    <p class="font-medium mb-1">ACH Transfer Information</p>
+                                    <p>Bank transfers typically take 3-5 business days to process. Your request will be reviewed once payment clears.</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Account Holder Name *</label>
+                            <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Name on account">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Routing Number *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="9 digits">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Account Number *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Account number">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Account Type *</label>
+                            <select class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                                <option>Checking</option>
+                                <option>Savings</option>
+                                <option>Business Checking</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="border-t pt-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900">Billing Address</h3>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="same_address" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                                <label for="same_address" class="text-sm text-gray-600">Same as contact address</label>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Street Address *</label>
+                                <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="123 Main Street" required>
+                            </div>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">City *</label>
+                                    <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Dream Town" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">State *</label>
+                                    <select class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" required>
+                                        <option>CA</option>
+                                        <option>NY</option>
+                                        <option>TX</option>
+                                        <option>FL</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">ZIP Code *</label>
+                                    <input type="text" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary" placeholder="12345" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 pt-6">
+                        <input type="checkbox" id="terms" class="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary" required>
+                        <label for="terms" class="text-sm text-gray-700">
+                            I agree to the <a href="#" class="text-primary hover:underline">Terms of Service</a> and <a href="#" class="text-primary hover:underline">Privacy Policy</a>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="w-full py-4 bg-primary text-white text-lg font-semibold rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-lock"></i>
+                        Complete Secure Payment
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-span-1">
+            <div id="order-summary" class="bg-secondary rounded-2xl p-6 sticky top-8">
+                <h3 class="text-xl font-bold text-gray-900 mb-6">Order Summary</h3>
+                
+                <div class="space-y-4 mb-6">
+                    <div class="bg-white rounded-lg p-4">
+                        <div class="flex items-start justify-between mb-2">
+                            <h4 class="font-semibold text-gray-900">Comprehensive Zoning Letter</h4>
+                            <span class="text-primary font-bold">$xxx.xx</span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-2">123 Elm Street, Dream Town, CA</p>
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <i class="fa-solid fa-map-pin"></i>
+                            <span>Parcel: 123-456-789</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-700">Expedited Processing</span>
+                            <span class="text-gray-900 font-medium">$xx.xx</span>
+                        </div>
+                        <p class="text-xs text-gray-500">24-hour delivery upgrade</p>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-300 pt-4 space-y-3">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Subtotal</span>
+                        <span class="text-gray-900">$xxx.xx</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Processing Fee</span>
+                        <span class="text-gray-900">$x.xx</span>
+                    </div>
+                    <div class="flex items-center justify-between text-lg font-bold border-t border-gray-300 pt-3">
+                        <span class="text-gray-900">Total</span>
+                        <span class="text-primary">$xxx.xx</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fa-solid fa-shield-halved text-green-600"></i>
+                        <span class="text-sm font-medium text-green-800">Secure Payment</span>
+                    </div>
+                    <p class="text-xs text-green-700">Your payment is protected by 256-bit SSL encryption</p>
+                </div>
+
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fa-solid fa-clock text-blue-600"></i>
+                        <span class="text-sm font-medium text-blue-800">Delivery Timeline</span>
+                    </div>
+                    <p class="text-xs text-blue-700">Expedited: 24 hours | Email delivery included</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="confirmation-section" class="max-w-[1440px] mx-auto px-8 py-12 hidden">
+    <div class="text-center">
+        <div class="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-8">
+            <i class="fa-solid fa-check text-green-600 text-4xl"></i>
+        </div>
+        
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Payment Successful!</h1>
+        <p class="text-xl text-gray-600 mb-8">Your zoning verification letter request has been submitted</p>
+
+        <div class="bg-secondary rounded-2xl p-8 max-w-2xl mx-auto mb-12">
+            <div class="grid grid-cols-2 gap-8">
+                <div class="text-left">
+                    <h3 class="font-semibold text-gray-900 mb-4">Order Details</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Request Number:</span>
+                            <span class="font-medium">ZVL-2024-0156</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Property:</span>
+                            <span class="font-medium">123 Elm Street</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Letter Type:</span>
+                            <span class="font-medium">Comprehensive</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Processing:</span>
+                            <span class="font-medium text-primary">Expedited (24hr)</span>
+                        </div>
+                        <div class="flex justify-between border-t border-gray-300 pt-2 mt-2">
+                            <span class="text-gray-600">Total Paid:</span>
+                            <span class="font-bold text-primary">$xxx.xx</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-left">
+                    <h3 class="font-semibold text-gray-900 mb-4">Next Steps</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-start gap-3">
+                            <div class="w-5 h-5 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span class="text-white text-xs">1</span>
+                            </div>
+                            <span class="text-gray-700">Confirmation email sent</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-5 h-5 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span class="text-white text-xs">2</span>
+                            </div>
+                            <span class="text-gray-700">City staff review (within 24hrs)</span>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-5 h-5 bg-gray-300 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span class="text-white text-xs">3</span>
+                            </div>
+                            <span class="text-gray-700">Letter delivered via email</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-center gap-4">
+            <button class="px-8 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-green-700 transition">
+                <i class="fa-solid fa-folder-open mr-2"></i>View My Requests
+            </button>
+            <button class="px-8 py-3 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition">
+                <i class="fa-solid fa-plus mr-2"></i>Request Another Letter
+            </button>
+        </div>
+    </div>
+</div>
+
+<footer id="footer" class="bg-gray-900 text-white py-12 mt-16">
+    <div class="max-w-[1440px] mx-auto px-8">
+        <div class="grid grid-cols-4 gap-12 mb-8">
+            <div>
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-building text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">City of Dream Town</h3>
+                        <p class="text-xs text-gray-400">Planning Department</p>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-400 leading-relaxed">
+                    Official zoning verification letter system for the City of Dream Town.
+                </p>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-4">Support</h4>
+                <ul class="space-y-2 text-sm text-gray-400">
+                    <li><a href="#" class="hover:text-white transition">Help Center</a></li>
+                    <li><a href="#" class="hover:text-white transition">Contact Us</a></li>
+                    <li><a href="#" class="hover:text-white transition">Phone: (555) 123-4567</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-4">Legal</h4>
+                <ul class="space-y-2 text-sm text-gray-400">
+                    <li><a href="#" class="hover:text-white transition">Privacy Policy</a></li>
+                    <li><a href="#" class="hover:text-white transition">Terms of Service</a></li>
+                    <li><a href="#" class="hover:text-white transition">Security</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-4">Security</h4>
+                <div class="flex items-center gap-2 mb-2">
+                    <i class="fa-solid fa-shield-halved text-primary"></i>
+                    <span class="text-sm">PCI DSS Compliant</span>
+                </div>
+                <p class="text-xs text-gray-400">256-bit SSL encryption</p>
+            </div>
+        </div>
+        <div class="border-t border-gray-800 pt-8 text-center">
+            <p class="text-sm text-gray-400">© 2024 City of Dream Town. All rights reserved.</p>
+        </div>
+    </div>
+</footer>
+
+<script>
+document.getElementById('payment-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // Simulate payment processing
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing Payment...';
+    submitBtn.disabled = true;
+    
+    setTimeout(function() {
+        // Hide payment form and show confirmation
+        document.getElementById('payment-form-section').style.display = 'none';
+        document.getElementById('confirmation-section').classList.remove('hidden');
+        
+        // Update progress bar
+        const progressSection = document.getElementById('progress-section');
+        progressSection.innerHTML = `
+            <div class="max-w-[1440px] mx-auto px-8">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                            <i class="fa-solid fa-check text-white text-sm"></i>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">Property Selected</span>
+                        <div class="w-12 h-0.5 bg-primary"></div>
+                        <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                            <i class="fa-solid fa-check text-white text-sm"></i>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">Request Details</span>
+                        <div class="w-12 h-0.5 bg-primary"></div>
+                        <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                            <i class="fa-solid fa-check text-white text-sm"></i>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">Payment</span>
+                        <div class="w-12 h-0.5 bg-primary"></div>
+                        <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                            <i class="fa-solid fa-check text-white text-sm"></i>
+                        </div>
+                        <span class="text-sm font-medium text-primary">Confirmation</span>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-gray-600">Request #ZVL-2024-0156</p>
+                        <p class="text-xs text-gray-500">Payment Completed</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }, 2000);
+});
+</script>
+
+</body>
+</html>

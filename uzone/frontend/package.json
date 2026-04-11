@@ -1,0 +1,28 @@
+{
+  "name": "uzone-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "next telemetry disable",
+    "predev": "next telemetry disable",
+    "prebuild": "next telemetry disable",
+    "prestart": "next telemetry disable",
+    "dev": "next dev -H 0.0.0.0 -p 3001",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --experimental-strip-types --test src/lib/*.test.ts"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.14.0",
+    "next": "^16.1.6",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "typescript": "^5.7.2"
+  }
+}

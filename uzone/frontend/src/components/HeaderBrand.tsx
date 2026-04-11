@@ -1,0 +1,217 @@
+'use client'
+
+import { useClerk } from '@clerk/nextjs'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { startTransition, useState } from 'react'
+
+import type { ClientMembership } from '../lib/permissions'
+import { buildInternalOrgScopePath, replaceScopePathInPathname } from '../lib/org-url'
+import { BuildingLogo } from './BuildingLogo'
+
+type Props = {
+  clerkEnabled: boolean
+  cityName: string
+  departmentName: string
+  logoUrl: string | null
+  brandVariant: 'tenant' | 'gridics'
+  currentScopePath: string | null
+  currentCustomerName: string | null
+  adminMemberships: ClientMembership[]
+  selectedAdminOrganizationId: string | null
+}
+
+export function HeaderBrand({
+  clerkEnabled,
+  cityName,
+  departmentName,
+  logoUrl,
+  brandVariant,
+  currentScopePath,
+  currentCustomerName,
+  adminMemberships,
+  selectedAdminOrganizationId,
+}: Props) {
+  if (!clerkEnabled) {
+    return (
+      <StaticHeaderBrand
+        cityName={cityName}
+        departmentName={departmentName}
+        logoUrl={logoUrl}
+        brandVariant={brandVariant}
+      />
+    )
+  }
+
+  return (
+    <ClerkHeaderBrand
+      cityName={cityName}
+      departmentName={departmentName}
+      logoUrl={logoUrl}
+      brandVariant={brandVariant}
+      currentScopePath={currentScopePath}
+      currentCustomerName={currentCustomerName}
+      adminMemberships={adminMemberships}
+      selectedAdminOrganizationId={selectedAdminOrganizationId}
+    />
+  )
+}
+
+function StaticHeaderBrand({
+  cityName,
+  departmentName,
+  logoUrl,
+  brandVariant,
+}: {
+  cityName: string
+  departmentName: string
+  logoUrl: string | null
+  brandVariant: 'tenant' | 'gridics'
+}) {
+  const showSubtitle = Boolean(departmentName.trim())
+  const isGridicsBrand = brandVariant === 'gridics'
+  const title = isGridicsBrand ? 'Gridics' : cityName
+  const subtitle = isGridicsBrand ? '' : departmentName
+
+  return (
+    <div className="brand brand-header">
+      <div className={`brand-mark brand-mark-public${logoUrl ? ' brand-mark-has-image' : ''}`}>
+        {isGridicsBrand ? <GridicsLogo /> : <BuildingLogo logoUrl={logoUrl} alt={`${cityName} logo`} />}
+      </div>
+      <div className="brand-copy">
+        <div className="brand-title">{title}</div>
+        {showSubtitle && subtitle ? <div className="brand-subtitle">{subtitle}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+function ClerkHeaderBrand({
+  cityName,
+  departmentName,
+  logoUrl,
+  brandVariant,
+  currentScopePath,
+  currentCustomerName,
+  adminMemberships,
+  selectedAdminOrganizationId,
+}: Omit<Props, 'clerkEnabled'>) {
+  const { setActive } = useClerk()
+  const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [isOpen, setIsOpen] = useState(false)
+  const [pendingOrganizationId, setPendingOrganizationId] = useState<string | null>(null)
+
+  const currentScopedPathname =
+    currentScopePath && pathname.startsWith(currentScopePath)
+      ? pathname.slice(currentScopePath.length) || '/'
+      : pathname
+  const isAdminRoute = currentScopedPathname.startsWith('/admin')
+  const isSuperAdminRoute = currentScopedPathname.startsWith('/super-admin')
+  const isJurisdictionPickerRoute = pathname.startsWith('/select-jurisdiction')
+  const canSwitchOrganizations = isAdminRoute && adminMemberships.length > 1
+  const selectedMembership =
+    adminMemberships.find((membership) => membership.organizationId === selectedAdminOrganizationId) ||
+    null
+  const resolvedCustomerName = currentCustomerName || selectedMembership?.organizationName || cityName
+  const title = isSuperAdminRoute
+    ? 'Super Admin'
+    : isJurisdictionPickerRoute
+      ? 'Gridics'
+    : isAdminRoute
+      ? selectedMembership?.organizationName || resolvedCustomerName
+      : resolvedCustomerName
+  const subtitle = isJurisdictionPickerRoute ? '' : departmentName
+
+  async function switchOrganization(nextOrganizationId: string) {
+    if (!nextOrganizationId || nextOrganizationId === selectedAdminOrganizationId) {
+      setIsOpen(false)
+      return
+    }
+
+    const membership = adminMemberships.find((item) => item.organizationId === nextOrganizationId)
+    if (!membership) {
+      return
+    }
+
+    setPendingOrganizationId(nextOrganizationId)
+
+    try {
+      await setActive({ organization: nextOrganizationId })
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete('clientid')
+      const nextPathname = replaceScopePathInPathname(
+        pathname,
+        currentScopePath,
+        buildInternalOrgScopePath(membership.organizationId),
+      )
+      const nextSearch = params.toString()
+
+      startTransition(() => {
+        router.replace(nextSearch ? `${nextPathname}?${nextSearch}` : nextPathname)
+        router.refresh()
+      })
+    } finally {
+      setIsOpen(false)
+      setPendingOrganizationId(null)
+    }
+  }
+
+  return (
+    <div className="brand brand-header">
+      <div className={`brand-mark brand-mark-public${logoUrl ? ' brand-mark-has-image' : ''}`}>
+        {brandVariant === 'gridics' ? <GridicsLogo /> : <BuildingLogo logoUrl={logoUrl} alt={`${title} logo`} />}
+      </div>
+      <div className="brand-copy">
+        <div className="brand-title-row">
+          <div>
+            <div className="brand-title">{title}</div>
+            {subtitle ? <div className="brand-subtitle">{subtitle}</div> : null}
+          </div>
+          {canSwitchOrganizations ? (
+            <div className="brand-switcher">
+              <button
+                className="button secondary brand-switch-button"
+                type="button"
+                onClick={() => {
+                  setIsOpen((value) => !value)
+                }}
+                disabled={pendingOrganizationId !== null}
+              >
+                Switch jurisdiction
+              </button>
+              {isOpen ? (
+                <div className="brand-switch-menu">
+                  {adminMemberships.map((membership) => (
+                    <button
+                      key={membership.organizationId}
+                      className="brand-switch-option"
+                      type="button"
+                      onClick={() => {
+                        void switchOrganization(membership.organizationId)
+                      }}
+                    >
+                      {membership.organizationName}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GridicsLogo() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 64 64" className="building-logo">
+      <rect width="64" height="64" rx="16" fill="#377c36" />
+      <path
+        fill="#ffffff"
+        d="M16 10.667C12.318 10.667 9.333 13.651 9.333 17.333v29.334c0 3.682 2.985 6.666 6.667 6.666h13.333v-11.11c0-3.682 2.985-6.666 6.667-6.666s6.667 2.984 6.667 6.666v11.11H48c3.682 0 6.667-2.984 6.667-6.666V17.333c0-3.682-2.985-6.666-6.667-6.666H16Zm2.222 31.111c0-1.222 1-2.223 2.222-2.223h4.445c1.222 0 2.222 1.001 2.222 2.223v4.444c0 1.223-1 2.222-2.222 2.222h-4.445c-1.222 0-2.222-.999-2.222-2.222v-4.444Zm15.556-2.223h4.444c1.223 0 2.223 1.001 2.223 2.223v4.444c0 1.223-1 2.222-2.223 2.222h-4.444c-1.223 0-2.223-.999-2.223-2.222v-4.444c0-1.222 1-2.223 2.223-2.223Zm13.333 2.223c0-1.222 1-2.223 2.222-2.223h4.445c1.222 0 2.222 1.001 2.222 2.223v4.444c0 1.223-1 2.222-2.222 2.222h-4.445c-1.222 0-2.222-.999-2.222-2.222v-4.444ZM20.444 23.999h4.445c1.222 0 2.222 1 2.222 2.223v4.444c0 1.222-1 2.222-2.222 2.222h-4.445c-1.222 0-2.222-1-2.222-2.222v-4.444c0-1.223 1-2.223 2.222-2.223Zm13.334 2.223c0-1.223 1-2.223 2.222-2.223h4.444c1.223 0 2.223 1 2.223 2.223v4.444c0 1.222-1 2.222-2.223 2.222H36c-1.222 0-2.222-1-2.222-2.222v-4.444Zm13.333-2.223h4.445c1.222 0 2.222 1 2.222 2.223v4.444c0 1.222-1 2.222-2.222 2.222h-4.445c-1.222 0-2.222-1-2.222-2.222v-4.444c0-1.223 1-2.223 2.222-2.223Z"
+      />
+    </svg>
+  )
+}

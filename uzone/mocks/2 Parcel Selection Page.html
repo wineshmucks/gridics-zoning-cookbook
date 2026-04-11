@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Property</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>::-webkit-scrollbar { display: none;}</style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#377C36',
+                        secondary: '#F4F4F4',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-white font-sans">
+
+<header id="header" class="bg-white border-b border-gray-200">
+    <div class="max-w-[1440px] mx-auto px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-building text-white text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-gray-900">City of Dream Town</h1>
+                <p class="text-xs text-gray-500">Planning & Zoning Department</p>
+            </div>
+        </div>
+        <nav class="flex items-center gap-8">
+            <a href="#" class="text-sm font-medium text-primary">Zoning Verification Letters</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Property Search</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Resources</a>
+            <a href="#" class="text-sm font-medium text-gray-600 hover:text-primary transition">Contact</a>
+            <button class="px-5 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                <i class="fa-solid fa-user mr-2"></i>Sign In
+            </button>
+        </nav>
+    </div>
+</header>
+
+<section id="progress-section" class="bg-secondary py-6">
+    <div class="max-w-[1440px] mx-auto px-8">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                    <span class="text-white font-bold">1</span>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-gray-900">Select Property</p>
+                    <p class="text-xs text-gray-500">Choose parcels for verification</p>
+                </div>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-300 mx-6"></div>
+            <div class="flex items-center gap-3 opacity-40">
+                <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                    <span class="text-gray-600 font-bold">2</span>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-gray-600">Account</p>
+                    <p class="text-xs text-gray-500">Sign in or create account</p>
+                </div>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-300 mx-6"></div>
+            <div class="flex items-center gap-3 opacity-40">
+                <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                    <span class="text-gray-600 font-bold">3</span>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-gray-600">Request Details</p>
+                    <p class="text-xs text-gray-500">Complete request form</p>
+                </div>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-300 mx-6"></div>
+            <div class="flex items-center gap-3 opacity-40">
+                <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                    <span class="text-gray-600 font-bold">4</span>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-gray-600">Payment</p>
+                    <p class="text-xs text-gray-500">Review and pay</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="main-content-section" class="py-8">
+    <div class="max-w-[1440px] mx-auto px-8">
+        <div class="flex gap-8">
+            <div id="map-container" class="flex-1">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="bg-secondary px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-xl font-bold text-gray-900 mb-1">Select Property on Map</h2>
+                        <p class="text-sm text-gray-600">Search by address or parcel number, then click on the map to select</p>
+                    </div>
+                    
+                    <div class="p-6 bg-white border-b border-gray-200">
+                        <div class="flex gap-3">
+                            <div class="flex-1 relative">
+                                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                <input type="text" id="address-search" placeholder="Search by address (e.g., 123 Main Street)" class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div class="w-px bg-gray-300"></div>
+                            <div class="flex-1 relative">
+                                <i class="fa-solid fa-hashtag absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                <input type="text" id="apn-search" placeholder="Search by APN (e.g., 123-456-789)" class="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <button class="px-6 py-3 bg-primary text-white font-semibold rounded-lg hover:bg-green-700 transition">
+                                <i class="fa-solid fa-search mr-2"></i>Search
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center gap-4 mt-4">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="satellite-view" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                                <label for="satellite-view" class="text-sm text-gray-700">Satellite View</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="show-labels" checked class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                                <label for="show-labels" class="text-sm text-gray-700">Show Labels</label>
+                            </div>
+                            <button class="ml-auto text-sm text-primary font-medium hover:underline">
+                                <i class="fa-solid fa-location-crosshairs mr-1"></i>Use My Location
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="map" style="height: 600px;" class="relative">
+                    </div>
+                    
+                    <div class="px-6 py-4 bg-secondary border-t border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-4 h-4 bg-primary border-2 border-white rounded-full shadow"></div>
+                                    <span class="text-sm text-gray-700">Selected Parcel</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-4 h-4 bg-blue-500 border-2 border-white rounded-full shadow opacity-50"></div>
+                                    <span class="text-sm text-gray-700">Available Parcel</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition">
+                                    <i class="fa-solid fa-expand mr-2"></i>Fullscreen
+                                </button>
+                                <button class="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition">
+                                    <i class="fa-solid fa-print mr-2"></i>Print Map
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="selection-panel" class="w-[400px]">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 sticky top-8">
+                    <div class="bg-secondary px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-bold text-gray-900">Selected Properties</h3>
+                        <p class="text-sm text-gray-600 mt-1">
+                            <span id="selected-count" class="font-semibold text-primary">0</span> parcels selected
+                        </p>
+                    </div>
+                    
+                    <div id="selected-parcels-list" class="p-6 max-h-[500px] overflow-y-auto">
+                        <div class="text-center py-12">
+                            <div class="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fa-solid fa-map-pin text-gray-400 text-2xl"></i>
+                            </div>
+                            <p class="text-gray-500 text-sm">No properties selected yet</p>
+                            <p class="text-gray-400 text-xs mt-2">Click on the map to select parcels</p>
+                        </div>
+                    </div>
+                    
+                    <div class="px-6 py-4 border-t border-gray-200 bg-secondary">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-sm font-semibold text-gray-700">Estimated Total</span>
+                            <span class="text-xl font-bold text-primary">$xxx.xx</span>
+                        </div>
+                        <button id="continue-btn" disabled class="w-full py-3 bg-gray-300 text-gray-500 font-semibold rounded-lg cursor-not-allowed transition">
+                            <i class="fa-solid fa-arrow-right mr-2"></i>Continue to Account
+                        </button>
+                        <p class="text-xs text-gray-500 text-center mt-3">You'll review pricing details in the next step</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-blue-50 rounded-xl p-5 border border-blue-200">
+                    <div class="flex items-start gap-3">
+                        <i class="fa-solid fa-circle-info text-blue-600 text-lg mt-0.5"></i>
+                        <div>
+                            <h4 class="text-sm font-semibold text-blue-900 mb-2">Selection Tips</h4>
+                            <ul class="space-y-1.5 text-xs text-blue-800">
+                                <li class="flex items-start gap-2">
+                                    <i class="fa-solid fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Click parcels on the map to select them</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fa-solid fa-check text-blue-600 mt-0.5"></i>
+                                    <span>You can select multiple properties at once</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fa-solid fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Use search to quickly find specific addresses</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <i class="fa-solid fa-check text-blue-600 mt-0.5"></i>
+                                    <span>Each property requires a separate letter fee</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer id="footer" class="bg-gray-900 text-white py-12 mt-16">
+    <div class="max-w-[1440px] mx-auto px-8">
+        <div class="grid grid-cols-4 gap-12 mb-8">
+            <div>
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-building text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">City of Dream Town</h3>
+                        <p class="text-xs text-gray-400">Planning Department</p>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-400 leading-relaxed">
+                    Official zoning verification letter system for the City of Dream Town.
+                </p>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-4">Quick Links</h4>
+                <ul class="space-y-2 text-sm text-gray-400">
+                    <li><a href="#" class="hover:text-white transition">Home</a></li>
+                    <li><a href="#" class="hover:text-white transition">Request Letter</a></li>
+                    <li><a href="#" class="hover:text-white transition">Track Order</a></li>
+                    <li><a href="#" class="hover:text-white transition">FAQs</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-4">Resources</h4>
+                <ul class="space-y-2 text-sm text-gray-400">
+                    <li><a href="#" class="hover:text-white transition">Zoning Map</a></li>
+                    <li><a href="#" class="hover:text-white transition">Zoning Codes</a></li>
+                    <li><a href="#" class="hover:text-white transition">Contact Planning</a></li>
+                    <li><a href="#" class="hover:text-white transition">Privacy Policy</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-4">Contact</h4>
+                <ul class="space-y-2 text-sm text-gray-400">
+                    <li class="flex items-center gap-2">
+                        <i class="fa-solid fa-phone"></i>
+                        <span>(555) 123-4567</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <i class="fa-solid fa-envelope"></i>
+                        <span>planning@dreamtown.gov</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <i class="fa-solid fa-location-dot"></i>
+                        <span>123 City Hall Plaza</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        <div class="border-t border-gray-800 pt-8 flex items-center justify-between">
+            <p class="text-sm text-gray-400">&copy; 2024 City of Dream Town. All rights reserved.</p>
+            <div class="flex items-center gap-4">
+                <a href="#" class="text-gray-400 hover:text-white transition"><i class="fa-brands fa-facebook text-lg"></i></a>
+                <a href="#" class="text-gray-400 hover:text-white transition"><i class="fa-brands fa-twitter text-lg"></i></a>
+                <a href="#" class="text-gray-400 hover:text-white transition"><i class="fa-brands fa-instagram text-lg"></i></a>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<script>
+window.addEventListener('load', function() {
+    try {
+        const map = L.map('map').setView([37.7749, -122.4194], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        const selectedParcels = [];
+        let parcelCounter = 0;
+
+        const parcelsData = [
+            {lat: 37.7749, lng: -122.4194, apn: '123-456-001', address: '123 Main Street', zone: 'R-1'},
+            {lat: 37.7759, lng: -122.4184, apn: '123-456-002', address: '125 Main Street', zone: 'R-1'},
+            {lat: 37.7739, lng: -122.4204, apn: '123-456-003', address: '456 Oak Avenue', zone: 'C-2'},
+            {lat: 37.7769, lng: -122.4174, apn: '123-456-004', address: '789 Pine Street', zone: 'R-2'},
+            {lat: 37.7729, lng: -122.4214, apn: '123-456-005', address: '321 Elm Drive', zone: 'M-1'}
+        ];
+
+        parcelsData.forEach(parcel => {
+            const marker = L.circleMarker([parcel.lat, parcel.lng], {
+                radius: 8,
+                fillColor: '#3B82F6',
+                color: '#fff',
+                weight: 2,
+                opacity: 0.5,
+                fillOpacity: 0.5
+            }).addTo(map);
+
+            marker.bindPopup(`
+                <div class="p-2">
+                    <p class="font-semibold text-sm">${parcel.address}</p>
+                    <p class="text-xs text-gray-600">APN: ${parcel.apn}</p>
+                    <p class="text-xs text-gray-600">Zone: ${parcel.zone}</p>
+                </div>
+            `);
+
+            marker.on('click', function() {
+                const index = selectedParcels.findIndex(p => p.apn === parcel.apn);
+                
+                if (index > -1) {
+                    selectedParcels.splice(index, 1);
+                    marker.setStyle({fillColor: '#3B82F6', opacity: 0.5, fillOpacity: 0.5});
+                } else {
+                    selectedParcels.push(parcel);
+                    marker.setStyle({fillColor: '#377C36', opacity: 1, fillOpacity: 0.8});
+                }
+                
+                updateSelectedList();
+            });
+        });
+
+        function updateSelectedList() {
+            const container = document.getElementById('selected-parcels-list');
+            const countEl = document.getElementById('selected-count');
+            const continueBtn = document.getElementById('continue-btn');
+            
+            countEl.textContent = selectedParcels.length;
+            
+            if (selectedParcels.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <div class="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fa-solid fa-map-pin text-gray-400 text-2xl"></i>
+                        </div>
+                        <p class="text-gray-500 text-sm">No properties selected yet</p>
+                        <p class="text-gray-400 text-xs mt-2">Click on the map to select parcels</p>
+                    </div>
+                `;
+                continueBtn.disabled = true;
+                continueBtn.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+                continueBtn.classList.remove('bg-primary', 'text-white', 'hover:bg-green-700');
+            } else {
+                container.innerHTML = selectedParcels.map(parcel => `
+                    <div class="bg-secondary rounded-lg p-4 mb-3">
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="flex-1">
+                                <p class="font-semibold text-gray-900 text-sm">${parcel.address}</p>
+                                <p class="text-xs text-gray-600 mt-1">APN: ${parcel.apn}</p>
+                                <p class="text-xs text-gray-600">Zoning: ${parcel.zone}</p>
+                            </div>
+                            <button onclick="removeParcel('${parcel.apn}')" class="text-red-500 hover:text-red-700">
+                                <i class="fa-solid fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center justify-between pt-2 border-t border-gray-300">
+                            <span class="text-xs text-gray-600">Standard Letter</span>
+                            <span class="text-sm font-semibold text-primary">$xx.xx</span>
+                        </div>
+                    </div>
+                `).join('');
+                
+                continueBtn.disabled = false;
+                continueBtn.classList.remove('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+                continueBtn.classList.add('bg-primary', 'text-white', 'hover:bg-green-700');
+            }
+        }
+
+        window.removeParcel = function(apn) {
+            const index = selectedParcels.findIndex(p => p.apn === apn);
+            if (index > -1) {
+                selectedParcels.splice(index, 1);
+                updateSelectedList();
+            }
+        };
+
+    } catch(e) {
+        console.error('Map initialization error:', e);
+        document.getElementById('map').innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">Map loading...</div>';
+    }
+});
+</script>
+
+</body>
+</html>

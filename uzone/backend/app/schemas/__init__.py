@@ -37,6 +37,7 @@ from app.schemas.admin import (
     ZoningKnowledgeStatusRead,
 )
 from app.schemas.auth import AuthSessionRead, LoginRequest, RegisterRequest, UserRead
+from app.schemas.assistant_guardrails import AssistantTurnContract, PolicyDecisionRead
 from app.schemas.jurisdictions import JurisdictionCreate, JurisdictionRead
 from app.schemas.properties import (
     PropertyCreate,
@@ -68,6 +69,7 @@ from app.schemas.workflows import (
 
 __all__ = [
     "ApprovalAction",
+    "AssistantTurnContract",
     "AuthSessionRead",
     "DeliveryAction",
     "DeliveryRead",
@@ -105,6 +107,7 @@ __all__ = [
     "PropertyRead",
     "PropertySnapshotCreate",
     "PropertySnapshotRead",
+    "PolicyDecisionRead",
     "QuoteRead",
     "RegisterRequest",
     "ReportSummary",

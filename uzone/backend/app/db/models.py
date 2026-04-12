@@ -143,6 +143,22 @@ class AssistantMessageFeedback(Base, TimestampMixin):
     metadata_json: Mapped[dict | None] = mapped_column(JSON)
 
 
+class AssistantTurnEvent(Base, TimestampMixin):
+    __tablename__ = "assistant_turn_events"
+
+    id: Mapped[str] = uuid_pk()
+    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("tenant_clients.id"))
+    conversation_id: Mapped[str | None] = mapped_column(String(255))
+    message_id: Mapped[str | None] = mapped_column(String(255))
+    run_id: Mapped[str | None] = mapped_column(String(255))
+    agent_id: Mapped[str | None] = mapped_column(String(100))
+    intent_type: Mapped[str | None] = mapped_column(String(50))
+    jurisdiction_status: Mapped[str | None] = mapped_column(String(50))
+    policy_decision: Mapped[str | None] = mapped_column(String(50))
+    reason_code: Mapped[str | None] = mapped_column(String(100))
+    payload_json: Mapped[dict | None] = mapped_column(JSON)
+
+
 class ZoningCodeIngestionRun(Base, TimestampMixin):
     __tablename__ = "zoning_code_ingestion_runs"
 

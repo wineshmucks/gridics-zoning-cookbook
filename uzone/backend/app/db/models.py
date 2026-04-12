@@ -119,6 +119,14 @@ class TenantDomain(Base, TimestampMixin):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class PlatformSetting(Base, TimestampMixin):
+    __tablename__ = "platform_settings"
+
+    id: Mapped[str] = uuid_pk()
+    key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    json_value: Mapped[dict | None] = mapped_column(JSON)
+
+
 class AssistantMessageFeedback(Base, TimestampMixin):
     __tablename__ = "assistant_message_feedback"
     __table_args__ = (

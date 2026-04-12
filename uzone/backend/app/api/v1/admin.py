@@ -47,6 +47,8 @@ from app.schemas import (
     JurisdictionRead,
     LetterTemplateCreate,
     LetterTemplateRead,
+    PlatformAssistantSettingsRead,
+    PlatformAssistantSettingsUpdate,
     TenantClientCreate,
     TenantExperienceSettingsRead,
     TenantExperienceSettingsUpdate,
@@ -78,10 +80,14 @@ from app.services.logo_storage import (
 )
 from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
 from app.services.clerk_service import delete_clerk_organization, update_clerk_organization
+from app.services.platform_settings_service import get_platform_assistant_settings_json, set_platform_assistant_settings_json
 from app.services.tenant_service import (
+    DEFAULT_ASSISTANT_DISCLAIMER_TEXT,
+    get_effective_assistant_disclaimer_text,
     get_tenant_path_alias,
     get_home_page_content_record,
     get_home_page_content_payload,
+    get_tenant_assistant_agent_prompts,
     get_tenant_assistant_settings,
     get_tenant_assistant_disclaimer_text,
     get_tenant_experience_settings,
@@ -683,13 +689,69 @@ def get_tenant_experience_settings_route(
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
     assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    assistant_agent_prompts = get_tenant_assistant_agent_prompts(tenant_client.settings_json)
     assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
     return TenantExperienceSettingsRead(
         zoning_code_url=zoning_code_url,
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
+    )
+
+
+@router.get("/platform/assistant-settings", response_model=PlatformAssistantSettingsRead)
+def get_platform_assistant_settings_route(
+    db: Session = Depends(get_db),
+) -> PlatformAssistantSettingsRead:
+    settings_json = get_platform_assistant_settings_json(db)
+    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(settings_json)
+    assistant_agent_prompts = get_tenant_assistant_agent_prompts(settings_json)
+    assistant_disclaimer_text = (
+        get_tenant_assistant_disclaimer_text(settings_json)
+        if isinstance(settings_json, dict) and settings_json.get("assistant_disclaimer_text")
+        else DEFAULT_ASSISTANT_DISCLAIMER_TEXT
+    )
+    return PlatformAssistantSettingsRead(
+        assistant_disclaimer_text=assistant_disclaimer_text,
+        assistant_provider_keys=assistant_provider_keys,
+        assistant_model_targets=assistant_model_targets,
+        assistant_agent_prompts=assistant_agent_prompts,
+        raw_settings_json=settings_json,
+    )
+
+
+@router.put("/platform/assistant-settings", response_model=PlatformAssistantSettingsRead)
+def update_platform_assistant_settings_route(
+    payload: PlatformAssistantSettingsUpdate,
+    db: Session = Depends(get_db),
+) -> PlatformAssistantSettingsRead:
+    merged_settings = merge_tenant_experience_settings(
+        get_platform_assistant_settings_json(db),
+        agent_url=None,
+        zoning_code_url=None,
+        assistant_disclaimer_text=payload.assistant_disclaimer_text.strip()
+        if payload.assistant_disclaimer_text
+        else None,
+        assistant_provider_keys=payload.assistant_provider_keys,
+        assistant_model_targets=payload.assistant_model_targets,
+        assistant_agent_prompts=payload.assistant_agent_prompts,
+    )
+    set_platform_assistant_settings_json(db, merged_settings)
+    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(merged_settings)
+    assistant_agent_prompts = get_tenant_assistant_agent_prompts(merged_settings)
+    assistant_disclaimer_text = (
+        get_tenant_assistant_disclaimer_text(merged_settings)
+        if merged_settings.get("assistant_disclaimer_text")
+        else DEFAULT_ASSISTANT_DISCLAIMER_TEXT
+    )
+    return PlatformAssistantSettingsRead(
+        assistant_disclaimer_text=assistant_disclaimer_text,
+        assistant_provider_keys=assistant_provider_keys,
+        assistant_model_targets=assistant_model_targets,
+        assistant_agent_prompts=assistant_agent_prompts,
+        raw_settings_json=merged_settings,
     )
 
 
@@ -710,6 +772,7 @@ def update_tenant_experience_settings(
         else None,
         assistant_provider_keys=payload.assistant_provider_keys,
         assistant_model_targets=payload.assistant_model_targets,
+        assistant_agent_prompts=payload.assistant_agent_prompts,
     )
     tenant_client.settings_json = merged_settings
     db.commit()
@@ -717,15 +780,18 @@ def update_tenant_experience_settings(
     invalidate_tenant_cache()
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
     assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    assistant_agent_prompts = get_tenant_assistant_agent_prompts(tenant_client.settings_json)
     assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
     return TenantExperienceSettingsRead(
         zoning_code_url=zoning_code_url,
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
         debug_received_assistant_provider_keys=payload.assistant_provider_keys,
         debug_received_assistant_model_targets=payload.assistant_model_targets,
+        debug_received_assistant_agent_prompts=payload.assistant_agent_prompts,
         debug_merged_settings_json=merged_settings,
     )
 
@@ -803,7 +869,10 @@ def create_tenant_assistant_embed_preview_session(
 ) -> TenantEmbedPreviewSessionResponse:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     embed_settings = get_tenant_embed_settings(tenant_client.settings_json)
-    assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
+    assistant_disclaimer_text = get_effective_assistant_disclaimer_text(
+        get_platform_assistant_settings_json(db),
+        tenant_client.settings_json,
+    )
     normalized_origin = payload.origin.strip()
     if not normalized_origin:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid origin")

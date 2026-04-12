@@ -1,4 +1,5 @@
 import { SuperAdminPanel } from '../../components/SuperAdminPanel'
+import { SuperAdminWorkspaceShell } from '../../components/SuperAdminWorkspaceShell'
 import { getPermissionContext } from '../../lib/permissions'
 
 type PageProps = {
@@ -58,5 +59,9 @@ export default async function SuperAdminPage({ searchParams }: PageProps) {
     )
   }
 
-  return <SuperAdminPanel flashMessage={flashMessage} flashTone={flashTone} />
+  return (
+    <SuperAdminWorkspaceShell>
+      <SuperAdminPanel flashMessage={flashMessage} flashTone={flashTone} />
+    </SuperAdminWorkspaceShell>
+  )
 }

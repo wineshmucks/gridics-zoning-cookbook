@@ -55,6 +55,7 @@ export type CustomerExperienceSettings = {
   zoning_code_url: string | null
   assistant_disclaimer_text: string
   assistant_provider_keys: Record<string, string | null>
+  assistant_agent_prompts: Record<string, string>
   assistant_model_targets: Record<
     string,
     {
@@ -64,6 +65,8 @@ export type CustomerExperienceSettings = {
     }
   >
 }
+
+export type PlatformAssistantSettings = CustomerExperienceSettings
 
 export type CustomerEmbedSettings = {
   is_active: boolean
@@ -329,6 +332,7 @@ function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
       openai: null,
       groq: null,
     },
+    assistant_agent_prompts: {},
     assistant_model_targets: {},
   }
 }
@@ -346,6 +350,24 @@ function buildEmptyCustomerEmbedSettings(): CustomerEmbedSettings {
   }
 }
 
+function hasOwnAssistantDisclaimerOverride(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+
+  const record = payload as Record<string, unknown>
+  const rawSettings =
+    record.raw_settings_json && typeof record.raw_settings_json === 'object'
+      ? (record.raw_settings_json as Record<string, unknown>)
+      : null
+
+  return Boolean(
+    rawSettings &&
+      typeof rawSettings.assistant_disclaimer_text === 'string' &&
+      rawSettings.assistant_disclaimer_text.trim(),
+  )
+}
+
 function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperienceSettings {
   const fallback = buildEmptyCustomerExperienceSettings()
   if (!payload || typeof payload !== 'object') {
@@ -360,6 +382,10 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
   const modelTargetsInput =
     record.assistant_model_targets && typeof record.assistant_model_targets === 'object'
       ? (record.assistant_model_targets as Record<string, unknown>)
+      : {}
+  const agentPromptsInput =
+    record.assistant_agent_prompts && typeof record.assistant_agent_prompts === 'object'
+      ? (record.assistant_agent_prompts as Record<string, unknown>)
       : {}
 
   const assistant_provider_keys: CustomerExperienceSettings['assistant_provider_keys'] = {
@@ -383,14 +409,37 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     }
   }
 
+  const assistant_agent_prompts: CustomerExperienceSettings['assistant_agent_prompts'] = {}
+  for (const [targetId, rawPrompt] of Object.entries(agentPromptsInput)) {
+    if (typeof rawPrompt !== 'string') {
+      continue
+    }
+    const prompt = rawPrompt.trim()
+    if (prompt) {
+      assistant_agent_prompts[targetId] = prompt
+    }
+  }
+
   return {
     zoning_code_url: typeof record.zoning_code_url === 'string' ? record.zoning_code_url : null,
     assistant_disclaimer_text:
-      typeof record.assistant_disclaimer_text === 'string' && record.assistant_disclaimer_text.trim()
+      hasOwnAssistantDisclaimerOverride(payload) &&
+      typeof record.assistant_disclaimer_text === 'string' &&
+      record.assistant_disclaimer_text.trim()
         ? record.assistant_disclaimer_text.trim()
-        : fallback.assistant_disclaimer_text,
+        : '',
     assistant_provider_keys,
+    assistant_agent_prompts,
     assistant_model_targets,
+  }
+}
+
+function normalizePlatformAssistantSettings(payload: unknown): PlatformAssistantSettings {
+  const normalized = normalizeCustomerExperienceSettings(payload)
+  return {
+    ...normalized,
+    assistant_disclaimer_text:
+      normalized.assistant_disclaimer_text || DEFAULT_ASSISTANT_DISCLAIMER_TEXT,
   }
 }
 
@@ -907,6 +956,22 @@ export async function fetchCustomerExperienceSettings(
   }
 }
 
+export async function fetchPlatformAssistantSettings(): Promise<PlatformAssistantSettings> {
+  try {
+    const response = await fetch(buildBackendApiUrl('/api/admin/platform/assistant-settings'), {
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      return normalizePlatformAssistantSettings(null)
+    }
+
+    return normalizePlatformAssistantSettings(await response.json())
+  } catch {
+    return normalizePlatformAssistantSettings(null)
+  }
+}
+
 export async function fetchCustomerEmbedSettings(organizationId: string): Promise<CustomerEmbedSettings> {
   try {
     const response = await fetch(
@@ -966,6 +1031,11 @@ export async function saveCustomerExperienceSettingsAction(
       base_url: String(formData.get('targetBaseUrlCodeResearcherAgent') || '').trim() || null,
     },
   }
+  const assistantAgentPrompts = {
+    'customer-zoning-agent': String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
+    'parcel-data-agent': String(formData.get('promptParcelDataAgent') || '').trim() || null,
+    'code-researcher-agent': String(formData.get('promptCodeResearcherAgent') || '').trim() || null,
+  }
 
   if (!organizationId) {
     return {
@@ -985,6 +1055,7 @@ export async function saveCustomerExperienceSettingsAction(
           zoning_code_url: zoningCodeUrl || null,
           assistant_disclaimer_text: assistantDisclaimerText || null,
           assistant_provider_keys: assistantProviderKeys,
+          assistant_agent_prompts: assistantAgentPrompts,
           assistant_model_targets: assistantModelTargets,
         }),
       })

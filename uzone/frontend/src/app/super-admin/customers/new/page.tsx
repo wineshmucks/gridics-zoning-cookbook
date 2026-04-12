@@ -1,4 +1,5 @@
 import { SuperAdminCustomerCreateClient } from '../../../../components/SuperAdminCustomerCreateClient'
+import { SuperAdminWorkspaceShell } from '../../../../components/SuperAdminWorkspaceShell'
 import { getPermissionContext } from '../../../../lib/permissions'
 
 export default async function SuperAdminNewCustomerPage() {
@@ -16,5 +17,9 @@ export default async function SuperAdminNewCustomerPage() {
     )
   }
 
-  return <SuperAdminCustomerCreateClient />
+  return (
+    <SuperAdminWorkspaceShell>
+      <SuperAdminCustomerCreateClient />
+    </SuperAdminWorkspaceShell>
+  )
 }

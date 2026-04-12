@@ -1,6 +1,5 @@
-import Link from 'next/link'
-
 import { AgentChatPanel } from '../../../components/AgentChatPanel'
+import { SuperAdminWorkspaceShell } from '../../../components/SuperAdminWorkspaceShell'
 import { getPermissionContext } from '../../../lib/permissions'
 import { getTenantConfig } from '../../../lib/tenant'
 
@@ -23,50 +22,45 @@ export default async function SuperAdminAssistantPage() {
   }
 
   return (
-    <section className="card admin-stack" style={{ marginBottom: 18 }}>
-      <div className="super-admin-toolbar">
-        <Link href="/super-admin" className="button secondary">
-          Back to Jurisdictions
-        </Link>
-      </div>
-
-      <div className="admin-header">
-        <div>
-          <div className="eyebrow">Super Admin</div>
-          <h1 className="section-title" style={{ marginBottom: 8 }}>
-            Assistant
-          </h1>
-          <p className="admin-copy">
-            This reusable assistant surface is now available from super admin and can be mounted in
-            other UZone areas next.
-          </p>
-        </div>
-        <div className="button-row">
-          <a className="button" href={`${backendBase}/config`} target="_blank" rel="noreferrer">
-            View Agent Service
-          </a>
-          {tenant.zoning_code_url ? (
-            <a
-              className="button secondary"
-              href={tenant.zoning_code_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open Zoning Code
+    <SuperAdminWorkspaceShell>
+      <section className="card admin-stack" style={{ marginBottom: 18 }}>
+        <div className="admin-header">
+          <div>
+            <div className="eyebrow">Super Admin</div>
+            <h1 className="section-title" style={{ marginBottom: 8 }}>
+              Assistant Playground
+            </h1>
+            <p className="admin-copy">
+              Run the shared assistant surface against the active tenant and validate platform behavior.
+            </p>
+          </div>
+          <div className="button-row">
+            <a className="button" href={`${backendBase}/config`} target="_blank" rel="noreferrer">
+              View Agent Service
             </a>
-          ) : null}
+            {tenant.zoning_code_url ? (
+              <a
+                className="button secondary"
+                href={tenant.zoning_code_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Zoning Code
+              </a>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <AgentChatPanel
-        agentId="customer-zoning-agent"
-        backendBase={backendBase}
-        customerName={tenant.city_name}
-        clientId={tenant.client_id}
-        surface="super-admin-assistant"
-        title="Deployment assistant"
-        description="This assistant-ui surface runs against the backend AgentOS deployment for the active tenant and is structured for reuse in other screens."
-      />
-    </section>
+        <AgentChatPanel
+          agentId="customer-zoning-agent"
+          backendBase={backendBase}
+          customerName={tenant.city_name}
+          clientId={tenant.client_id}
+          surface="super-admin-assistant"
+          title="Deployment assistant"
+          description="This assistant-ui surface runs against the backend AgentOS deployment for the active tenant and is structured for reuse in other screens."
+        />
+      </section>
+    </SuperAdminWorkspaceShell>
   )
 }

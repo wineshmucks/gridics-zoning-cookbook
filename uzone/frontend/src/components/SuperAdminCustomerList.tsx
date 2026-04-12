@@ -44,30 +44,28 @@ export function SuperAdminCustomerList({
   flashMessage: string | null
   flashTone: 'success' | 'error' | null
 }) {
+  const activeCount = customers.filter((customer) => customer.isActive === true).length
+  const unprovisionedCount = customers.filter((customer) => customer.isActive !== true).length
+  const totalMembers = customers.reduce((sum, customer) => sum + (customer.membersCount ?? 0), 0)
+
   return (
-    <section className="card admin-stack" style={{ marginBottom: 18 }}>
+    <section className="card admin-stack super-admin-jurisdictions-page" style={{ marginBottom: 18 }}>
       <div className="admin-header">
-        <div>
+        <div className="super-admin-page-header-copy">
           <div className="eyebrow">Super Admin</div>
           <h1 className="section-title" style={{ marginBottom: 8 }}>
-            Jurisdiction management
+            Jurisdiction Management
           </h1>
           <p className="admin-copy">
-            Start with the jurisdiction list. Open a jurisdiction to manage admins, or add a new jurisdiction.
+            Manage jurisdiction access, setup, and provisioning from one place.
           </p>
         </div>
-        <div className="button-row">
+        <div className="button-row super-admin-header-actions">
           <form action={syncJurisdictionsFromClerkAction}>
             <button type="submit" className="button secondary">
               Sync Clerk
             </button>
           </form>
-          <Link href="/super-admin/gridics-debug" className="button secondary">
-            Gridics Debug
-          </Link>
-          <Link href="/super-admin/assistant" className="button secondary">
-            Open Assistant
-          </Link>
           <Link href="/super-admin/customers/new" className="button">
             Add Jurisdiction
           </Link>
@@ -80,10 +78,28 @@ export function SuperAdminCustomerList({
         </div>
       ) : null}
 
-      <div className="admin-list">
-        <div className="admin-list-heading">Jurisdictions</div>
+      <div className="super-admin-metrics-row" aria-label="Jurisdiction summary">
+        <div className="super-admin-metric">
+          <span>Active jurisdictions</span>
+          <strong>{activeCount}</strong>
+        </div>
+        <div className="super-admin-metric">
+          <span>Unprovisioned</span>
+          <strong>{unprovisionedCount}</strong>
+        </div>
+        <div className="super-admin-metric">
+          <span>Members</span>
+          <strong>{totalMembers}</strong>
+        </div>
+      </div>
+
+      <div className="super-admin-section-shell">
+        <div className="super-admin-section-head">
+          <div className="admin-list-heading super-admin-section-heading">Jurisdictions</div>
+          <div className="super-admin-section-meta">{customers.length} total</div>
+        </div>
         {customers.length ? (
-          <table className="table">
+          <table className="table super-admin-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -96,38 +112,58 @@ export function SuperAdminCustomerList({
             <tbody>
               {customers.map((customer) => (
                 <tr key={customer.id}>
-                  <td>{customer.name}</td>
-                  <td>{customer.customerId || 'Unavailable'}</td>
+                  <td>
+                    <div className="super-admin-customer-name-cell">
+                      <div className="super-admin-customer-name">{customer.name}</div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="super-admin-id-text">{customer.customerId || 'Unavailable'}</span>
+                  </td>
                   <td>
                     <span className={`status-pill ${statusTone(customer.isActive)}`}>
                       {statusLabel(customer.isActive)}
                     </span>
                   </td>
-                  <td>{customer.membersCount ?? 0}</td>
-                  <td>
-                    <Link
-                      href={`/super-admin/customers/${customer.id}`}
-                      className="button secondary"
-                    >
-                      Manage
-                    </Link>
+                  <td className="super-admin-members-cell">{customer.membersCount ?? 0}</td>
+                  <td className="super-admin-row-actions">
+                    <div className="button-row super-admin-row-action-group" style={{ justifyContent: 'flex-end' }}>
+                      <Link
+                        href={`/super-admin/customers/${customer.id}`}
+                        className="button secondary super-admin-row-primary-action"
+                      >
+                        Manage
+                      </Link>
+                      <Link
+                        href={`/super-admin/customers/${customer.id}/assistant-setup`}
+                        className="super-admin-row-secondary-link"
+                      >
+                        Agentic Setup
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <div style={{ color: 'var(--muted)' }}>No jurisdictions have been provisioned yet.</div>
+          <div className="super-admin-empty-inline">
+            <strong>No jurisdictions yet.</strong>
+            <span>Add a jurisdiction to start provisioning access and agentic setup.</span>
+          </div>
         )}
       </div>
 
-      <div className="admin-list" style={{ marginTop: 24 }}>
-        <div className="admin-list-heading">Inactive jurisdictions</div>
-        <p className="admin-copy" style={{ marginTop: 0 }}>
+      <div className="super-admin-section-shell super-admin-inactive-shell" style={{ marginTop: 4 }}>
+        <div className="super-admin-section-head">
+          <div className="admin-list-heading super-admin-section-heading">Inactive jurisdictions</div>
+          <div className="super-admin-section-meta">{inactiveCustomers.length} items</div>
+        </div>
+        <p className="admin-copy super-admin-section-copy" style={{ marginTop: 0 }}>
           These are database rows that are not active in the public flow. Purging them deletes the tenant mapping and any tenant-specific records we can safely remove.
         </p>
         {inactiveCustomers.length ? (
-          <table className="table">
+          <table className="table super-admin-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -141,24 +177,39 @@ export function SuperAdminCustomerList({
             <tbody>
               {inactiveCustomers.map((customer) => (
                 <tr key={customer.id}>
-                  <td>{customer.name}</td>
-                  <td>{customer.id}</td>
-                  <td>{customer.customerId || 'Unavailable'}</td>
+                  <td>
+                    <div className="super-admin-customer-name">{customer.name}</div>
+                  </td>
+                  <td>
+                    <span className="super-admin-id-text">{customer.id}</span>
+                  </td>
+                  <td>
+                    <span className="super-admin-id-text">{customer.customerId || 'Unavailable'}</span>
+                  </td>
                   <td>
                     <span className={`status-pill ${statusTone(customer.isActive)}`}>
                       {statusLabel(customer.isActive)}
                     </span>
                   </td>
-                  <td>{customer.membersCount ?? 0}</td>
-                  <td>
-                    <div className="button-row" style={{ justifyContent: 'flex-end' }}>
-                      <Link href={`/super-admin/customers/${customer.id}`} className="button secondary">
+                  <td className="super-admin-members-cell">{customer.membersCount ?? 0}</td>
+                  <td className="super-admin-row-actions">
+                    <div className="button-row super-admin-row-action-group" style={{ justifyContent: 'flex-end' }}>
+                      <Link
+                        href={`/super-admin/customers/${customer.id}`}
+                        className="button secondary super-admin-row-primary-action"
+                      >
                         Manage
+                      </Link>
+                      <Link
+                        href={`/super-admin/customers/${customer.id}/assistant-setup`}
+                        className="super-admin-row-secondary-link"
+                      >
+                        Agentic Setup
                       </Link>
                       <form action={purgeInactiveJurisdictionAction}>
                         <input type="hidden" name="organizationId" value={customer.id} />
                         <input type="hidden" name="customerName" value={customer.name} />
-                        <button type="submit" className="button secondary">
+                        <button type="submit" className="super-admin-row-secondary-link super-admin-row-danger-link">
                           Purge
                         </button>
                       </form>
@@ -169,7 +220,9 @@ export function SuperAdminCustomerList({
             </tbody>
           </table>
         ) : (
-          <div style={{ color: 'var(--muted)' }}>No inactive jurisdictions found.</div>
+          <div className="super-admin-empty-inline super-admin-empty-inline-compact">
+            <span>No inactive jurisdictions found.</span>
+          </div>
         )}
       </div>
     </section>

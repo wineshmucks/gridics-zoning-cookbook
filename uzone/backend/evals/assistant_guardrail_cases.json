@@ -1,0 +1,35 @@
+[
+  {
+    "id": "non_zoning_weather",
+    "query": "What's the weather in Miami tomorrow?",
+    "question_type": "general_zoning",
+    "tenant": {"city_name": "Miami", "settings_json": {"state": "fl"}},
+    "expected_policy_decision": "deny"
+  },
+  {
+    "id": "general_zoning_height",
+    "query": "What are the building height rules downtown?",
+    "question_type": "general_zoning",
+    "tenant": {"city_name": "Miami", "settings_json": {"state": "fl"}},
+    "expected_policy_decision": "allow"
+  },
+  {
+    "id": "out_of_jurisdiction_city",
+    "query": "Can I build an ADU at 123 Main St, Orlando, FL 32801?",
+    "question_type": "specific_address",
+    "tenant": {"city_name": "Miami", "settings_json": {"state": "fl"}},
+    "resolved_city": "Orlando",
+    "resolved_state": "FL",
+    "lookup_ready": true,
+    "expected_policy_decision": "deny",
+    "expected_jurisdiction_status": "out_of_jurisdiction"
+  },
+  {
+    "id": "missing_location_details",
+    "query": "What can I build at 123 Main Street?",
+    "question_type": "specific_address",
+    "tenant": {"city_name": "Miami", "settings_json": {"state": "fl"}},
+    "lookup_ready": false,
+    "expected_jurisdiction_status": "unresolved"
+  }
+]

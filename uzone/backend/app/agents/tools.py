@@ -12,7 +12,22 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.schemas.assistant_guardrails import AssistantTurnContract
 from app.schemas.gridics import GridicsBuilding, GridicsDataRow, GridicsResponse
+from app.services.assistant_observability import append_policy_trace
+from app.services.assistant_turn_event_service import record_assistant_turn_event
+from app.services.jurisdiction_resolver import resolve_jurisdiction_for_property_request
+from app.services.policy_service import evaluate_policy_decision
+from app.services.response_templates import (
+    insufficient_evidence_message,
+    jurisdiction_lock_message,
+    missing_address_details_message,
+)
+from app.services.response_grounding import (
+    build_evidence_pack,
+    citation_completeness_report,
+    grounding_verdict,
+)
 
 
 _STATE_MAP = {
@@ -95,6 +110,7 @@ _ADDRESS_STOP_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _ACTIVE_PROPERTY_SESSION_KEY = "active_property_context"
+_JURISDICTION_LOCK_SESSION_KEY = "jurisdiction_lock"
 _FOLLOW_UP_PROPERTY_PATTERN = re.compile(
     r"\b("
     r"here|there|this (?:property|parcel|lot|site|address)|that (?:property|parcel|lot|site|address)|"
@@ -215,6 +231,22 @@ def _resolve_client_id(client_id: str | None, run_context: Any = None) -> str:
     return resolved_client_id
 
 
+def _load_tenant_client(resolved_client_id: str):
+    try:
+        from sqlalchemy import select
+
+        from app.db.models import TenantClient
+        from app.db.session import SessionLocal
+    except Exception:
+        return None
+
+    try:
+        with SessionLocal() as db:
+            return db.scalar(select(TenantClient).where(TenantClient.client_id == resolved_client_id))
+    except Exception:
+        return None
+
+
 def _extract_address_from_query(query: str) -> str | None:
     match = _ADDRESS_START_PATTERN.search(query)
     if not match:
@@ -267,6 +299,44 @@ def _set_active_property_context(
         "typology": zoning_summary.get("typology"),
         "constraints": zoning_summary.get("constraints"),
     }
+
+
+def _get_jurisdiction_lock(run_context: Any) -> dict[str, Any] | None:
+    session_state = _get_session_state(run_context)
+    lock = session_state.get(_JURISDICTION_LOCK_SESSION_KEY)
+    return lock if isinstance(lock, dict) else None
+
+
+def _set_jurisdiction_lock(
+    run_context: Any,
+    *,
+    tenant_client: Any,
+    resolved_city: str | None,
+    resolved_state: str | None,
+) -> None:
+    session_state = getattr(run_context, "session_state", None)
+    if not isinstance(session_state, dict):
+        return
+    tenant_label = str(getattr(tenant_client, "city_name", "") or "").strip()
+    lock_label = tenant_label or str(resolved_city or "").strip() or "current jurisdiction"
+    session_state[_JURISDICTION_LOCK_SESSION_KEY] = {
+        "label": lock_label,
+        "city": str(resolved_city or "").strip() or None,
+        "state": str(resolved_state or "").strip().lower() or None,
+    }
+
+
+def _confidence_band(*, grounding: dict[str, Any] | None, citation_check: dict[str, Any] | None) -> str:
+    if grounding and not grounding.get("answer_ready", False):
+        return "needs_verification"
+    if citation_check and not citation_check.get("is_complete", True):
+        return "needs_verification"
+    evidence_count = int((grounding or {}).get("evidence_count") or 0)
+    if evidence_count >= 3:
+        return "high_confidence"
+    if evidence_count >= 1:
+        return "medium_confidence"
+    return "needs_verification"
 
 
 def _should_reuse_active_property(query: str, active_context: dict[str, Any] | None) -> bool:
@@ -336,6 +406,25 @@ def _request_classification_payload(question_type: str, routing_reason: str) -> 
         "label": "specific address" if question_type == "specific_address" else "general zoning",
         "reason": routing_reason,
     }
+
+
+def _assistant_turn_payload(
+    *,
+    intent_type: str,
+    policy_decision: dict[str, Any],
+    jurisdiction_status: str,
+    needs_clarification: bool = False,
+    clarification_type: str = "none",
+    confidence: float = 0.85,
+) -> dict[str, Any]:
+    return AssistantTurnContract(
+        intent_type=intent_type,  # type: ignore[arg-type]
+        jurisdiction_status=jurisdiction_status,  # type: ignore[arg-type]
+        needs_clarification=needs_clarification,
+        clarification_type=clarification_type,  # type: ignore[arg-type]
+        policy_decision=policy_decision,
+        confidence=confidence,
+    ).model_dump()
 
 
 def _address_resolution_payload(resolution: _ResolvedAddress) -> dict[str, Any]:
@@ -455,6 +544,8 @@ def _extract_gridics_zoning_summary(payload: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "resolved_address": data_row.Address,
+        "resolved_city": data_row.City,
+        "resolved_state": data_row.State,
         "zone_combination_name": building.ZoningAllowance.ZoneCombinationName,
         "typology": _format_typology(building.ZoningAllowance.BuildingTypologyId),
         "calculation_status": data_row.CalculationStatus,
@@ -631,10 +722,15 @@ def _resolve_address_context(
     state_env: str | None,
     zip_code: str | int | None,
     run_context: Any,
+    tenant_client: Any = None,
 ) -> _ResolvedAddress:
     question = query.strip()
     if not question:
         raise ValueError("Query text is required.")
+
+    tenant_settings = getattr(tenant_client, "settings_json", {}) or {}
+    tenant_default_state = str(tenant_settings.get("state") or "").strip().lower() or None
+    tenant_default_zip = str(tenant_settings.get("default_zip_code") or "").strip() or None
 
     provided_address = address.strip() if isinstance(address, str) and address.strip() else None
     extracted_address = None if provided_address else _extract_address_from_query(question)
@@ -666,7 +762,7 @@ def _resolve_address_context(
         else (
             str(active_property_context.get("state_env")).strip().lower()
             if reused_active_property and active_property_context and active_property_context.get("state_env")
-            else _infer_state_env(standardized_address)
+            else _infer_state_env(standardized_address) or tenant_default_state
         )
     )
     normalized_zip_code = _normalize_zip_code(zip_code)
@@ -676,9 +772,18 @@ def _resolve_address_context(
         else (
             str(active_property_context.get("zip_code")).strip()
             if reused_active_property and active_property_context and active_property_context.get("zip_code")
-            else _infer_zip(standardized_address)
+            else _infer_zip(standardized_address) or tenant_default_zip
         )
     )
+
+    if not normalized_zip_code and not _infer_zip(standardized_address) and tenant_default_zip:
+        address_source = "tenant_default_zip"
+    elif provided_address:
+        address_source = "argument"
+    elif reused_active_property:
+        address_source = "session"
+    else:
+        address_source = "query"
 
     return _ResolvedAddress(
         question_type=question_type,
@@ -687,7 +792,7 @@ def _resolve_address_context(
         standardized_address=standardized_address,
         state_env=resolved_state_env,
         zip_code=resolved_zip_code,
-        address_source="argument" if provided_address else ("session" if reused_active_property else "query"),
+        address_source=address_source,
         reused_active_property=reused_active_property,
     )
 
@@ -750,23 +855,98 @@ def _analyze_customer_zoning_request_once(
     resolution: _ResolvedAddress,
     run_context: Any,
     gridics_client: _GridicsClient | None,
+    tenant_client: Any,
 ) -> dict[str, Any]:
     question = query.strip()
 
     if resolution.question_type == "general_zoning":
+        policy_decision = evaluate_policy_decision(
+            query=question,
+            question_type="general_zoning",
+            tenant_client=tenant_client,
+        )
+        append_policy_trace(
+            run_context,
+            {
+                "question_type": "general_zoning",
+                "decision": policy_decision.get("decision"),
+                "reason_code": policy_decision.get("reason_code"),
+            },
+        )
+        if policy_decision["decision"] in {"deny", "clarify"}:
+            return {
+                "question_type": "general_zoning",
+                "policy_decision": policy_decision,
+                "assistant_turn": _assistant_turn_payload(
+                    intent_type="out_of_scope" if policy_decision["decision"] == "deny" else "general_zoning",
+                    policy_decision=policy_decision,
+                    jurisdiction_status="not_applicable",
+                    needs_clarification=policy_decision["decision"] == "clarify",
+                    clarification_type="scope" if policy_decision["decision"] == "clarify" else "none",
+                    confidence=0.9 if policy_decision["decision"] == "deny" else 0.7,
+                ),
+                "request_classification": _request_classification_payload(
+                    "general_zoning",
+                    "Detected as general zoning question.",
+                ),
+                "follow_up_context": _follow_up_context_payload(question_type="general_zoning"),
+                "response_guardrail": {
+                    "message": policy_decision["reason"],
+                },
+            }
         routing_reason = "No property address was detected, so the request was handled as a general zoning question."
         knowledge = query_customer_zoning_code(
             query=question,
             limit=knowledge_limit,
             client_id=resolved_client_id,
         )
+        evidence_pack = build_evidence_pack(knowledge)
+        grounding = grounding_verdict(evidence_pack, min_refs=1)
+        citation_check = citation_completeness_report(
+            evidence_pack=evidence_pack,
+            knowledge_payloads=[knowledge],
+        )
+        has_any_knowledge = bool((knowledge.get("results") or []) if isinstance(knowledge, dict) else [])
+        if not grounding["answer_ready"] and not has_any_knowledge:
+            return {
+                "question_type": "general_zoning",
+                "routing_reason": "No property address was detected, handling as general zoning.",
+                "request_classification": _request_classification_payload("general_zoning", routing_reason),
+                "policy_decision": policy_decision,
+                "assistant_turn": _assistant_turn_payload(
+                    intent_type="general_zoning",
+                    policy_decision=policy_decision,
+                    jurisdiction_status="not_applicable",
+                    confidence=0.7,
+                ),
+                "follow_up_context": _follow_up_context_payload(question_type="general_zoning"),
+                "knowledge": knowledge,
+                "evidence_pack": evidence_pack,
+                "grounding": grounding,
+                "citation_check": citation_check,
+                "response_guardrail": {
+                    "message": insufficient_evidence_message(has_property_context=False)
+                },
+                "confidence_band": "needs_verification",
+            }
         return {
             "question_type": "general_zoning",
             "routing_reason": "No property address was detected, handling as general zoning.",
             "request_classification": _request_classification_payload("general_zoning", routing_reason),
+            "policy_decision": policy_decision,
+            "assistant_turn": _assistant_turn_payload(
+                intent_type="general_zoning",
+                policy_decision=policy_decision,
+                jurisdiction_status="not_applicable",
+                confidence=0.85,
+            ),
             "follow_up_context": _follow_up_context_payload(question_type="general_zoning"),
             "knowledge": knowledge,
+            "evidence_pack": evidence_pack,
+            "grounding": grounding,
+            "citation_check": citation_check,
             "regulatory_knowledge": _clean_knowledge_results(knowledge),
+            "confidence_band": _confidence_band(grounding=grounding, citation_check=citation_check),
         }
 
     address_context = {
@@ -779,11 +959,44 @@ def _analyze_customer_zoning_request_once(
     address_resolution = _address_resolution_payload(resolution)
 
     if not resolution.lookup_ready:
+        policy_decision = evaluate_policy_decision(
+            query=question,
+            question_type="specific_address",
+            tenant_client=tenant_client,
+        )
+        jurisdiction_resolution = resolve_jurisdiction_for_property_request(
+            tenant_client=tenant_client,
+            standardized_address=resolution.standardized_address,
+            lookup_ready=False,
+        )
+        append_policy_trace(
+            run_context,
+            {
+                "question_type": "specific_address",
+                "decision": policy_decision.get("decision"),
+                "reason_code": policy_decision.get("reason_code"),
+                "lookup_ready": False,
+                "jurisdiction_status": jurisdiction_resolution.get("jurisdiction_status"),
+            },
+        )
         routing_reason = "A property address was detected, but it was missing enough location detail for a Gridics lookup."
         return {
             "question_type": "specific_address",
+            "policy_decision": policy_decision,
+            "assistant_turn": _assistant_turn_payload(
+                intent_type="specific_address",
+                policy_decision=policy_decision,
+                jurisdiction_status=str(jurisdiction_resolution.get("jurisdiction_status") or "unresolved"),
+                needs_clarification=True,
+                clarification_type=str(jurisdiction_resolution.get("clarification_type") or "address_missing_details"),
+                confidence=0.9,
+            ),
             "needs_address_clarification": True,
-            "clarification_prompt": "Please provide the full property address, including state and ZIP code.",
+            "clarification_prompt": jurisdiction_resolution.get("clarification_prompt")
+            or missing_address_details_message(),
+            "clarification_candidates": jurisdiction_resolution.get("clarification_candidates") or [],
+            "jurisdiction_resolution": jurisdiction_resolution,
+            "confidence_band": "needs_verification",
             "detected_address": resolution.detected_address,
             "routing_reason": routing_reason,
             "request_classification": _request_classification_payload("specific_address", routing_reason),
@@ -805,6 +1018,74 @@ def _analyze_customer_zoning_request_once(
         zip_code=resolution.zip_code or "",
     )
     zoning_summary = _extract_gridics_zoning_summary(property_record)
+    policy_decision = evaluate_policy_decision(
+        query=question,
+        question_type="specific_address",
+        tenant_client=tenant_client,
+        resolved_city=str(zoning_summary.get("resolved_city") or ""),
+        resolved_state=str(zoning_summary.get("resolved_state") or ""),
+    )
+    jurisdiction_resolution = resolve_jurisdiction_for_property_request(
+        tenant_client=tenant_client,
+        standardized_address=resolution.standardized_address,
+        lookup_ready=True,
+        resolved_city=str(zoning_summary.get("resolved_city") or ""),
+        resolved_state=str(zoning_summary.get("resolved_state") or ""),
+    )
+    append_policy_trace(
+        run_context,
+        {
+            "question_type": "specific_address",
+            "decision": policy_decision.get("decision"),
+            "reason_code": policy_decision.get("reason_code"),
+            "lookup_ready": True,
+            "resolved_city": zoning_summary.get("resolved_city"),
+            "resolved_state": zoning_summary.get("resolved_state"),
+            "jurisdiction_status": jurisdiction_resolution.get("jurisdiction_status"),
+        },
+    )
+    lock = _get_jurisdiction_lock(run_context)
+    if lock and lock.get("state") and str(lock.get("state")).lower() != str(zoning_summary.get("resolved_state") or "").lower():
+        jurisdiction_resolution = {
+            "jurisdiction_status": "out_of_jurisdiction",
+            "is_ambiguous": False,
+            "clarification_type": "jurisdiction_mismatch",
+            "clarification_prompt": jurisdiction_lock_message(
+                locked_label=str(lock.get("label") or "current jurisdiction")
+            ),
+            "clarification_candidates": [],
+        }
+    if policy_decision["decision"] == "deny" or jurisdiction_resolution.get("jurisdiction_status") == "out_of_jurisdiction":
+        return {
+            "question_type": "specific_address",
+            "policy_decision": policy_decision,
+            "assistant_turn": _assistant_turn_payload(
+                intent_type="specific_address",
+                policy_decision=policy_decision,
+                jurisdiction_status=str(jurisdiction_resolution.get("jurisdiction_status") or "out_of_jurisdiction"),
+                needs_clarification=True,
+                clarification_type=str(jurisdiction_resolution.get("clarification_type") or "jurisdiction_mismatch"),
+                confidence=0.95,
+            ),
+            "jurisdiction_resolution": jurisdiction_resolution,
+            "request_classification": _request_classification_payload(
+                "specific_address",
+                "Property question detected but blocked by jurisdiction guardrail.",
+            ),
+            "address_context": address_context,
+            "address_resolution": address_resolution,
+            "follow_up_context": _follow_up_context_payload(
+                question_type="specific_address",
+                standardized_address=resolution.standardized_address,
+                state_env=resolution.state_env,
+                zip_code=resolution.zip_code,
+                zoning_summary=zoning_summary,
+            ),
+            "response_guardrail": {
+                "message": jurisdiction_resolution.get("clarification_prompt") or policy_decision["reason"]
+            },
+            "confidence_band": "needs_verification",
+        }
 
     knowledge_query = _build_augmented_knowledge_query(
         query=question,
@@ -837,22 +1118,6 @@ def _analyze_customer_zoning_request_once(
         limit=3,
         client_id=resolved_client_id,
     )
-
-    _set_active_property_context(
-        run_context,
-        standardized_address=resolution.standardized_address or "",
-        state_env=resolution.state_env or "",
-        zip_code=resolution.zip_code or "",
-        zoning_summary=zoning_summary,
-    )
-
-    memo_context = _build_memo_context(
-        standardized_address=resolution.standardized_address or "",
-        state_env=resolution.state_env or "",
-        zip_code=resolution.zip_code or "",
-        zoning_summary=zoning_summary,
-    )
-
     routing_reason = (
         "Reused active property context from session."
         if resolution.reused_active_property
@@ -863,10 +1128,81 @@ def _analyze_customer_zoning_request_once(
         if resolution.reused_active_property
         else "A property address was detected, so the request was enriched with parcel-specific Gridics zoning data."
     )
+    evidence_pack = build_evidence_pack(primary_knowledge, constraints_knowledge, uses_knowledge)
+    grounding = grounding_verdict(evidence_pack, min_refs=1)
+    citation_check = citation_completeness_report(
+        evidence_pack=evidence_pack,
+        knowledge_payloads=[primary_knowledge, constraints_knowledge, uses_knowledge],
+    )
+    has_any_knowledge = bool(cleaned_primary_knowledge) or bool(_clean_knowledge_results(constraints_knowledge)) or bool(
+        _clean_knowledge_results(uses_knowledge)
+    )
+    if not grounding["answer_ready"] and not has_any_knowledge:
+        return {
+            "question_type": "specific_address",
+            "routing_reason": routing_reason,
+            "policy_decision": policy_decision,
+            "assistant_turn": _assistant_turn_payload(
+                intent_type="specific_address",
+                policy_decision=policy_decision,
+                jurisdiction_status=str(jurisdiction_resolution.get("jurisdiction_status") or "in_jurisdiction"),
+                needs_clarification=True,
+                clarification_type="scope",
+                confidence=0.7,
+            ),
+            "jurisdiction_resolution": jurisdiction_resolution,
+            "request_classification": _request_classification_payload("specific_address", request_reason),
+            "address_context": address_context,
+            "address_resolution": address_resolution,
+            "follow_up_context": _follow_up_context_payload(
+                question_type="specific_address",
+                standardized_address=resolution.standardized_address,
+                state_env=resolution.state_env,
+                zip_code=resolution.zip_code,
+                zoning_summary=zoning_summary,
+            ),
+            "gridics": zoning_summary,
+            "evidence_pack": evidence_pack,
+            "grounding": grounding,
+            "citation_check": citation_check,
+            "response_guardrail": {
+                "message": insufficient_evidence_message(has_property_context=True)
+            },
+            "confidence_band": "needs_verification",
+        }
+
+    _set_active_property_context(
+        run_context,
+        standardized_address=resolution.standardized_address or "",
+        state_env=resolution.state_env or "",
+        zip_code=resolution.zip_code or "",
+        zoning_summary=zoning_summary,
+    )
+    _set_jurisdiction_lock(
+        run_context,
+        tenant_client=tenant_client,
+        resolved_city=str(zoning_summary.get("resolved_city") or ""),
+        resolved_state=str(zoning_summary.get("resolved_state") or ""),
+    )
+
+    memo_context = _build_memo_context(
+        standardized_address=resolution.standardized_address or "",
+        state_env=resolution.state_env or "",
+        zip_code=resolution.zip_code or "",
+        zoning_summary=zoning_summary,
+    )
 
     return {
         "question_type": "specific_address",
         "routing_reason": routing_reason,
+        "policy_decision": policy_decision,
+        "assistant_turn": _assistant_turn_payload(
+            intent_type="specific_address",
+            policy_decision=policy_decision,
+            jurisdiction_status=str(jurisdiction_resolution.get("jurisdiction_status") or "in_jurisdiction"),
+            confidence=0.9,
+        ),
+        "jurisdiction_resolution": jurisdiction_resolution,
         "request_classification": _request_classification_payload("specific_address", request_reason),
         "address_context": address_context,
         "address_resolution": address_resolution,
@@ -888,6 +1224,10 @@ def _analyze_customer_zoning_request_once(
         "dimensional_standards": memo_context["dimensional_standards"],
         "critical_notes": memo_context["gridics_system_notes"],
         "knowledge": primary_knowledge,
+        "evidence_pack": evidence_pack,
+        "grounding": grounding,
+        "citation_check": citation_check,
+        "confidence_band": _confidence_band(grounding=grounding, citation_check=citation_check),
         "regulatory_knowledge": cleaned_primary_knowledge,
         "constraints_knowledge": {"results": _clean_knowledge_results(constraints_knowledge)} if constraints_knowledge else None,
         "uses_knowledge": {"results": _clean_knowledge_results(uses_knowledge)},
@@ -921,6 +1261,7 @@ def analyze_customer_zoning_request(
         try:
             stage = "resolving_client_id"
             resolved_client_id = _resolve_client_id(client_id, run_context)
+            tenant_client = _load_tenant_client(resolved_client_id)
 
             resolution = _resolve_address_context(
                 query=query,
@@ -928,6 +1269,7 @@ def analyze_customer_zoning_request(
                 state_env=state_env,
                 zip_code=zip_code,
                 run_context=run_context,
+                tenant_client=tenant_client,
             )
 
             if resolution.question_type == "specific_address" and resolution.lookup_ready:
@@ -941,6 +1283,7 @@ def analyze_customer_zoning_request(
                 resolution=resolution,
                 run_context=run_context,
                 gridics_client=client,
+                tenant_client=tenant_client,
             )
 
             if failures:
@@ -949,6 +1292,23 @@ def analyze_customer_zoning_request(
                     "attempts": attempt,
                     "failed_attempts": failures,
                 }
+
+            metadata = getattr(run_context, "metadata", None)
+            if not isinstance(metadata, dict):
+                metadata = {}
+            result["conversation_id"] = str(
+                metadata.get("conversation_id")
+                or metadata.get("session_id")
+                or metadata.get("thread_id")
+                or ""
+            ) or None
+            result["message_id"] = str(metadata.get("message_id") or "") or None
+            result["run_id"] = str(metadata.get("run_id") or "") or None
+            result["agent_id"] = "customer-zoning-agent"
+            record_assistant_turn_event(
+                client_id=resolved_client_id,
+                payload=result,
+            )
 
             return result
 

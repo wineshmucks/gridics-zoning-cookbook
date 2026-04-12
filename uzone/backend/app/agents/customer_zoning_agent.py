@@ -15,7 +15,7 @@ from app.services.tenant_service import get_tenant_assistant_settings
 _MODEL_OVERRIDE_METADATA_KEY = "assistant_model_id"
 _MODEL_OVERRIDE_STATE_KEY = "_assistant_model_override_active"
 _TENANT_ASSISTANT_CONFIG_STATE_KEY = "_tenant_assistant_config_active"
-_DEFAULT_SESSION_STATE = {"active_property_context": None}
+_DEFAULT_SESSION_STATE = {"active_property_context": None, "jurisdiction_lock": None}
 _ASSISTANT_TARGET_IDS = (
     "customer-zoning-agent",
     "parcel-data-agent",
@@ -24,18 +24,17 @@ _ASSISTANT_TARGET_IDS = (
 _CODE_DEFAULT_TARGET_CONFIG = {
     "customer-zoning-agent": {
         "provider": "gemini",
-        # "model_id": "gemini-3.1-flash-lite-preview",
         "model_id": "gemini-flash-lite-latest",
         "base_url": None,
     },
     "parcel-data-agent": {
-        "provider": "groq",
-        "model_id": "llama-3.1-8b-instant",
+        "provider": "gemini",
+        "model_id": "gemini-flash-lite-latest",
         "base_url": None,
     },
     "code-researcher-agent": {
-        "provider": "groq",
-        "model_id": "llama-3.3-70b-versatile",
+        "provider": "gemini",
+        "model_id": "gemini-2.5-pro-preview-03-25",
         "base_url": None,
     },
 }
@@ -247,7 +246,7 @@ parcel_data_agent = create_agent(
     name="Parcel Data Agent",
     role="Fetch pre-compressed property data from the Gridics API.",
     # Since this agent just passes a string now, you can use a smaller, faster model if desired!
-    model=build_agent_model(provider="groq", model_id="llama-3.1-8b-instant", allow_missing_api_key=True),
+    model=build_agent_model(provider="gemini", model_id="gemini-flash-lite-latest", allow_missing_api_key=True),
     tools=[analyze_customer_zoning_request],
     instructions=[
         "Your ONLY job is to call `analyze_customer_zoning_request` for the requested address.",
@@ -262,7 +261,7 @@ code_researcher_agent = create_agent(
     id="code-researcher-agent",
     name="Code Researcher Agent",
     role="Query the customer zoning code knowledge base for legal text and citations.",
-    model=build_agent_model(provider="groq", model_id="llama-3.3-70b-versatile", allow_missing_api_key=True),
+    model=build_agent_model(provider="gemini", model_id="gemini-2.5-pro-preview-03-25", allow_missing_api_key=True),
     tools=[query_customer_zoning_code],
     instructions=[
         "You are the Zoning Code Legal Researcher.",

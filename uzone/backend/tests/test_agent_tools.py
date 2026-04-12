@@ -13,6 +13,12 @@ class DummyTenant:
     client_id = "springfield"
 
 
+class DummyTenantClient:
+    def __init__(self, city_name: str = "Springfield", settings_json: dict[str, object] | None = None) -> None:
+        self.city_name = city_name
+        self.settings_json = settings_json or {}
+
+
 class DummyRunContext:
     def __init__(self, dependencies: dict[str, object] | None = None) -> None:
         self.dependencies = dependencies
@@ -88,6 +94,8 @@ def test_analyze_customer_zoning_request_routes_general_questions_to_knowledge(m
     )
 
     assert result["question_type"] == "general_zoning"
+    assert result["assistant_turn"]["intent_type"] == "general_zoning"
+    assert result["assistant_turn"]["jurisdiction_status"] == "not_applicable"
     assert "No property address was detected" in str(result["routing_reason"])
     assert result["request_classification"] == {
         "type": "general_zoning",
@@ -101,6 +109,8 @@ def test_analyze_customer_zoning_request_routes_general_questions_to_knowledge(m
         "guidance": "Do not assume a property context for follow-up questions unless the user provides a specific address.",
     }
     assert result["knowledge"]["results"][0]["name"] == "General standard"
+    assert result["citation_check"]["status"] in {"complete", "missing_citations"}
+    assert result["confidence_band"] in {"high_confidence", "medium_confidence", "needs_verification"}
     assert captured == {
         "query": "What are the typical height limits in downtown zones?",
         "limit": 3,
@@ -164,6 +174,9 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
     )
 
     assert result["question_type"] == "specific_address"
+    assert result["assistant_turn"]["intent_type"] == "specific_address"
+    assert result["assistant_turn"]["jurisdiction_status"] == "in_jurisdiction"
+    assert result["confidence_band"] in {"high_confidence", "medium_confidence", "needs_verification"}
     assert result["request_classification"] == {
         "type": "specific_address",
         "label": "specific address",
@@ -536,3 +549,133 @@ def test_analyze_customer_zoning_request_surfaces_failure_diagnostics_after_retr
             "error": "simulated upstream failure",
         }
     ]
+
+
+def test_analyze_customer_zoning_request_blocks_non_zoning_scope(monkeypatch) -> None:
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Knowledge retrieval should not run for blocked non-zoning prompts")
+
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fail_if_called)
+
+    result = analyze_customer_zoning_request(
+        query="What is the weather in Miami tomorrow?",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert result["policy_decision"]["decision"] == "deny"
+    assert result["policy_decision"]["reason_code"] == "non_zoning_scope"
+    assert result["assistant_turn"]["intent_type"] == "out_of_scope"
+    assert "zoning" in result["response_guardrail"]["message"].lower()
+
+
+def test_analyze_customer_zoning_request_requests_scope_clarification(monkeypatch) -> None:
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Knowledge retrieval should not run for scope clarification prompts")
+
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fail_if_called)
+
+    result = analyze_customer_zoning_request(
+        query="What can I do there?",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert result["policy_decision"]["decision"] == "clarify"
+    assert result["policy_decision"]["reason_code"] == "scope_ambiguous"
+    assert result["assistant_turn"]["clarification_type"] == "scope"
+    assert "clarify" in result["response_guardrail"]["message"].lower()
+
+
+def test_analyze_customer_zoning_request_uses_tenant_default_zip_for_lookup(monkeypatch) -> None:
+    gridics_calls: list[dict[str, str]] = []
+
+    class FakeGridicsClient:
+        call_log: list[dict[str, object]] = []
+
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            gridics_calls.append({"state_env": state_env, "address": address, "zip_code": zip_code})
+            return {"mock": "payload"}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr(
+        "app.agents.tools._extract_gridics_zoning_summary",
+        lambda payload: {
+            "resolved_city": "Springfield",
+            "resolved_state": "IL",
+            "zone_combination_name": "R-2",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 1.0,
+                "max_units": 2,
+                "max_height_ft": 35,
+                "front_setback_ft": 10,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        },
+    )
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", lambda **kwargs: {"results": []})
+    monkeypatch.setattr(
+        "app.agents.tools._load_tenant_client",
+        lambda client_id: DummyTenantClient(settings_json={"state": "il", "default_zip_code": "62704"}),
+    )
+
+    result = analyze_customer_zoning_request(
+        query="What can I build at 123 Main Street, Springfield, IL?",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert result["address_context"]["zip_code"] == "62704"
+    assert result["address_context"]["address_source"] == "tenant_default_zip"
+    assert gridics_calls == [
+        {
+            "state_env": "il",
+            "address": "123 Main Street, Springfield, IL",
+            "zip_code": "62704",
+        }
+    ]
+
+
+def test_analyze_customer_zoning_request_respects_jurisdiction_lock(monkeypatch) -> None:
+    class FakeGridicsClient:
+        call_log: list[dict[str, object]] = []
+
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            return {"mock": "payload"}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr(
+        "app.agents.tools._extract_gridics_zoning_summary",
+        lambda payload: {
+            "resolved_city": "Springfield",
+            "resolved_state": "IL",
+            "zone_combination_name": "R-2",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 1.0,
+                "max_units": 2,
+                "max_height_ft": 35,
+                "front_setback_ft": 10,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        },
+    )
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", lambda **kwargs: {"results": []})
+    monkeypatch.setattr(
+        "app.agents.tools._load_tenant_client",
+        lambda client_id: DummyTenantClient(city_name="Miami", settings_json={"state": "fl", "default_zip_code": "33131"}),
+    )
+    run_context = DummyRunContext({"client_id": "springfield"})
+    run_context.session_state["jurisdiction_lock"] = {"label": "Miami", "state": "fl"}
+    result = analyze_customer_zoning_request(
+        query="What can I build at 123 Main Street, Springfield, IL 62704?",
+        run_context=run_context,
+    )
+
+    assert result["jurisdiction_resolution"]["jurisdiction_status"] == "out_of_jurisdiction"
+    assert "locked to Miami" in result["response_guardrail"]["message"]
+    assert result["confidence_band"] == "needs_verification"

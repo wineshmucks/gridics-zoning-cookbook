@@ -19,11 +19,12 @@ from app.services.embed_service import (
     normalize_embed_origin,
     verify_embed_secret,
 )
+from app.services.platform_settings_service import get_platform_assistant_settings_json
 from app.services.clerk_service import clerk_organization_exists
 from app.services.tenant_service import (
+    get_effective_assistant_disclaimer_text,
     get_tenant_path_alias,
     get_tenant_logo_path,
-    get_tenant_assistant_disclaimer_text,
     normalize_tenant_path_alias,
     resolve_tenant_public_config,
     tenant_public_config_to_dict,
@@ -282,7 +283,10 @@ def create_embed_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
     embed_settings = get_tenant_embed_settings(tenant_client.settings_json)
-    assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
+    assistant_disclaimer_text = get_effective_assistant_disclaimer_text(
+        get_platform_assistant_settings_json(db),
+        tenant_client.settings_json,
+    )
     normalized_origin = normalize_embed_origin(payload.origin)
     if not normalized_origin:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid origin")

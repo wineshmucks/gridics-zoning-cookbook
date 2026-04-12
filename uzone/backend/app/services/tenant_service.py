@@ -40,6 +40,7 @@ HEADER_LOGO_PATH_SETTING_KEY = "header_logo_path"
 PATH_ALIAS_SETTING_KEY = "path_alias"
 ASSISTANT_PROVIDER_KEYS_SETTING_KEY = "assistant_provider_keys"
 ASSISTANT_MODEL_TARGETS_SETTING_KEY = "assistant_model_targets"
+ASSISTANT_AGENT_PROMPTS_SETTING_KEY = "assistant_agent_prompts"
 ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY = "assistant_disclaimer_text"
 SUPPORTED_ASSISTANT_PROVIDERS = ("gemini", "openrouter", "openai", "groq")
 DEFAULT_ASSISTANT_DISCLAIMER_TEXT = (
@@ -93,6 +94,22 @@ def _normalize_assistant_model_targets(value: object) -> dict[str, dict[str, str
             "model_id": model_id.strip() if isinstance(model_id, str) and model_id.strip() else None,
             "base_url": base_url.strip() if isinstance(base_url, str) and base_url.strip() else None,
         }
+    return normalized
+
+
+def _normalize_assistant_agent_prompts(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: dict[str, str] = {}
+    for target_id, raw_prompt in value.items():
+        if not isinstance(target_id, str):
+            continue
+        if not isinstance(raw_prompt, str):
+            continue
+        prompt = raw_prompt.strip()
+        if prompt:
+            normalized[target_id] = prompt
     return normalized
 
 def normalize_hostname(host: str | None) -> str | None:
@@ -198,6 +215,75 @@ def get_tenant_assistant_settings(
     return provider_keys, model_targets
 
 
+def get_tenant_assistant_agent_prompts(settings_json: dict | None) -> dict[str, str]:
+    if not isinstance(settings_json, dict):
+        return {}
+
+    return _normalize_assistant_agent_prompts(settings_json.get(ASSISTANT_AGENT_PROMPTS_SETTING_KEY))
+
+
+def merge_assistant_provider_keys(
+    baseline: dict[str, str | None],
+    overrides: dict[str, str | None],
+) -> dict[str, str | None]:
+    merged = {provider: baseline.get(provider) for provider in SUPPORTED_ASSISTANT_PROVIDERS}
+    for provider, value in overrides.items():
+        if provider in SUPPORTED_ASSISTANT_PROVIDERS and value:
+            merged[provider] = value
+    return merged
+
+
+def merge_assistant_model_targets(
+    baseline: dict[str, dict[str, str | None]],
+    overrides: dict[str, dict[str, str | None]],
+) -> dict[str, dict[str, str | None]]:
+    merged: dict[str, dict[str, str | None]] = {
+        target_id: {
+            "provider": target.get("provider"),
+            "model_id": target.get("model_id"),
+            "base_url": target.get("base_url"),
+        }
+        for target_id, target in baseline.items()
+    }
+
+    for target_id, override in overrides.items():
+        current = merged.get(target_id, {"provider": None, "model_id": None, "base_url": None})
+        merged[target_id] = {
+            "provider": override.get("provider") or current.get("provider"),
+            "model_id": override.get("model_id") or current.get("model_id"),
+            "base_url": override.get("base_url") or current.get("base_url"),
+        }
+
+    return merged
+
+
+def merge_assistant_agent_prompts(
+    baseline: dict[str, str],
+    overrides: dict[str, str],
+) -> dict[str, str]:
+    return {**baseline, **overrides}
+
+
+def get_effective_assistant_disclaimer_text(
+    platform_settings_json: dict | None,
+    tenant_settings_json: dict | None,
+) -> str:
+    tenant_text = get_tenant_assistant_disclaimer_text(tenant_settings_json)
+    platform_text = get_tenant_assistant_disclaimer_text(platform_settings_json)
+
+    if (
+        isinstance(tenant_settings_json, dict)
+        and tenant_settings_json.get(ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY)
+    ):
+        return tenant_text
+    if (
+        isinstance(platform_settings_json, dict)
+        and platform_settings_json.get(ASSISTANT_DISCLAIMER_TEXT_SETTING_KEY)
+    ):
+        return platform_text
+    return DEFAULT_ASSISTANT_DISCLAIMER_TEXT
+
+
 def get_tenant_assistant_disclaimer_text(settings_json: dict | None) -> str:
     if not isinstance(settings_json, dict):
         return DEFAULT_ASSISTANT_DISCLAIMER_TEXT
@@ -217,6 +303,7 @@ def merge_tenant_experience_settings(
     assistant_disclaimer_text: str | None = None,
     assistant_provider_keys: dict[str, str | None] | None = None,
     assistant_model_targets: dict[str, dict[str, str | None]] | None = None,
+    assistant_agent_prompts: dict[str, str | None] | None = None,
 ) -> dict:
     next_settings = dict(existing_settings) if isinstance(existing_settings, dict) else {}
 
@@ -251,6 +338,13 @@ def merge_tenant_experience_settings(
             next_settings[ASSISTANT_MODEL_TARGETS_SETTING_KEY] = normalized_model_targets
         else:
             next_settings.pop(ASSISTANT_MODEL_TARGETS_SETTING_KEY, None)
+
+    if assistant_agent_prompts is not None:
+        normalized_agent_prompts = _normalize_assistant_agent_prompts(assistant_agent_prompts)
+        if normalized_agent_prompts:
+            next_settings[ASSISTANT_AGENT_PROMPTS_SETTING_KEY] = normalized_agent_prompts
+        else:
+            next_settings.pop(ASSISTANT_AGENT_PROMPTS_SETTING_KEY, None)
 
     return next_settings
 
@@ -388,8 +482,11 @@ def _to_public_config(
     db: Session,
     client: TenantClient,
 ) -> TenantPublicConfig:
+    from app.services.platform_settings_service import get_platform_assistant_settings_json
+
     agent_url, zoning_code_url = get_tenant_experience_settings(client.settings_json)
     home_page_content_record = get_home_page_content_record(db, client.jurisdiction_id)
+    platform_settings_json = get_platform_assistant_settings_json(db)
     return TenantPublicConfig(
         client_id=client.client_id,
         clerk_organization_id=client.clerk_organization_id,
@@ -406,7 +503,7 @@ def _to_public_config(
         jurisdiction_id=client.jurisdiction_id,
         agent_url=agent_url,
         zoning_code_url=zoning_code_url,
-        assistant_disclaimer_text=get_tenant_assistant_disclaimer_text(client.settings_json),
+        assistant_disclaimer_text=get_effective_assistant_disclaimer_text(platform_settings_json, client.settings_json),
         home_page_content=get_home_page_content_payload(home_page_content_record, client),
     )
 

@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useActionState } from 'react'
 
 import {
@@ -23,12 +22,6 @@ export function SuperAdminGridicsDebugClient() {
 
   return (
     <section className="card admin-stack" style={{ marginBottom: 18 }}>
-      <div className="super-admin-toolbar">
-        <Link href="/super-admin" className="button secondary">
-          Back to Jurisdictions
-        </Link>
-      </div>
-
       <div className="admin-header">
         <div>
           <div className="eyebrow">Super Admin</div>

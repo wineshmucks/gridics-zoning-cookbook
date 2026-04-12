@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import {
   fetchCustomerEmbedSettings,
   fetchCustomerExperienceSettings,
+  fetchPlatformAssistantSettings,
   fetchCustomerZoningKnowledgeStatus,
 } from '../../../../admin/actions'
 import { CustomerAssistantSetupPanel } from '../../../../../components/CustomerAssistantSetupPanel'
@@ -41,10 +42,11 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params }: P
   }
 
   const displayName = organization.name
-  const [experienceSettings, embedSettings, zoningKnowledgeStatus] = await Promise.all([
+  const [experienceSettings, embedSettings, zoningKnowledgeStatus, baselineSettings] = await Promise.all([
     fetchCustomerExperienceSettings(organizationId),
     fetchCustomerEmbedSettings(organizationId),
     fetchCustomerZoningKnowledgeStatus(organizationId),
+    fetchPlatformAssistantSettings(),
   ])
 
   return (
@@ -58,6 +60,7 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params }: P
       experienceSettings={experienceSettings}
       embedSettings={embedSettings}
       zoningKnowledgeStatus={zoningKnowledgeStatus}
+      baselineSettings={baselineSettings}
     />
   )
 }

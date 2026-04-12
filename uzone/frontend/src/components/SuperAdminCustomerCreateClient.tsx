@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useActionState, useEffect } from 'react'
 
@@ -43,9 +42,6 @@ export function SuperAdminCustomerCreateClient() {
             Create a new jurisdiction organization, then manage its admins on the next screen.
           </p>
         </div>
-        <Link href="/super-admin" className="button secondary">
-          Back to Jurisdictions
-        </Link>
       </div>
 
       <form action={provisionAction} className="admin-form" style={{ maxWidth: 560 }}>

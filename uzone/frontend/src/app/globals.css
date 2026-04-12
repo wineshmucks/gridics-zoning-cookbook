@@ -1484,25 +1484,26 @@ main {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 12px;
+  padding: 5px 10px;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
 .status-pill.is-active {
-  background: rgba(55, 124, 54, 0.12);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 72%, white 28%);
+  color: var(--accent-strong);
 }
 
 .status-pill.is-draft {
-  background: rgba(180, 83, 9, 0.12);
-  color: #92400e;
+  background: rgba(180, 83, 9, 0.1);
+  color: #9a5a16;
 }
 
 .status-pill.is-inactive {
-  background: rgba(107, 114, 128, 0.16);
-  color: #4b5563;
+  background: rgba(107, 114, 128, 0.1);
+  color: #566477;
 }
 
 .source-pill {
@@ -6175,6 +6176,10 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
   margin: 16px auto 18px;
 }
 
+.super-admin-workspace-shell {
+  padding-top: 6px;
+}
+
 .super-admin-empty-state {
   width: min(720px, calc(100% - 32px));
   margin: 32px auto;
@@ -6189,6 +6194,54 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
 .super-admin-sidebar {
   gap: 12px;
   top: 18px;
+}
+
+.super-admin-workspace-sidebar {
+  position: sticky;
+  padding: 18px 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 96%, var(--accent-soft) 4%);
+}
+
+.super-admin-workspace-content {
+  min-width: 0;
+}
+
+.super-admin-workspace-content .card,
+.super-admin-workspace-content .super-admin-summary-card,
+.super-admin-workspace-content .super-admin-content-panel {
+  border-color: color-mix(in srgb, var(--line) 84%, transparent);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.super-admin-workspace-content .card {
+  padding: 24px;
+}
+
+.super-admin-workspace-content .admin-header {
+  gap: 20px;
+  align-items: flex-end;
+}
+
+.super-admin-workspace-content .section-title {
+  font-size: clamp(24px, 2.6vw, 30px);
+  margin-bottom: 10px;
+  color: var(--text-primary);
+}
+
+.super-admin-workspace-content .admin-copy {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.super-admin-workspace-content .eyebrow,
+.super-admin-sidebar .eyebrow {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .super-admin-customer-summary {
@@ -6225,7 +6278,7 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
   gap: 10px;
   width: 100%;
   border-left: 3px solid transparent;
-  padding: 11px 12px 11px 14px;
+  padding: 9px 10px 9px 12px;
 }
 
 .admin-sidebar-group-label {
@@ -6236,7 +6289,7 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
 
 .admin-sidebar-group-body {
   margin-left: 10px;
-  padding: 0 0 10px 10px;
+  padding: 0 0 8px 10px;
   gap: 1px;
   border-left: 1px solid var(--line);
 }
@@ -6245,8 +6298,10 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px 8px 10px;
+  padding: 7px 10px;
   border-left: 3px solid transparent;
+  border-radius: 10px;
+  color: var(--text-secondary);
 }
 
 .admin-sidebar-item::before {
@@ -6254,9 +6309,14 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
 }
 
 .admin-sidebar-item.is-active {
-  background: rgba(55, 124, 54, 0.1);
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
   border-color: transparent;
   border-left-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.admin-sidebar-item:hover {
+  background: color-mix(in srgb, var(--accent-soft) 46%, transparent);
   color: var(--text-primary);
 }
 
@@ -6304,10 +6364,222 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
 
 .super-admin-sidebar-title {
   color: var(--text-primary);
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 17px;
+  font-weight: 700;
   line-height: 1.2;
   padding-bottom: 2px;
+}
+
+.super-admin-sidebar-subtitle {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: -2px;
+  margin-bottom: 4px;
+}
+
+.super-admin-jurisdictions-page {
+  gap: 16px;
+}
+
+.super-admin-page-header-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.super-admin-header-actions {
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.super-admin-section-shell {
+  padding: 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
+  padding-top: 14px;
+}
+
+.super-admin-section-shell:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.super-admin-section-heading {
+  margin-bottom: 0;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.super-admin-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.super-admin-section-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.super-admin-section-copy {
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.55;
+  margin-bottom: 8px;
+}
+
+.super-admin-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.super-admin-metric {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-muted) 58%, var(--surface) 42%);
+}
+
+.super-admin-metric span {
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.super-admin-metric strong {
+  font-size: 22px;
+  line-height: 1.05;
+  color: var(--text-primary);
+}
+
+.super-admin-table th,
+.super-admin-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 56%, transparent);
+}
+
+.super-admin-table th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.super-admin-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent-soft) 24%, transparent);
+}
+
+.super-admin-customer-name-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.super-admin-customer-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+.super-admin-id-text {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.super-admin-members-cell {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.super-admin-row-actions {
+  white-space: nowrap;
+}
+
+.super-admin-row-action-group {
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.super-admin-row-primary-action.button.secondary {
+  min-height: 32px;
+  padding: 7px 11px;
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.super-admin-row-secondary-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.super-admin-row-secondary-link:hover {
+  color: var(--accent-strong);
+}
+
+.super-admin-row-danger-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #b04444;
+  cursor: pointer;
+}
+
+.super-admin-row-danger-link:hover {
+  color: #922f2f;
+}
+
+.super-admin-empty-inline {
+  display: grid;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 4px 0 0;
+}
+
+.super-admin-empty-inline strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.super-admin-empty-inline-compact {
+  gap: 0;
+  font-size: 13px;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-pill.is-active {
+  background: rgba(43, 122, 84, 0.12);
+  color: #1b6e49;
+}
+
+.status-pill.is-draft {
+  background: rgba(160, 119, 28, 0.12);
+  color: #8b6516;
+}
+
+.status-pill.is-inactive {
+  background: rgba(107, 119, 140, 0.12);
+  color: #5f6d82;
 }
 
 .compact-summary-meta-list {
@@ -6461,11 +6733,38 @@ html[data-theme='dark'] .assistant-ui-composer .assistant-ui-input:focus {
   .super-admin-layout {
     grid-template-columns: 1fr;
   }
+
+  .super-admin-workspace-sidebar {
+    position: static;
+  }
+
+  .super-admin-metrics-row {
+    grid-template-columns: 1fr;
+  }
+
+  .super-admin-row-action-group {
+    flex-wrap: wrap;
+    justify-content: flex-start !important;
+  }
 }
 
 @media (max-width: 760px) {
   .super-admin-shell {
     width: calc(100% - 24px);
+  }
+
+  .super-admin-workspace-sidebar {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .super-admin-workspace-content .card {
+    padding: 18px;
+  }
+
+  .super-admin-table th,
+  .super-admin-table td {
+    padding: 11px 8px;
   }
 
   .compact-summary-header {

@@ -17,6 +17,7 @@ import {
 import { buildApiUrl } from '../lib/api'
 import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
 import { CustomerAssistantEmbedPreview } from './CustomerAssistantEmbedPreview'
+import { agentPromptFields, modelTargetFields, providerFields } from './agenticSetupConfig'
 
 type SelectedCustomer = {
   id: string
@@ -26,37 +27,6 @@ type SelectedCustomer = {
 }
 
 type AgenticSection = 'general' | 'llm' | 'knowledge' | 'integrations'
-
-const providerFields = [
-  { id: 'gemini', label: 'Gemini API key', fieldName: 'providerKeyGemini' },
-  { id: 'openrouter', label: 'OpenRouter API key', fieldName: 'providerKeyOpenrouter' },
-  { id: 'openai', label: 'OpenAI API key', fieldName: 'providerKeyOpenai' },
-  { id: 'groq', label: 'Groq API key', fieldName: 'providerKeyGroq' },
-] as const
-
-const modelTargetFields = [
-  {
-    id: 'customer-zoning-agent',
-    label: 'Lead team',
-    providerFieldName: 'targetProviderCustomerZoningAgent',
-    modelFieldName: 'targetModelCustomerZoningAgent',
-    baseUrlFieldName: 'targetBaseUrlCustomerZoningAgent',
-  },
-  {
-    id: 'parcel-data-agent',
-    label: 'Parcel data agent',
-    providerFieldName: 'targetProviderParcelDataAgent',
-    modelFieldName: 'targetModelParcelDataAgent',
-    baseUrlFieldName: 'targetBaseUrlParcelDataAgent',
-  },
-  {
-    id: 'code-researcher-agent',
-    label: 'Code researcher agent',
-    providerFieldName: 'targetProviderCodeResearcherAgent',
-    modelFieldName: 'targetModelCodeResearcherAgent',
-    baseUrlFieldName: 'targetBaseUrlCodeResearcherAgent',
-  },
-] as const
 
 const initialExperienceSettingsState: CustomerExperienceSettingsState = {
   error: null,
@@ -81,11 +51,13 @@ export function CustomerAssistantSetupPanel({
   experienceSettings,
   embedSettings,
   zoningKnowledgeStatus,
+  baselineSettings,
 }: {
   customer: SelectedCustomer
   experienceSettings: CustomerExperienceSettings
   embedSettings: CustomerEmbedSettings
   zoningKnowledgeStatus: CustomerZoningKnowledgeStatus
+  baselineSettings?: CustomerExperienceSettings | null
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -124,7 +96,12 @@ export function CustomerAssistantSetupPanel({
   const currentDisclaimer = currentExperienceSettings.assistant_disclaimer_text
   const currentZoningCodeUrl = currentExperienceSettings.zoning_code_url || ''
   const currentProviderKeys = currentExperienceSettings.assistant_provider_keys || providerKeys
+  const currentAgentPrompts = currentExperienceSettings.assistant_agent_prompts || {}
   const currentModelTargets = currentExperienceSettings.assistant_model_targets || modelTargets
+  const baselineProviderKeys = baselineSettings?.assistant_provider_keys || {}
+  const baselineAgentPrompts = baselineSettings?.assistant_agent_prompts || {}
+  const baselineModelTargets = baselineSettings?.assistant_model_targets || {}
+  const baselineDisclaimer = baselineSettings?.assistant_disclaimer_text?.trim() || ''
   const currentEmbedSettings = embedState.settings || embedSettings
   const previewOrigin = currentEmbedSettings.allowed_origins[0] || ''
   const previewUrl = `/super-admin/customers/${customer.id}/assistant-embed${
@@ -150,6 +127,12 @@ export function CustomerAssistantSetupPanel({
     knowledge: { title: 'Knowledge', icon: 'assistant' },
     integrations: { title: 'Integrations', icon: 'assistant-setup' },
   }
+
+  const hasBaselineDefaults =
+    Boolean(baselineDisclaimer) ||
+    Object.values(baselineProviderKeys).some(Boolean) ||
+    Object.keys(baselineModelTargets).length > 0 ||
+    Object.keys(baselineAgentPrompts).length > 0
 
   useEffect(() => {
     setLiveZoningKnowledgeStatus(zoningKnowledgeStatus)
@@ -241,6 +224,11 @@ export function CustomerAssistantSetupPanel({
           base_url: String(formData.get('targetBaseUrlCodeResearcherAgent') || '').trim() || null,
         },
       },
+      assistant_agent_prompts: {
+        'customer-zoning-agent': String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
+        'parcel-data-agent': String(formData.get('promptParcelDataAgent') || '').trim() || null,
+        'code-researcher-agent': String(formData.get('promptCodeResearcherAgent') || '').trim() || null,
+      },
     }
 
     try {
@@ -296,6 +284,7 @@ export function CustomerAssistantSetupPanel({
     includeDisclaimer?: boolean
     includeProviderKeys?: boolean
     includeModelTargets?: boolean
+    includeAgentPrompts?: boolean
   }) => (
     <>
       <input type="hidden" name="organizationId" value={customer.id} />
@@ -344,6 +333,16 @@ export function CustomerAssistantSetupPanel({
             )
           })
         : null}
+      {options.includeAgentPrompts
+        ? agentPromptFields.map((target) => (
+            <input
+              key={target.id}
+              type="hidden"
+              name={target.fieldName}
+              value={currentAgentPrompts[target.id] || ''}
+            />
+          ))
+        : null}
     </>
   )
 
@@ -360,19 +359,32 @@ export function CustomerAssistantSetupPanel({
         {activeSection === 'general' ? (
           <FormSection title="Disclaimer" icon="jurisdiction-details" hideHeader>
             <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
-              {renderExperienceHiddenFields({
-                includeZoningCodeUrl: true,
-                includeProviderKeys: true,
-                includeModelTargets: true,
-              })}
+                {hasBaselineDefaults ? (
+                  <div className="admin-form-note">
+                    This jurisdiction can override the platform baseline. Leave fields blank to inherit the shared setup.
+                  </div>
+                ) : null}
+                {renderExperienceHiddenFields({
+                  includeZoningCodeUrl: true,
+                  includeProviderKeys: true,
+                  includeModelTargets: true,
+                  includeAgentPrompts: true,
+                })}
               <label className="field field-full">
                 <span>Disclaimer</span>
                 <textarea
                   name="assistantDisclaimerText"
                   rows={5}
-                  placeholder="Explain that the assistant can make mistakes and that users should verify important information."
+                  placeholder={
+                    baselineDisclaimer || 'Leave blank to inherit the platform disclaimer.'
+                  }
                   defaultValue={currentDisclaimer}
                 />
+                {baselineDisclaimer ? (
+                  <small>Baseline disclaimer: {baselineDisclaimer}</small>
+                ) : (
+                  <small>Leave blank to inherit the platform disclaimer.</small>
+                )}
               </label>
               <div className="admin-form-actions">
                 <button className="button button-fit" type="submit" disabled={experiencePending}>
@@ -393,9 +405,16 @@ export function CustomerAssistantSetupPanel({
           <>
             <FormSection title="LLM Setup" icon="assistant-setup" hideHeader>
               <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
+                {hasBaselineDefaults ? (
+                  <div className="admin-form-note">
+                    Jurisdiction values override the platform baseline only for this jurisdiction.
+                  </div>
+                ) : null}
                 {renderExperienceHiddenFields({
                   includeZoningCodeUrl: true,
                   includeDisclaimer: true,
+                  includeModelTargets: true,
+                  includeAgentPrompts: true,
                 })}
                 <label className="field field-inline">
                   <span>Show saved key values</span>
@@ -413,9 +432,18 @@ export function CustomerAssistantSetupPanel({
                         name={provider.fieldName}
                         type={showProviderKeys ? 'text' : 'password'}
                         autoComplete="off"
-                        placeholder={`Optional ${provider.id} key for ${customer.name}`}
+                        placeholder={
+                          baselineProviderKeys[provider.id]
+                            ? `Inherited from platform ${provider.id} key`
+                            : `Optional ${provider.id} key for ${customer.name}`
+                        }
                         defaultValue={currentProviderKeys[provider.id] || ''}
                       />
+                      <small>
+                        {baselineProviderKeys[provider.id]
+                          ? 'Leave blank to keep the platform key.'
+                          : 'Leave blank to use the code default provider wiring.'}
+                      </small>
                     </label>
                   ))}
                 </div>
@@ -432,53 +460,129 @@ export function CustomerAssistantSetupPanel({
             </FormSection>
 
             <FormSection title="Model Targets" icon="assistant">
-              <div className="admin-form-grid admin-form-grid-single">
-                {modelTargetFields.map((target) => {
-                  const targetSettings = currentModelTargets[target.id] || {
-                    provider: null,
-                    model_id: null,
-                    base_url: null,
-                  }
-
-                  return (
-                    <div key={target.id} className="admin-target-row">
-                      <div className="admin-target-row-head">
-                        <strong>{target.label}</strong>
-                      </div>
-                      <div className="admin-form-grid admin-form-grid-3">
-                        <label className="field">
-                          <span>Provider</span>
-                          <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
-                            <option value="">Use code default</option>
-                            <option value="gemini">Gemini</option>
-                            <option value="openrouter">OpenRouter</option>
-                            <option value="openai">OpenAI</option>
-                            <option value="groq">Groq</option>
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Model ID</span>
-                          <input
-                            name={target.modelFieldName}
-                            type="text"
-                            placeholder="Use code default"
-                            defaultValue={targetSettings.model_id || ''}
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Base URL</span>
-                          <input
-                            name={target.baseUrlFieldName}
-                            type="text"
-                            placeholder="Optional custom base URL"
-                            defaultValue={targetSettings.base_url || ''}
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  )
+              <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
+                {renderExperienceHiddenFields({
+                  includeZoningCodeUrl: true,
+                  includeDisclaimer: true,
+                  includeProviderKeys: true,
+                  includeAgentPrompts: true,
                 })}
-              </div>
+                <div className="admin-form-grid admin-form-grid-single">
+                  {modelTargetFields.map((target) => {
+                    const targetSettings = currentModelTargets[target.id] || {
+                      provider: null,
+                      model_id: null,
+                      base_url: null,
+                    }
+
+                    return (
+                      <div key={target.id} className="admin-target-row">
+                        <div className="admin-target-row-head">
+                          <strong>{target.label}</strong>
+                        </div>
+                        <div className="admin-form-grid admin-form-grid-3">
+                          <label className="field">
+                            <span>Provider</span>
+                            <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
+                              <option value="">
+                                {baselineModelTargets[target.id]?.provider ? 'Inherit platform default' : 'Use code default'}
+                              </option>
+                              <option value="gemini">Gemini</option>
+                              <option value="openrouter">OpenRouter</option>
+                              <option value="openai">OpenAI</option>
+                              <option value="groq">Groq</option>
+                            </select>
+                            <small>
+                              {baselineModelTargets[target.id]?.provider
+                                ? `Platform default: ${baselineModelTargets[target.id]?.provider || 'Not set'}`
+                                : 'Leave blank to use the code default.'}
+                            </small>
+                          </label>
+                          <label className="field">
+                            <span>Model ID</span>
+                            <input
+                              name={target.modelFieldName}
+                              type="text"
+                              placeholder={
+                                baselineModelTargets[target.id]?.model_id || 'Use code default'
+                              }
+                              defaultValue={targetSettings.model_id || ''}
+                            />
+                            <small>
+                              {baselineModelTargets[target.id]?.model_id
+                                ? `Platform default: ${baselineModelTargets[target.id]?.model_id}`
+                                : 'Leave blank to use the code default.'}
+                            </small>
+                          </label>
+                          <label className="field">
+                            <span>Base URL</span>
+                            <input
+                              name={target.baseUrlFieldName}
+                              type="text"
+                              placeholder={
+                                baselineModelTargets[target.id]?.base_url || 'Optional custom base URL'
+                              }
+                              defaultValue={targetSettings.base_url || ''}
+                            />
+                            <small>
+                              {baselineModelTargets[target.id]?.base_url
+                                ? `Platform default: ${baselineModelTargets[target.id]?.base_url}`
+                                : 'Leave blank to keep the inherited or code default base URL.'}
+                            </small>
+                          </label>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="admin-form-actions">
+                  <button className="button button-fit" type="submit" disabled={experiencePending}>
+                    {experiencePending ? 'Saving…' : 'Save model targets'}
+                  </button>
+                </div>
+              </form>
+            </FormSection>
+
+            <FormSection title="Agent Prompts" icon="assistant">
+              <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
+                {renderExperienceHiddenFields({
+                  includeZoningCodeUrl: true,
+                  includeDisclaimer: true,
+                  includeProviderKeys: true,
+                  includeModelTargets: true,
+                })}
+                <div className="admin-form-grid admin-form-grid-single">
+                  {agentPromptFields.map((target) => (
+                    <label key={target.id} className="field field-full">
+                      <span>{target.label}</span>
+                      <textarea
+                        name={target.fieldName}
+                        rows={8}
+                        placeholder={
+                          baselineAgentPrompts[target.id]
+                            ? 'Leave blank to inherit the platform prompt'
+                            : `Optional override prompt for ${target.label.toLowerCase()}`
+                        }
+                        defaultValue={currentAgentPrompts[target.id] || ''}
+                      />
+                      <small>
+                        {baselineAgentPrompts[target.id]
+                          ? `${target.description} Leave blank to inherit the platform prompt.`
+                          : `${target.description} Leave blank to use the code default prompt.`}
+                      </small>
+                    </label>
+                  ))}
+                </div>
+                <div className="admin-form-actions">
+                  <button className="button button-fit" type="submit" disabled={experiencePending}>
+                    {experiencePending ? 'Saving…' : 'Save prompts'}
+                  </button>
+                </div>
+                {experienceState.error ? <div className="status-banner status-banner-error">{experienceState.error}</div> : null}
+                {experienceState.success ? (
+                  <div className="status-banner status-banner-success">{experienceState.success}</div>
+                ) : null}
+              </form>
             </FormSection>
           </>
         ) : null}
@@ -491,6 +595,7 @@ export function CustomerAssistantSetupPanel({
                   includeDisclaimer: true,
                   includeProviderKeys: true,
                   includeModelTargets: true,
+                  includeAgentPrompts: true,
                 })}
                 <label className="field field-full">
                   <span>Zoning code URL</span>

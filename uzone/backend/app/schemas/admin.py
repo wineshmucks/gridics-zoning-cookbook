@@ -295,9 +295,11 @@ class TenantExperienceSettingsRead(BaseModel):
     assistant_disclaimer_text: str
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    assistant_agent_prompts: dict[str, str] = Field(default_factory=dict)
     raw_settings_json: dict | None = None
     debug_received_assistant_provider_keys: dict[str, str | None] | None = None
     debug_received_assistant_model_targets: dict[str, dict[str, str | None]] | None = None
+    debug_received_assistant_agent_prompts: dict[str, str | None] | None = None
     debug_merged_settings_json: dict | None = None
 
 
@@ -306,6 +308,22 @@ class TenantExperienceSettingsUpdate(BaseModel):
     assistant_disclaimer_text: str | None = Field(default=None, max_length=8000)
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    assistant_agent_prompts: dict[str, str | None] = Field(default_factory=dict)
+
+
+class PlatformAssistantSettingsRead(BaseModel):
+    assistant_disclaimer_text: str
+    assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
+    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    assistant_agent_prompts: dict[str, str] = Field(default_factory=dict)
+    raw_settings_json: dict | None = None
+
+
+class PlatformAssistantSettingsUpdate(BaseModel):
+    assistant_disclaimer_text: str | None = Field(default=None, max_length=8000)
+    assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
+    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    assistant_agent_prompts: dict[str, str | None] = Field(default_factory=dict)
 
 
 class ZoningKnowledgeLatestRunRead(BaseModel):

@@ -10,7 +10,14 @@ from app.agents.tools import analyze_customer_zoning_request, query_customer_zon
 from app.db.models import TenantClient
 from app.db.session import SessionLocal
 from app.services.embed_service import decode_embed_session_token
-from app.services.tenant_service import get_tenant_assistant_settings
+from app.services.platform_settings_service import get_platform_assistant_settings_json
+from app.services.tenant_service import (
+    get_tenant_assistant_agent_prompts,
+    get_tenant_assistant_settings,
+    merge_assistant_agent_prompts,
+    merge_assistant_model_targets,
+    merge_assistant_provider_keys,
+)
 
 _MODEL_OVERRIDE_METADATA_KEY = "assistant_model_id"
 _MODEL_OVERRIDE_STATE_KEY = "_assistant_model_override_active"
@@ -63,12 +70,23 @@ def _get_run_client_id(run_context: Any) -> str | None:
     return client_id.strip() if isinstance(client_id, str) and client_id.strip() else None
 
 
-def _load_tenant_assistant_config(client_id: str) -> tuple[dict[str, str | None], dict[str, dict[str, str | None]]]:
+def _load_tenant_assistant_config(
+    client_id: str,
+) -> tuple[dict[str, str | None], dict[str, dict[str, str | None]], dict[str, str]]:
     with SessionLocal() as db:
+        platform_settings_json = get_platform_assistant_settings_json(db)
+        platform_provider_keys, platform_model_targets = get_tenant_assistant_settings(platform_settings_json)
+        platform_agent_prompts = get_tenant_assistant_agent_prompts(platform_settings_json)
         tenant_client = db.scalar(select(TenantClient).where(TenantClient.client_id == client_id))
         if tenant_client is None:
-            return {}, {}
-        return get_tenant_assistant_settings(tenant_client.settings_json)
+            return platform_provider_keys, platform_model_targets, platform_agent_prompts
+        provider_keys, model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+        agent_prompts = get_tenant_assistant_agent_prompts(tenant_client.settings_json)
+        return (
+            merge_assistant_provider_keys(platform_provider_keys, provider_keys),
+            merge_assistant_model_targets(platform_model_targets, model_targets),
+            merge_assistant_agent_prompts(platform_agent_prompts, agent_prompts),
+        )
 
 
 def _target_members(target: Any) -> list[Any]:
@@ -107,7 +125,7 @@ def _apply_tenant_assistant_config(*, agent=None, team=None, run_context, **_: A
             "Tenant client ID is required for jurisdiction-scoped assistant runs."
         )
 
-    provider_keys, model_targets = _load_tenant_assistant_config(client_id)
+    provider_keys, model_targets, agent_prompts = _load_tenant_assistant_config(client_id)
     targets_by_id = {str(getattr(target, "id", "") or ""): target}
     for member in _target_members(target):
         member_id = str(getattr(member, "id", "") or "")
@@ -115,6 +133,7 @@ def _apply_tenant_assistant_config(*, agent=None, team=None, run_context, **_: A
             targets_by_id[member_id] = member
 
     original_models: dict[str, Any] = {}
+    original_instructions: dict[str, Any] = {}
     applied_targets: dict[str, dict[str, str | None]] = {}
 
     for target_id in _ASSISTANT_TARGET_IDS:
@@ -149,9 +168,17 @@ def _apply_tenant_assistant_config(*, agent=None, team=None, run_context, **_: A
             "base_url": base_url,
         }
 
-    if original_models:
+    for target_id, prompt in agent_prompts.items():
+        resolved_target = targets_by_id.get(target_id)
+        if not resolved_target:
+            continue
+        original_instructions[target_id] = getattr(resolved_target, "instructions", None)
+        resolved_target.instructions = [prompt]
+
+    if original_models or original_instructions:
         metadata[_TENANT_ASSISTANT_CONFIG_STATE_KEY] = {
             "original_models": original_models,
+            "original_instructions": original_instructions,
             "applied_targets": applied_targets,
             "provider_keys": provider_keys,
         }
@@ -172,7 +199,10 @@ def _restore_tenant_assistant_config(*, agent=None, team=None, run_context, **_:
 
     original_models = state.get("original_models")
     if not isinstance(original_models, dict):
-        return
+        original_models = {}
+    original_instructions = state.get("original_instructions")
+    if not isinstance(original_instructions, dict):
+        original_instructions = {}
 
     targets_by_id = {str(getattr(target, "id", "") or ""): target}
     for member in _target_members(target):
@@ -184,6 +214,11 @@ def _restore_tenant_assistant_config(*, agent=None, team=None, run_context, **_:
         resolved_target = targets_by_id.get(target_id)
         if resolved_target is not None:
             resolved_target.model = original_model
+
+    for target_id, original_prompt in original_instructions.items():
+        resolved_target = targets_by_id.get(target_id)
+        if resolved_target is not None:
+            resolved_target.instructions = original_prompt
 
 # --- HOOKS ---
 def _resolve_hook_target(*, agent=None, team=None):

@@ -12,6 +12,9 @@ import json
 from typing import Any
 
 from app.db.models import TenantClient
+from app.db.session import SessionLocal
+from app.services.platform_settings_service import get_platform_assistant_settings_json
+from app.services.tenant_service import get_tenant_assistant_settings, merge_assistant_provider_keys
 
 _ZONING_KEYWORDS = (
     "zoning",
@@ -42,7 +45,7 @@ _NON_ZONING_STRONG_SIGNALS = (
     "vacation",
 )
 
-_SCOPE_GUARDRAIL_AGENT = None
+_SCOPE_GUARDRAIL_AGENT_CACHE: dict[str, Any] = {}
 _ALLOWED_SCOPE_LABELS = {"zoning", "non_zoning", "ambiguous"}
 
 
@@ -67,20 +70,37 @@ def _invoke_agent_once(agent: Any, prompt: str) -> str | None:
     return None
 
 
-def _build_scope_guardrail_agent():
-    global _SCOPE_GUARDRAIL_AGENT
-    if _SCOPE_GUARDRAIL_AGENT is not None:
-        return _SCOPE_GUARDRAIL_AGENT
+def _resolve_scope_guardrail_api_key(tenant_client: TenantClient | None) -> tuple[str | None, str]:
+    with SessionLocal() as db:
+        platform_provider_keys, _ = get_tenant_assistant_settings(get_platform_assistant_settings_json(db))
+    tenant_provider_keys, _ = get_tenant_assistant_settings(getattr(tenant_client, "settings_json", None))
+    merged_provider_keys = merge_assistant_provider_keys(platform_provider_keys, tenant_provider_keys)
+    gemini_key = merged_provider_keys.get("gemini")
+    if gemini_key:
+        return gemini_key, "tenant_db" if tenant_provider_keys.get("gemini") else "platform_db"
+    return None, "missing"
+
+
+def _build_scope_guardrail_agent(tenant_client: TenantClient | None = None):
     try:
         from app.agents.factory import build_agent_model, create_agent
 
-        _SCOPE_GUARDRAIL_AGENT = create_agent(
+        api_key, api_key_source = _resolve_scope_guardrail_api_key(tenant_client)
+        if not api_key:
+            return False
+        cache_key = f"{api_key_source}:{api_key}"
+        cached_agent = _SCOPE_GUARDRAIL_AGENT_CACHE.get(cache_key)
+        if cached_agent is not None:
+            return cached_agent
+
+        agent = create_agent(
             id="scope-guardrail-agent",
             name="Scope Guardrail Agent",
             model=build_agent_model(
                 provider="gemini",
-                model_id="gemini-flash-lite-latest",
-                allow_env_fallback=True,
+                model_id="gemini-2.5-flash-lite",
+                api_key=api_key,
+                allow_env_fallback=False,
             ),
             instructions=[
                 "Classify if a user prompt is zoning-related.",
@@ -89,13 +109,15 @@ def _build_scope_guardrail_agent():
                 "confidence must be a float between 0 and 1.",
             ],
         )
+        setattr(agent, "_uzone_scope_guardrail_api_key_source", api_key_source)
+        _SCOPE_GUARDRAIL_AGENT_CACHE[cache_key] = agent
+        return agent
     except Exception:
-        _SCOPE_GUARDRAIL_AGENT = False
-    return _SCOPE_GUARDRAIL_AGENT
+        return False
 
 
-def _classify_scope_with_agent(query: str) -> tuple[str, str] | None:
-    agent = _build_scope_guardrail_agent()
+def _classify_scope_with_agent(query: str, tenant_client: TenantClient | None = None) -> tuple[str, str] | None:
+    agent = _build_scope_guardrail_agent(tenant_client)
     if not agent:
         return None
 
@@ -124,13 +146,13 @@ def _classify_scope_with_agent(query: str) -> tuple[str, str] | None:
     return "clarify_scope", reason
 
 
-def classify_scope(query: str) -> tuple[str, str]:
+def classify_scope(query: str, tenant_client: TenantClient | None = None) -> tuple[str, str]:
     """Classify whether a prompt is zoning-related."""
     normalized = query.strip().lower()
     if not normalized:
         return "clarify", "Please provide your zoning question."
 
-    agent_decision = _classify_scope_with_agent(query)
+    agent_decision = _classify_scope_with_agent(query, tenant_client=tenant_client)
     if agent_decision is not None:
         return agent_decision
 
@@ -158,7 +180,7 @@ def evaluate_policy_decision(
     resolved_state: str | None = None,
 ) -> dict[str, Any]:
     """Return an enforceable policy decision for assistant execution."""
-    scope_decision, scope_reason = classify_scope(query)
+    scope_decision, scope_reason = classify_scope(query, tenant_client=tenant_client)
     if scope_decision in {"deny_non_zoning"}:
         return {
             "decision": "deny",

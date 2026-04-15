@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 # --- 1. Generic & Shared Models ---
@@ -119,6 +119,26 @@ class GridicsZoningAllowance(BaseModel):
     ZoningRegulationName: str
     ZoningRegulationLink: str
     ZoneCombinationName: str
+
+    @field_validator("SubZoneId", mode="before")
+    @classmethod
+    def _normalize_sub_zone_id(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return str(value)
+
+    @field_validator("ZoneTypeId", mode="before")
+    @classmethod
+    def _normalize_zone_type_id(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return str(value)
 
 class GridicsCalibrationGeneral(BaseModel):
     PFrontSetbackPrincipalMax: Optional[float] = None

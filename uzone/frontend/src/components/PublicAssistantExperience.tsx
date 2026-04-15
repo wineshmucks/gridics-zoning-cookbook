@@ -8,6 +8,11 @@ import { AgentChatPanel } from './AgentChatPanel'
 
 const LOCAL_STORAGE_PREFIX = 'uzone:assistant-disclaimer:accepted:'
 
+type EmbedChatActions = {
+  copyConversation: () => void
+  newChat: () => void
+}
+
 type Props = {
   backendBase: string
   customerName: string
@@ -17,6 +22,7 @@ type Props = {
   initialAccepted: boolean
   requestHeaders?: Record<string, string>
   embedSessionToken?: string
+  onEmbedChatActionsChange?: ((actions: EmbedChatActions | null) => void) | undefined
 }
 
 export function PublicAssistantExperience({
@@ -28,6 +34,7 @@ export function PublicAssistantExperience({
   initialAccepted,
   requestHeaders,
   embedSessionToken,
+  onEmbedChatActionsChange,
 }: Props) {
   const [isPending, startTransition] = useTransition()
   const [isAccepted, setIsAccepted] = useState(initialAccepted)
@@ -119,6 +126,7 @@ export function PublicAssistantExperience({
         requestHeaders={requestHeaders}
         embedSessionToken={embedSessionToken}
         embeddedLayout={Boolean(embedSessionToken)}
+        onEmbedChatActionsChange={onEmbedChatActionsChange}
         showEmptyStateHint={false}
         showBrandingFooter={false}
         showModelControls={false}

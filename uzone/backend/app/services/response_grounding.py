@@ -27,17 +27,19 @@ def build_evidence_pack(*knowledge_payloads: dict[str, Any] | None) -> list[dict
                 or item.get("name")
                 or "Untitled section"
             ).strip()
-            source_url = str(metadata.get("source_url") or metadata.get("section_key") or "").strip()
-            if not source_url:
+            page_url = str(metadata.get("page_url") or metadata.get("source_url") or "").strip()
+            section_url = str(metadata.get("section_url") or metadata.get("source_url") or metadata.get("section_key") or "").strip()
+            if not section_url:
                 continue
-            key = (section_title, source_url)
+            key = (section_title, section_url)
             if key in seen:
                 continue
             seen.add(key)
             evidence.append(
                 {
                     "section_title": section_title,
-                    "source_url": source_url,
+                    "page_url": page_url or section_url,
+                    "section_url": section_url,
                 }
             )
     return evidence

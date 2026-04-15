@@ -8,7 +8,13 @@ from pydantic import BaseModel, Field
 
 
 IntentType = Literal["specific_address", "general_zoning", "out_of_scope"]
-JurisdictionStatus = Literal["in_jurisdiction", "out_of_jurisdiction", "unresolved", "not_applicable"]
+JurisdictionStatus = Literal[
+    "in_jurisdiction",
+    "out_of_jurisdiction",
+    "unresolved",
+    "not_applicable",
+    "needs_confirmation",
+]
 PolicyAction = Literal["allow", "deny", "clarify"]
 ClarificationType = Literal[
     "none",
@@ -16,6 +22,7 @@ ClarificationType = Literal[
     "address_missing_details",
     "address_ambiguous",
     "jurisdiction_mismatch",
+    "address_confirmation",
 ]
 
 

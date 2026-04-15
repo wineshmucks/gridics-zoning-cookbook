@@ -14,16 +14,30 @@ def test_build_evidence_pack_extracts_unique_section_links() -> None:
         "results": [
             {
                 "name": "Sec 1",
-                "meta_data": {"section_title": "Section 1", "source_url": "https://example.com/sec1"},
+                "meta_data": {
+                    "section_title": "Section 1",
+                    "source_url": "https://example.com/sec1",
+                    "section_url": "https://example.com/sec1#sec1",
+                },
             },
             {
                 "name": "Sec 1 duplicate",
-                "meta_data": {"section_title": "Section 1", "source_url": "https://example.com/sec1"},
+                "meta_data": {
+                    "section_title": "Section 1",
+                    "source_url": "https://example.com/sec1",
+                    "section_url": "https://example.com/sec1#sec1",
+                },
             },
         ]
     }
     evidence = build_evidence_pack(payload)
-    assert evidence == [{"section_title": "Section 1", "source_url": "https://example.com/sec1"}]
+    assert evidence == [
+        {
+            "section_title": "Section 1",
+            "page_url": "https://example.com/sec1",
+            "section_url": "https://example.com/sec1#sec1",
+        }
+    ]
 
 
 def test_grounding_verdict_requires_minimum_references() -> None:

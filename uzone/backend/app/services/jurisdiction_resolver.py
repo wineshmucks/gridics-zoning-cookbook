@@ -37,7 +37,10 @@ def resolve_jurisdiction_for_property_request(
             "jurisdiction_status": "unresolved",
             "is_ambiguous": True,
             "clarification_type": "address_missing_details",
-            "clarification_prompt": "Please confirm the full property address, including state and ZIP code.",
+            "clarification_prompt": (
+                "Gridics couldn't resolve this address from the information provided. "
+                "Please confirm the full property address, including city, state, and ZIP code."
+            ),
             "clarification_candidates": candidates,
         }
 

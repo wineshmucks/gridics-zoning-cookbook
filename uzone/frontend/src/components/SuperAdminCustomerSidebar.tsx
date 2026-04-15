@@ -12,10 +12,12 @@ type SelectedCustomer = {
 }
 
 const agenticSections = [
-  { id: 'general', label: 'Disclaimer', icon: 'jurisdiction-details' },
-  { id: 'llm', label: 'LLM Setup', icon: 'assistant-setup' },
+  { id: 'agents', label: 'Agents', icon: 'assistant' },
+  { id: 'api-keys', label: 'API Keys', icon: 'assistant-setup' },
   { id: 'knowledge', label: 'Knowledge', icon: 'assistant' },
+  { id: 'models', label: 'Models', icon: 'assistant' },
   { id: 'integrations', label: 'Integrations', icon: 'assistant-setup' },
+  { id: 'review', label: 'Review', icon: 'assistant' },
 ] as const
 
 export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCustomer }) {
@@ -23,7 +25,14 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
   const searchParams = useSearchParams()
   const baseHref = `/super-admin/customers/${customer.id}`
   const sectionParam = searchParams.get('section')
-  const activeSection = sectionParam === 'admin-users' ? 'admin-users' : sectionParam || 'general'
+  const activeSection =
+    sectionParam === 'admin-users'
+      ? 'admin-users'
+      : sectionParam === 'llm'
+        ? 'agents'
+        : sectionParam === 'model-targets'
+          ? 'models'
+        : sectionParam || 'general'
   const agenticBaseHref = `/super-admin/customers/${customer.id}/assistant-setup`
   const isGeneralActive = pathname === baseHref && activeSection === 'general'
   const isAdminUsersActive = pathname === baseHref && activeSection === 'admin-users'

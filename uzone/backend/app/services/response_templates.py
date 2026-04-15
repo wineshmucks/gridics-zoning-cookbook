@@ -16,7 +16,10 @@ def insufficient_evidence_message(*, has_property_context: bool) -> str:
 
 
 def missing_address_details_message() -> str:
-    return "Please confirm the full property address, including city, state, and ZIP code."
+    return (
+        "Gridics couldn't resolve this address from the information provided. "
+        "Please confirm the full property address, including city, state, and ZIP code."
+    )
 
 
 def jurisdiction_lock_message(*, locked_label: str) -> str:

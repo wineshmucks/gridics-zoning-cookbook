@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
+from app.agents.assistant_defaults import CODE_DEFAULT_ASSISTANT_MODEL_TARGETS
 from app.db.models import (
     EmailTemplate,
     FeeSchedule,
@@ -60,6 +61,7 @@ from app.schemas import (
     ZoningKnowledgeStatusRead,
 )
 from app.core.config import settings
+from app.services.assistant_conversation_review_service import list_assistant_conversation_reviews
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
 from app.services.cache_service import get_cache_service
 from app.services.clerk_service import get_clerk_organization
@@ -78,6 +80,7 @@ from app.services.logo_storage import (
     is_asset_storage_enabled,
     upload_asset,
 )
+from app.services.assistant_telemetry_service import list_assistant_run_telemetry
 from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
 from app.services.clerk_service import delete_clerk_organization, update_clerk_organization
 from app.services.platform_settings_service import get_platform_assistant_settings_json, set_platform_assistant_settings_json
@@ -162,6 +165,104 @@ class TenantEmbedPreviewSessionResponse(BaseModel):
     accent_color: str
     allowed_origins: list[str]
     origin: str | None = None
+
+
+class AssistantTelemetryRunRead(BaseModel):
+    id: str
+    run_scope: str
+    agent_id: str | None = None
+    conversation_id: str | None = None
+    message_id: str | None = None
+    run_id: str | None = None
+    session_id: str | None = None
+    model_provider: str | None = None
+    model_name: str | None = None
+    model_id: str | None = None
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cost: float | None = None
+    time_to_first_token: float | None = None
+    duration_seconds: float | None = None
+    created_at: str
+    metrics_json: dict | None = None
+
+
+class AssistantTelemetrySummaryRead(BaseModel):
+    total_runs: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cost: float
+
+
+class AssistantTelemetryResponse(BaseModel):
+    summary: AssistantTelemetrySummaryRead
+    runs: list[AssistantTelemetryRunRead]
+    pagination: dict[str, int | bool | str | None]
+
+
+class AssistantConversationReviewTurnRead(BaseModel):
+    id: str
+    created_at: str
+    message_id: str | None = None
+    run_id: str | None = None
+    agent_id: str | None = None
+    intent_type: str | None = None
+    jurisdiction_status: str | None = None
+    policy_decision: str | None = None
+    reason_code: str | None = None
+    payload_json: dict | list | str | int | float | bool | None = None
+
+
+class AssistantConversationReviewRunRead(AssistantTelemetryRunRead):
+    pass
+
+
+class AssistantConversationReviewFeedbackRead(BaseModel):
+    id: str
+    clerk_user_id: str | None = None
+    agent_id: str
+    surface: str
+    conversation_id: str
+    message_id: str
+    run_id: str | None = None
+    feedback_value: str
+    message_excerpt: str | None = None
+    metadata_json: dict | None = None
+    created_at: str
+
+
+class AssistantConversationReviewRead(BaseModel):
+    conversation_id: str
+    latest_at: str | None = None
+    turn_count: int
+    run_count: int
+    feedback_count: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cost: float
+    turns: list[AssistantConversationReviewTurnRead]
+    runs: list[AssistantConversationReviewRunRead]
+    feedback: list[AssistantConversationReviewFeedbackRead]
+
+
+class AssistantConversationReviewSummaryRead(BaseModel):
+    total_conversations: int
+    total_turns: int
+    total_runs: int
+    total_feedback: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    cost: float
+
+
+class AssistantConversationReviewResponse(BaseModel):
+    summary: AssistantConversationReviewSummaryRead
+    conversations: list[AssistantConversationReviewRead]
+    pagination: dict[str, int | bool | str | None]
 
 
 def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
@@ -696,6 +797,7 @@ def get_tenant_experience_settings_route(
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
     )
@@ -717,6 +819,7 @@ def get_platform_assistant_settings_route(
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=settings_json,
     )
@@ -750,6 +853,7 @@ def update_platform_assistant_settings_route(
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=merged_settings,
     )
@@ -787,12 +891,68 @@ def update_tenant_experience_settings(
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
         assistant_model_targets=assistant_model_targets,
+        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
         debug_received_assistant_provider_keys=payload.assistant_provider_keys,
         debug_received_assistant_model_targets=payload.assistant_model_targets,
         debug_received_assistant_agent_prompts=payload.assistant_agent_prompts,
         debug_merged_settings_json=merged_settings,
+    )
+
+
+@router.get("/clients/{organization_id}/assistant-telemetry", response_model=AssistantTelemetryResponse)
+def get_tenant_assistant_telemetry_route(
+    organization_id: str,
+    page: int = Query(1, ge=1),
+    search: str | None = Query(default=None, max_length=255),
+    db: Session = Depends(get_db),
+) -> AssistantTelemetryResponse:
+    _get_tenant_client_by_org_id(db, organization_id)
+    telemetry = list_assistant_run_telemetry(client_id=organization_id, page=page, search=search)
+    return AssistantTelemetryResponse(
+        summary=AssistantTelemetrySummaryRead.model_validate(telemetry.get("summary") or {}),
+        runs=[AssistantTelemetryRunRead.model_validate(run) for run in telemetry.get("runs") or []],
+        pagination=telemetry.get("pagination") or {
+            "page": 1,
+            "page_size": 50,
+            "total_runs": 0,
+            "total_pages": 0,
+            "has_previous": False,
+            "has_next": False,
+            "search": None,
+        },
+    )
+
+
+@router.get("/clients/{organization_id}/assistant-conversations", response_model=AssistantConversationReviewResponse)
+def get_tenant_assistant_conversation_review_route(
+    organization_id: str,
+    page: int = Query(1, ge=1),
+    search: str | None = Query(default=None, max_length=255),
+    conversation_id: str | None = Query(default=None, max_length=255),
+    db: Session = Depends(get_db),
+) -> AssistantConversationReviewResponse:
+    _get_tenant_client_by_org_id(db, organization_id)
+    review = list_assistant_conversation_reviews(
+        client_id=organization_id,
+        page=page,
+        search=search,
+        conversation_id=conversation_id,
+    )
+    return AssistantConversationReviewResponse(
+        summary=AssistantConversationReviewSummaryRead.model_validate(review.get("summary") or {}),
+        conversations=[AssistantConversationReviewRead.model_validate(conversation) for conversation in review.get("conversations") or []],
+        pagination=review.get("pagination") or {
+            "page": 1,
+            "page_size": 20,
+            "total_conversations": 0,
+            "total_pages": 0,
+            "has_previous": False,
+            "has_next": False,
+            "search": None,
+            "conversation_id": None,
+        },
     )
 
 

@@ -5,7 +5,12 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { PlatformAssistantSettings } from '../app/admin/actions'
 import { buildApiUrl } from '../lib/api'
 import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
-import { agentPromptFields, modelTargetFields, providerFields } from './agenticSetupConfig'
+import {
+  describeAssistantModelTarget,
+  hasAssistantModelTarget,
+  modelTargetFields,
+  providerFields,
+} from './agenticSetupConfig'
 
 type PlatformAssistantSettingsState = {
   error: string | null
@@ -33,6 +38,7 @@ export function PlatformAssistantSetupPanel({
   const currentSettings = settingsState.settings || initialSettings
   const providerKeys = currentSettings.assistant_provider_keys || {}
   const modelTargets = currentSettings.assistant_model_targets || {}
+  const codeDefaultModelTargets = currentSettings.code_default_assistant_model_targets || {}
   const agentPrompts = currentSettings.assistant_agent_prompts || {}
 
   const renderHiddenFields = (options: {
@@ -85,12 +91,23 @@ export function PlatformAssistantSetupPanel({
           })
         : null}
       {options.includeAgentPrompts
-        ? agentPromptFields.map((target) => (
+        ? Object.entries(agentPrompts).map(([targetId, prompt]) => (
             <input
-              key={target.id}
+              key={targetId}
               type="hidden"
-              name={target.fieldName}
-              value={agentPrompts[target.id] || ''}
+              name={(() => {
+                switch (targetId) {
+                  case 'customer-zoning-agent':
+                    return 'promptCustomerZoningAgent'
+                  case 'parcel-data-agent':
+                    return 'promptParcelDataAgent'
+                  case 'code-researcher-agent':
+                    return 'promptCodeResearcherAgent'
+                  default:
+                    return `prompt-${targetId}`
+                }
+              })()}
+              value={prompt || ''}
             />
           ))
         : null}
@@ -144,9 +161,9 @@ export function PlatformAssistantSetupPanel({
         },
       },
       assistant_agent_prompts: {
-        'customer-zoning-agent': String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
-        'parcel-data-agent': String(formData.get('promptParcelDataAgent') || '').trim() || null,
-        'code-researcher-agent': String(formData.get('promptCodeResearcherAgent') || '').trim() || null,
+        'customer-zoning-agent': agentPrompts['customer-zoning-agent'] || null,
+        'parcel-data-agent': agentPrompts['parcel-data-agent'] || null,
+        'code-researcher-agent': agentPrompts['code-researcher-agent'] || null,
       },
     }
 
@@ -232,24 +249,31 @@ export function PlatformAssistantSetupPanel({
           </form>
         </FormSection>
 
-        <FormSection title="Provider Keys" icon="assistant-setup">
+        <FormSection title="API Keys" icon="assistant-setup">
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeDisclaimer: true,
               includeModelTargets: true,
               includeAgentPrompts: true,
             })}
-            <label className="field field-inline">
-              <span>Show saved key values</span>
-              <input
-                type="checkbox"
-                checked={showProviderKeys}
-                onChange={(event) => setShowProviderKeys(event.target.checked)}
-              />
+            <label className="api-key-toggle">
+              <span className="api-key-toggle-copy">
+                <span>Show saved key values</span>
+                <span className="api-key-toggle-state">{showProviderKeys ? 'On' : 'Off'}</span>
+              </span>
+              <span className="api-key-toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={showProviderKeys}
+                  onChange={(event) => setShowProviderKeys(event.target.checked)}
+                  aria-label="Show saved key values"
+                />
+                <span className="api-key-toggle-track" aria-hidden="true" />
+              </span>
             </label>
-            <div className="admin-form-grid admin-form-grid-2">
+            <div className="admin-form-grid admin-form-grid-single">
               {providerFields.map((provider) => (
-                <label key={provider.id} className="field">
+                <label key={provider.id} className="field field-full">
                   <span>{provider.label}</span>
                   <input
                     name={provider.fieldName}
@@ -264,7 +288,7 @@ export function PlatformAssistantSetupPanel({
             </div>
             <div className="admin-form-actions">
               <button className="button button-fit" type="submit" disabled={pending}>
-                {pending ? 'Saving…' : 'Save baseline provider keys'}
+                {pending ? 'Saving…' : 'Save baseline API keys'}
               </button>
             </div>
             {settingsState.error ? <div className="status-banner status-banner-error">{settingsState.error}</div> : null}
@@ -274,7 +298,7 @@ export function PlatformAssistantSetupPanel({
           </form>
         </FormSection>
 
-        <FormSection title="Model Targets" icon="assistant">
+        <FormSection title="Models" icon="assistant">
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeDisclaimer: true,
@@ -330,7 +354,7 @@ export function PlatformAssistantSetupPanel({
             </div>
             <div className="admin-form-actions">
               <button className="button button-fit" type="submit" disabled={pending}>
-                {pending ? 'Saving…' : 'Save baseline model targets'}
+                {pending ? 'Saving…' : 'Save baseline models'}
               </button>
             </div>
             {settingsState.error ? <div className="status-banner status-banner-error">{settingsState.error}</div> : null}
@@ -341,36 +365,10 @@ export function PlatformAssistantSetupPanel({
         </FormSection>
 
         <FormSection title="Agent Prompts" icon="assistant">
-          <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
-            {renderHiddenFields({
-              includeDisclaimer: true,
-              includeProviderKeys: true,
-              includeModelTargets: true,
-            })}
-            <div className="admin-form-grid admin-form-grid-single">
-              {agentPromptFields.map((target) => (
-                <label key={target.id} className="field field-full">
-                  <span>{target.label}</span>
-                  <textarea
-                    name={target.fieldName}
-                    rows={8}
-                    placeholder={`Optional baseline prompt for ${target.label.toLowerCase()}`}
-                    defaultValue={agentPrompts[target.id] || ''}
-                  />
-                  <small>{target.description} Jurisdictions can override this prompt if needed.</small>
-                </label>
-              ))}
-            </div>
-            <div className="admin-form-actions">
-              <button className="button button-fit" type="submit" disabled={pending}>
-                {pending ? 'Saving…' : 'Save baseline prompts'}
-              </button>
-            </div>
-            {settingsState.error ? <div className="status-banner status-banner-error">{settingsState.error}</div> : null}
-            {settingsState.success ? (
-              <div className="status-banner status-banner-success">{settingsState.success}</div>
-            ) : null}
-          </form>
+          <div className="admin-form-note">
+            Prompt editing is temporarily disabled. The platform currently uses the assistant
+            instructions checked into the codebase.
+          </div>
         </FormSection>
       </section>
     </div>

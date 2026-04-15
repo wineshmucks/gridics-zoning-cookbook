@@ -678,6 +678,7 @@ def chunk_normalized_section(
                 "section_level": section.level,
                 "section_path": section.path,
                 "source_anchor": section.anchor,
+                "section_url": f"{document.source_url}#{section.anchor}" if section.anchor else document.source_url,
                 "chunk_index": index,
             },
             content_hash=content_hash,
@@ -1364,7 +1365,28 @@ def query_customer_zoning_knowledge(
             {
                 "content": item.content,
                 "name": item.name,
-                "meta_data": item.meta_data,
+                "page_url": (item.meta_data or {}).get("page_url")
+                or (item.meta_data or {}).get("source_url"),
+                "section_url": (item.meta_data or {}).get("section_url")
+                or (
+                    f"{(item.meta_data or {}).get('source_url')}#{(item.meta_data or {}).get('source_anchor')}"
+                    if (item.meta_data or {}).get("source_url") and (item.meta_data or {}).get("source_anchor")
+                    else (item.meta_data or {}).get("source_url")
+                ),
+                "source_title": (item.meta_data or {}).get("source_title"),
+                "source_anchor": (item.meta_data or {}).get("source_anchor"),
+                "source_url": (item.meta_data or {}).get("source_url"),
+                "meta_data": {
+                    **(item.meta_data or {}),
+                    "page_url": (item.meta_data or {}).get("page_url")
+                    or (item.meta_data or {}).get("source_url"),
+                    "section_url": (item.meta_data or {}).get("section_url")
+                    or (
+                        f"{(item.meta_data or {}).get('source_url')}#{(item.meta_data or {}).get('source_anchor')}"
+                        if (item.meta_data or {}).get("source_url") and (item.meta_data or {}).get("source_anchor")
+                        else (item.meta_data or {}).get("source_url")
+                    ),
+                },
             }
             for item in documents
         ],

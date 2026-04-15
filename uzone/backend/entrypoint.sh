@@ -2,7 +2,7 @@
 set -eu
 
 if [ "${UZONE_RUN_MIGRATIONS:-true}" = "true" ]; then
-  alembic upgrade head
+  alembic upgrade heads
 fi
 
 if [ "${UZONE_RUN_SEED_DATA:-false}" = "true" ]; then

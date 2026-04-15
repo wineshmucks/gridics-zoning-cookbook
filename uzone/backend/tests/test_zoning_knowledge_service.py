@@ -59,7 +59,13 @@ def test_query_customer_zoning_knowledge_returns_lookup_timing(monkeypatch) -> N
                 SimpleNamespace(
                     content="Max 35 feet",
                     name="Section 1",
-                    meta_data={"section": "1"},
+                    meta_data={
+                        "section": "1",
+                        "source_url": "https://example.com/code",
+                        "source_anchor": "section-1",
+                        "section_url": "https://example.com/code#section-1",
+                        "source_title": "Code Section",
+                    },
                 )
             ]
 
@@ -85,7 +91,19 @@ def test_query_customer_zoning_knowledge_returns_lookup_timing(monkeypatch) -> N
         {
             "content": "Max 35 feet",
             "name": "Section 1",
-            "meta_data": {"section": "1"},
+            "page_url": "https://example.com/code",
+            "section_url": "https://example.com/code#section-1",
+            "source_title": "Code Section",
+            "source_anchor": "section-1",
+            "source_url": "https://example.com/code",
+            "meta_data": {
+                "section": "1",
+                "source_url": "https://example.com/code",
+                "source_anchor": "section-1",
+                "section_url": "https://example.com/code#section-1",
+                "source_title": "Code Section",
+                "page_url": "https://example.com/code",
+            },
         }
     ]
 

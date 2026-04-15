@@ -133,35 +133,166 @@ type AssistantModelTraceEntry = {
   reason?: string | null
 }
 
-function formatConversation(messages: ChatMessage[], customerName: string): string {
-  return messages
-    .map((message) => {
-      const speaker = message.role === "user" ? "You" : `${customerName} Assistant`
-      const sections = [`${speaker}\n${message.content || "(no visible message content)"}`]
+type ConversationCopyContext = {
+  agentId: string
+  customerName: string
+  defaultModelId: string
+  modelId: string
+  runId: string | null
+  sessionId: string | null
+  surface: string
+}
 
-      if (message.toolCalls?.length) {
-        sections.push(
-          [
-            "Tool activity",
-            ...message.toolCalls.map((toolCall) =>
-              `- ${toolCall.label}${toolCall.detail ? `: ${toolCall.detail}` : ""} [${toolCall.status}]`,
-            ),
-          ].join("\n"),
-        )
-      }
+type EmbedChatActions = {
+  copyConversation: () => void
+  newChat: () => void
+}
 
-      if (message.steps?.length) {
-        sections.push(
-          [
-            "Run timeline",
-            ...message.steps.map((step) => `- ${step.label}${step.detail ? `: ${step.detail}` : ""} [${step.status}]`),
-          ].join("\n"),
-        )
-      }
+function summarizeToolResultForExport(rawResult: unknown): unknown {
+  const parsed = unwrapToolResult(rawResult)
+  if (!parsed || typeof parsed !== "object") {
+    return parsed
+  }
 
-      return sections.join("\n\n")
-    })
-    .join("\n\n---\n\n")
+  const record = parsed as Record<string, unknown>
+  return {
+    ...record,
+    rawResult: undefined,
+  }
+}
+
+function buildConversationExport(messages: ChatMessage[], context: ConversationCopyContext): string {
+  const timestamp = new Date().toISOString()
+  const assistantCount = messages.filter((message) => message.role === "assistant").length
+
+  const exportPayload = {
+    metadata: {
+      exported_at: timestamp,
+      agent_id: context.agentId,
+      customer_name: context.customerName,
+      surface: context.surface,
+      session_id: context.sessionId,
+      run_id: context.runId,
+      model_id: context.modelId || null,
+      default_model_id: context.defaultModelId || null,
+      model_override_active: Boolean(context.modelId && context.modelId.trim() && context.modelId.trim() !== context.defaultModelId.trim()),
+      message_count: messages.length,
+      assistant_message_count: assistantCount,
+    },
+    messages: messages.map((message, index) => ({
+      index: index + 1,
+      id: message.id,
+      role: message.role,
+      status: message.status || null,
+      run_id: message.runId || null,
+      content: message.content || "",
+      steps: message.steps || [],
+      tool_calls: (message.toolCalls || []).map((toolCall) => ({
+        id: toolCall.id,
+        label: toolCall.label,
+        tool_name: toolCall.toolName || null,
+        detail: toolCall.detail || null,
+        status: toolCall.status,
+        raw_result: summarizeToolResultForExport(toolCall.rawResult),
+      })),
+    })),
+  }
+
+  const lines: string[] = [
+    "# UZone Conversation Export",
+    "",
+    "## Conversation Metadata",
+    `- Exported at: ${timestamp}`,
+    `- Agent: ${context.agentId}`,
+    `- Customer: ${context.customerName}`,
+    `- Surface: ${context.surface}`,
+    `- Session ID: ${context.sessionId || "(none)"}`,
+    `- Run ID: ${context.runId || "(none)"}`,
+    `- Model: ${context.modelId || "(default)"}`,
+    `- Default model: ${context.defaultModelId || "(none)"}`,
+    `- Model override active: ${context.modelId.trim() && context.modelId.trim() !== context.defaultModelId.trim() ? "yes" : "no"}`,
+    `- Messages: ${messages.length} total, ${assistantCount} assistant`,
+    "",
+  ]
+
+  messages.forEach((message, index) => {
+    const speaker = message.role === "user" ? "You" : `${context.customerName} Assistant`
+    lines.push(`## Turn ${index + 1}: ${speaker}`)
+    lines.push(`- Message ID: ${message.id}`)
+    lines.push(`- Role: ${message.role}`)
+    lines.push(`- Status: ${message.status || "unknown"}`)
+    if (message.runId) {
+      lines.push(`- Run ID: ${message.runId}`)
+    }
+    lines.push("")
+    lines.push("### Content")
+    lines.push(message.content || "(no visible message content)")
+
+    if (message.toolCalls?.length) {
+      lines.push("")
+      lines.push("### Tool Activity")
+      message.toolCalls.forEach((toolCall) => {
+        lines.push(`- ${toolCall.label}${toolCall.detail ? `: ${toolCall.detail}` : ""} [${toolCall.status}]`)
+      })
+    }
+
+    if (message.steps?.length) {
+      lines.push("")
+      lines.push("### Run Timeline")
+      message.steps.forEach((step) => {
+        lines.push(`- ${step.label}${step.detail ? `: ${step.detail}` : ""} [${step.status}]`)
+      })
+    }
+
+    lines.push("")
+  })
+
+  lines.push("## Debug Bundle")
+  lines.push("```json")
+  lines.push(JSON.stringify(exportPayload, null, 2))
+  lines.push("```")
+
+  return lines.join("\n")
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard?.writeText &&
+    typeof window !== "undefined" &&
+    window.isSecureContext
+  ) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Fall back to the legacy clipboard path when the browser blocks async clipboard writes.
+    }
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard is not available in this environment.")
+  }
+
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "true")
+  textarea.style.position = "fixed"
+  textarea.style.top = "-1000px"
+  textarea.style.left = "-1000px"
+  textarea.style.opacity = "0"
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+
+  try {
+    const successful = document.execCommand("copy")
+    if (!successful) {
+      throw new Error("Clipboard copy failed.")
+    }
+  } finally {
+    document.body.removeChild(textarea)
+  }
 }
 
 function parseSSEEvents(chunk: string): { events: SSEEvent[]; remainder: string } {
@@ -811,6 +942,108 @@ function collectSourceChips(message: ChatMessage): string[] {
   return [...new Set(labels)].slice(0, 3)
 }
 
+function AssistantMessageDetails({
+  message,
+  customerName,
+  onCopyMessage,
+  onFeedbackToggle,
+  messageFeedbackValue,
+  onFollowUpClick,
+}: {
+  message: ChatMessage
+  customerName: string
+  onCopyMessage: (content: string) => void
+  onFeedbackToggle: (message: ChatMessage, direction: MessageFeedback) => Promise<void>
+  messageFeedbackValue?: MessageFeedback
+  onFollowUpClick: (prompt: string) => void
+}) {
+  const hasDetails =
+    Boolean(message.content) ||
+    Boolean(message.toolCalls?.length) ||
+    Boolean(message.steps?.length) ||
+    Boolean(message.error) ||
+    message.status === "complete"
+
+  return (
+    <details className="assistant-message-details">
+      <summary className="assistant-message-details-summary">
+        <span>Show run details</span>
+        <span className="assistant-message-details-summary-meta">
+          {message.toolCalls?.length ? `${message.toolCalls.length} tool${message.toolCalls.length === 1 ? "" : "s"}` : null}
+          {message.toolCalls?.length && message.steps?.length ? " • " : null}
+          {message.steps?.length ? `${message.steps.length} step${message.steps.length === 1 ? "" : "s"}` : null}
+        </span>
+      </summary>
+      <div className="assistant-message-details-body">
+        <div className="assistant-message-tools">
+          <div className="assistant-message-tools-primary">
+            <button
+              className="assistant-message-tool-button"
+              type="button"
+              aria-label="Copy answer"
+              title="Copy answer"
+              onClick={() => onCopyMessage(message.content)}
+            >
+              <CopyIcon />
+            </button>
+            <button
+              className={`assistant-message-tool-button${messageFeedbackValue === 'up' ? ' is-active' : ''}`}
+              type="button"
+              aria-label="Helpful response"
+              title="Helpful response"
+              onClick={() => void onFeedbackToggle(message, 'up')}
+            >
+              <ThumbUpIcon />
+            </button>
+            <button
+              className={`assistant-message-tool-button${messageFeedbackValue === 'down' ? ' is-active is-negative' : ''}`}
+              type="button"
+              aria-label="Unhelpful response"
+              title="Unhelpful response"
+              onClick={() => void onFeedbackToggle(message, 'down')}
+            >
+              <ThumbDownIcon />
+            </button>
+          </div>
+          {collectSourceChips(message).length ? (
+            <div className="assistant-source-chip-row">
+              {collectSourceChips(message).map((chip) => (
+                <span key={chip} className="assistant-source-chip">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {message.toolCalls ? <ToolCallList toolCalls={message.toolCalls} /> : null}
+        {message.steps ? <RunSteps steps={message.steps} status={message.status} /> : null}
+
+        {message.role === "assistant" && message.status === 'complete' ? (
+          <div className="assistant-follow-up-row">
+            {FOLLOW_UP_ACTIONS.map((action) => (
+              <button
+                key={action}
+                type="button"
+                className="assistant-follow-up-chip"
+                onClick={() => onFollowUpClick(action)}
+              >
+                {action}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {message.role === "assistant" && message.error ? (
+          <div className="status-banner status-banner-error">{message.error}</div>
+        ) : null}
+
+        {!hasDetails ? <div className="assistant-message-details-empty">No run details were captured.</div> : null}
+      </div>
+    </details>
+  )
+}
+
 function ChatEmptyState({
   customerName,
   onSelectPrompt,
@@ -856,6 +1089,7 @@ export function AgentChatPanel({
   requestHeaders,
   embedSessionToken,
   embeddedLayout = false,
+  onEmbedChatActionsChange,
   showEmptyStateHint = true,
   showBrandingFooter = true,
   showModelControls = true,
@@ -872,6 +1106,7 @@ export function AgentChatPanel({
   requestHeaders?: Record<string, string>
   embedSessionToken?: string
   embeddedLayout?: boolean
+  onEmbedChatActionsChange?: ((actions: EmbedChatActions | null) => void) | undefined
   showEmptyStateHint?: boolean
   showBrandingFooter?: boolean
   showModelControls?: boolean
@@ -881,6 +1116,7 @@ export function AgentChatPanel({
   const [isStreaming, setIsStreaming] = useState(false)
   const [composerError, setComposerError] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle")
+  const [copyMessage, setCopyMessage] = useState<string | null>(null)
   const [messageFeedback, setMessageFeedback] = useState<Record<string, MessageFeedback | undefined>>({})
   const [modelId, setModelId] = useState(defaultModelId)
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
@@ -986,6 +1222,23 @@ export function AgentChatPanel({
       window.removeEventListener('uzone-embed-chat-action', handleEmbedAction as EventListener)
     }
   }, [embeddedLayout, messages, isStreaming])
+
+  useEffect(() => {
+    if (!embeddedLayout || !onEmbedChatActionsChange) {
+      return
+    }
+
+    onEmbedChatActionsChange({
+      copyConversation: () => {
+        void handleCopyConversation()
+      },
+      newChat: handleNewChat,
+    })
+
+    return () => {
+      onEmbedChatActionsChange(null)
+    }
+  }, [embeddedLayout, messages, isStreaming, onEmbedChatActionsChange])
 
   const updateAssistantMessage = (messageId: string, updater: (message: ChatMessage) => ChatMessage): void => {
     setMessages((prevMessages) =>
@@ -1483,25 +1736,43 @@ export function AgentChatPanel({
 
   const handleCopyConversation = async () => {
     if (!messages.length) {
+      setCopyMessage("There is no conversation to copy yet.")
       setCopyState("error")
+      window.setTimeout(() => {
+        setCopyState("idle")
+        setCopyMessage(null)
+      }, 2500)
       return
     }
 
     try {
-      await navigator.clipboard.writeText(formatConversation(messages, customerName))
+      await copyTextToClipboard(
+        buildConversationExport(messages, {
+          agentId,
+          customerName,
+          defaultModelId: normalizedDefaultModelId,
+          modelId: normalizedModelId,
+          runId: runIdRef.current,
+          sessionId: sessionIdRef.current,
+          surface,
+        }),
+      )
+      setCopyMessage(null)
       setCopyState("copied")
     } catch {
+      setCopyMessage("Unable to copy the conversation. Your browser may be blocking clipboard access.")
       setCopyState("error")
     }
 
     window.setTimeout(() => {
       setCopyState("idle")
+      setCopyMessage(null)
     }, 2000)
   }
 
   const handleCopyMessage = async (content: string) => {
     try {
-      await navigator.clipboard.writeText(content)
+      await copyTextToClipboard(content)
     } catch {
       // Ignore copy errors for inline message tools.
     }
@@ -1593,7 +1864,8 @@ export function AgentChatPanel({
                 className="assistant-chat-toolbar-icon-button"
                 type="button"
                 aria-label="Copy conversation"
-                title="Copy conversation"
+                title={messages.length ? "Copy conversation" : "No conversation to copy yet"}
+                disabled={!messages.length}
                 onClick={() => void handleCopyConversation()}
               >
                 <span aria-hidden="true">{copyState === "copied" ? "✓" : "⎘"}</span>
@@ -1606,8 +1878,9 @@ export function AgentChatPanel({
               >
                 {isStreaming ? 'Stop & Reset' : 'New Chat'}
               </button>
-            </div>
           </div>
+          {copyMessage ? <div className="assistant-chat-toolbar-copy-status">{copyMessage}</div> : null}
+        </div>
         ) : null}
         <div ref={viewportRef} className={`agent-chat-log agent-chat-log-${variant}`}>
           {messages.length === 0 ? (
@@ -1648,66 +1921,15 @@ export function AgentChatPanel({
                       <div className="assistant-answer-placeholder">No answer text was returned.</div>
                     )}
                   </div>
-                  {message.role === 'assistant' ? (
-                    <div className="assistant-message-tools">
-                      <div className="assistant-message-tools-primary">
-                        <button
-                          className="assistant-message-tool-button"
-                          type="button"
-                          aria-label="Copy answer"
-                          title="Copy answer"
-                          onClick={() => void handleCopyMessage(message.content)}
-                        >
-                          <CopyIcon />
-                        </button>
-                        <button
-                          className={`assistant-message-tool-button${messageFeedback[message.id] === 'up' ? ' is-active' : ''}`}
-                          type="button"
-                          aria-label="Helpful response"
-                          title="Helpful response"
-                          onClick={() => void handleFeedbackToggle(message, 'up')}
-                        >
-                          <ThumbUpIcon />
-                        </button>
-                        <button
-                          className={`assistant-message-tool-button${messageFeedback[message.id] === 'down' ? ' is-active is-negative' : ''}`}
-                          type="button"
-                          aria-label="Unhelpful response"
-                          title="Unhelpful response"
-                          onClick={() => void handleFeedbackToggle(message, 'down')}
-                        >
-                          <ThumbDownIcon />
-                        </button>
-                      </div>
-                      {collectSourceChips(message).length ? (
-                        <div className="assistant-source-chip-row">
-                          {collectSourceChips(message).map((chip) => (
-                            <span key={chip} className="assistant-source-chip">
-                              {chip}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {message.role === "assistant" ? <ToolCallList toolCalls={message.toolCalls} /> : null}
-                  {message.role === "assistant" ? <RunSteps steps={message.steps} status={message.status} /> : null}
-                  {message.role === "assistant" && message.status === 'complete' ? (
-                    <div className="assistant-follow-up-row">
-                      {FOLLOW_UP_ACTIONS.map((action) => (
-                        <button
-                          key={action}
-                          type="button"
-                          className="assistant-follow-up-chip"
-                          onClick={() => handleFollowUpClick(action)}
-                        >
-                          {action}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {message.role === "assistant" && message.error ? (
-                    <div className="status-banner status-banner-error">{message.error}</div>
+                  {message.role === "assistant" ? (
+                    <AssistantMessageDetails
+                      message={message}
+                      customerName={customerName}
+                      onCopyMessage={handleCopyMessage}
+                      onFeedbackToggle={handleFeedbackToggle}
+                      messageFeedbackValue={messageFeedback[message.id]}
+                      onFollowUpClick={handleFollowUpClick}
+                    />
                   ) : null}
                 </div>
               </div>

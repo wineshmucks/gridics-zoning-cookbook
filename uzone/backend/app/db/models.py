@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -165,6 +166,29 @@ class AssistantTurnEvent(Base, TimestampMixin):
     policy_decision: Mapped[str | None] = mapped_column(String(50))
     reason_code: Mapped[str | None] = mapped_column(String(100))
     payload_json: Mapped[dict | None] = mapped_column(JSON)
+
+
+class AssistantRunTelemetry(Base, TimestampMixin):
+    __tablename__ = "assistant_run_telemetry"
+
+    id: Mapped[str] = uuid_pk()
+    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("tenant_clients.id"))
+    run_scope: Mapped[str] = mapped_column(String(50), nullable=False, default="team")
+    agent_id: Mapped[str | None] = mapped_column(String(100))
+    conversation_id: Mapped[str | None] = mapped_column(String(255))
+    message_id: Mapped[str | None] = mapped_column(String(255))
+    run_id: Mapped[str | None] = mapped_column(String(255))
+    session_id: Mapped[str | None] = mapped_column(String(255))
+    model_provider: Mapped[str | None] = mapped_column(String(100))
+    model_name: Mapped[str | None] = mapped_column(String(100))
+    model_id: Mapped[str | None] = mapped_column(String(255))
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    time_to_first_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    duration_seconds: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    metrics_json: Mapped[dict | None] = mapped_column(JSON)
 
 
 class ZoningCodeIngestionRun(Base, TimestampMixin):

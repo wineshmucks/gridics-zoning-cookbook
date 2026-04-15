@@ -58,7 +58,7 @@ It includes:
 ```bash
 cd backend
 pip install -e .
-alembic upgrade head
+alembic upgrade heads
 python -m app.scripts.seed_data
 uvicorn app.main:app --reload
 ```

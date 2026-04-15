@@ -64,6 +64,14 @@ export type CustomerExperienceSettings = {
       base_url: string | null
     }
   >
+  code_default_assistant_model_targets: Record<
+    string,
+    {
+      provider: string | null
+      model_id: string | null
+      base_url: string | null
+    }
+  >
 }
 
 export type PlatformAssistantSettings = CustomerExperienceSettings
@@ -107,6 +115,117 @@ export type CustomerZoningKnowledgeStatus = {
   sections: number
   chunks: number
   latest_run: CustomerZoningKnowledgeLatestRun | null
+}
+
+export type AssistantTelemetrySummary = {
+  total_runs: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost: number
+}
+
+export type AssistantTelemetryRun = {
+  id: string
+  run_scope: string
+  agent_id: string | null
+  conversation_id: string | null
+  message_id: string | null
+  run_id: string | null
+  session_id: string | null
+  model_provider: string | null
+  model_name: string | null
+  model_id: string | null
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost: number | null
+  time_to_first_token: number | null
+  duration_seconds: number | null
+  created_at: string
+  metrics_json: Record<string, unknown> | null
+}
+
+export type AssistantTelemetryResponse = {
+  summary: AssistantTelemetrySummary
+  runs: AssistantTelemetryRun[]
+  pagination: {
+    page: number
+    page_size: number
+    total_runs: number
+    total_pages: number
+    has_previous: boolean
+    has_next: boolean
+    search: string | null
+  }
+}
+
+export type AssistantConversationReviewTurn = {
+  id: string
+  created_at: string
+  message_id: string | null
+  run_id: string | null
+  agent_id: string | null
+  intent_type: string | null
+  jurisdiction_status: string | null
+  policy_decision: string | null
+  reason_code: string | null
+  payload_json: Record<string, unknown> | null
+}
+
+export type AssistantConversationReviewRun = AssistantTelemetryRun
+
+export type AssistantConversationReviewFeedback = {
+  id: string
+  clerk_user_id: string | null
+  agent_id: string
+  surface: string
+  conversation_id: string
+  message_id: string
+  run_id: string | null
+  feedback_value: string
+  message_excerpt: string | null
+  metadata_json: Record<string, unknown> | null
+  created_at: string
+}
+
+export type AssistantConversationReviewConversation = {
+  conversation_id: string
+  latest_at: string | null
+  turn_count: number
+  run_count: number
+  feedback_count: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost: number
+  turns: AssistantConversationReviewTurn[]
+  runs: AssistantConversationReviewRun[]
+  feedback: AssistantConversationReviewFeedback[]
+}
+
+export type AssistantConversationReviewResponse = {
+  summary: {
+    total_conversations: number
+    total_turns: number
+    total_runs: number
+    total_feedback: number
+    input_tokens: number
+    output_tokens: number
+    total_tokens: number
+    cost: number
+  }
+  conversations: AssistantConversationReviewConversation[]
+  pagination: {
+    page: number
+    page_size: number
+    total_conversations: number
+    total_pages: number
+    has_previous: boolean
+    has_next: boolean
+    search: string | null
+    conversation_id: string | null
+  }
 }
 
 export type CustomerZoningKnowledgeMutationState = {
@@ -334,6 +453,7 @@ function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
     },
     assistant_agent_prompts: {},
     assistant_model_targets: {},
+    code_default_assistant_model_targets: {},
   }
 }
 
@@ -420,6 +540,24 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     }
   }
 
+  const code_default_assistant_model_targets: CustomerExperienceSettings['code_default_assistant_model_targets'] = {}
+  const codeDefaultTargetsInput =
+    record.code_default_assistant_model_targets && typeof record.code_default_assistant_model_targets === 'object'
+      ? (record.code_default_assistant_model_targets as Record<string, unknown>)
+      : {}
+  for (const [targetId, rawTarget] of Object.entries(codeDefaultTargetsInput)) {
+    if (!rawTarget || typeof rawTarget !== 'object') {
+      continue
+    }
+
+    const target = rawTarget as Record<string, unknown>
+    code_default_assistant_model_targets[targetId] = {
+      provider: typeof target.provider === 'string' ? target.provider : null,
+      model_id: typeof target.model_id === 'string' ? target.model_id : null,
+      base_url: typeof target.base_url === 'string' ? target.base_url : null,
+    }
+  }
+
   return {
     zoning_code_url: typeof record.zoning_code_url === 'string' ? record.zoning_code_url : null,
     assistant_disclaimer_text:
@@ -431,6 +569,7 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     assistant_provider_keys,
     assistant_agent_prompts,
     assistant_model_targets,
+    code_default_assistant_model_targets,
   }
 }
 
@@ -1198,6 +1337,160 @@ export async function fetchCustomerZoningKnowledgeStatus(
     return (await response.json()) as CustomerZoningKnowledgeStatus
   } catch {
     return buildEmptyCustomerZoningKnowledgeStatus(organizationId)
+  }
+}
+
+export async function fetchCustomerAssistantTelemetry(
+  organizationId: string,
+  options?: {
+    page?: number
+    search?: string
+  },
+): Promise<AssistantTelemetryResponse> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (options?.page && options.page > 1) {
+      searchParams.set('page', String(options.page))
+    }
+    if (options?.search?.trim()) {
+      searchParams.set('search', options.search.trim())
+    }
+
+    const queryString = searchParams.toString()
+    const response = await fetch(
+      buildBackendApiUrl(`/api/admin/clients/${organizationId}/assistant-telemetry${queryString ? `?${queryString}` : ''}`),
+      {
+      cache: 'no-store',
+      },
+    )
+
+    if (!response.ok) {
+      return {
+        summary: {
+          total_runs: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          cost: 0,
+        },
+        runs: [],
+        pagination: {
+          page: 1,
+          page_size: 50,
+          total_runs: 0,
+          total_pages: 0,
+          has_previous: false,
+          has_next: false,
+          search: null,
+        },
+      }
+    }
+
+    return (await response.json()) as AssistantTelemetryResponse
+  } catch {
+    return {
+      summary: {
+        total_runs: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+        cost: 0,
+        },
+        runs: [],
+        pagination: {
+          page: 1,
+          page_size: 50,
+          total_runs: 0,
+          total_pages: 0,
+          has_previous: false,
+          has_next: false,
+          search: null,
+        },
+      }
+  }
+}
+
+export async function fetchCustomerAssistantConversationReview(
+  organizationId: string,
+  options?: {
+    page?: number
+    search?: string
+    conversationId?: string
+  },
+): Promise<AssistantConversationReviewResponse> {
+  try {
+    const searchParams = new URLSearchParams()
+    if (options?.page && options.page > 1) {
+      searchParams.set('page', String(options.page))
+    }
+    if (options?.search?.trim()) {
+      searchParams.set('search', options.search.trim())
+    }
+    if (options?.conversationId?.trim()) {
+      searchParams.set('conversation_id', options.conversationId.trim())
+    }
+
+    const queryString = searchParams.toString()
+    const response = await fetch(
+      buildBackendApiUrl(
+        `/api/admin/clients/${organizationId}/assistant-conversations${queryString ? `?${queryString}` : ''}`,
+      ),
+      {
+        cache: 'no-store',
+      },
+    )
+
+    if (!response.ok) {
+      return {
+        summary: {
+          total_conversations: 0,
+          total_turns: 0,
+          total_runs: 0,
+          total_feedback: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          cost: 0,
+        },
+        conversations: [],
+        pagination: {
+          page: 1,
+          page_size: 20,
+          total_conversations: 0,
+          total_pages: 0,
+          has_previous: false,
+          has_next: false,
+          search: null,
+          conversation_id: null,
+        },
+      }
+    }
+
+    return (await response.json()) as AssistantConversationReviewResponse
+  } catch {
+    return {
+      summary: {
+        total_conversations: 0,
+        total_turns: 0,
+        total_runs: 0,
+        total_feedback: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+        cost: 0,
+      },
+      conversations: [],
+      pagination: {
+        page: 1,
+        page_size: 20,
+        total_conversations: 0,
+        total_pages: 0,
+        has_previous: false,
+        has_next: false,
+        search: null,
+        conversation_id: null,
+      },
+    }
   }
 }
 

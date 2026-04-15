@@ -240,7 +240,7 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
     assert gridics_calls == [
         {
             "state_env": "il",
-            "address": "123 Main Street, Springfield, IL 62704",
+            "address": "123 Main Street",
             "zip_code": "62704",
         }
     ]
@@ -259,6 +259,312 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
             "client_id": "springfield",
         },
     ]
+
+
+def test_analyze_customer_zoning_request_requires_confirmation_when_gridics_resolves_different_parcel(monkeypatch) -> None:
+    knowledge_called = False
+    run_context = DummyRunContext({"client_id": "springfield"})
+
+    class FakeGridicsClient:
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            return {"mock": "payload"}
+
+    def fake_build_gridics_client():
+        return FakeGridicsClient()
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "resolved_address": "4729 NE MIAMI PL",
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "T3-L",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 0.8,
+                "max_units": 1,
+                "max_height_ft": 25,
+                "front_setback_ft": 20,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*args, **kwargs):
+        nonlocal knowledge_called
+        knowledge_called = True
+        raise AssertionError("Knowledge lookup should not run before parcel confirmation")
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+
+    result = analyze_customer_zoning_request(
+        query="What can I build at 2060 Biscayne Blvd, Miami, FL 33137?",
+        run_context=run_context,
+    )
+
+    assert knowledge_called is False
+    assert result["question_type"] == "specific_address"
+    assert result["assistant_turn"]["intent_type"] == "specific_address"
+    assert result["assistant_turn"]["needs_clarification"] is True
+    assert result["response_guardrail"]["needs_confirmation"] is True
+    assert result["response_guardrail"]["requested_address"] == "2060 Biscayne Blvd, Miami, FL 33137"
+    assert result["response_guardrail"]["resolved_address"] == "4729 NE MIAMI PL"
+    assert result["response_guardrail"]["message"] == (
+        "The address you entered appears to resolve to 4729 NE MIAMI PL, not 2060 Biscayne Blvd, Miami, FL 33137. "
+        "Please confirm the address you want me to use before I continue."
+    )
+    assert result["response_guardrail"]["assistant_turn"]["jurisdiction_status"] == "needs_confirmation"
+    assert result["response_guardrail"]["assistant_turn"]["clarification_type"] == "address_confirmation"
+    assert result["response_guardrail"]["assistant_turn"]["needs_clarification"] is True
+    assert result["request_classification"]["reason"] == (
+        "Gridics resolved a different parcel than the user requested, so confirmation is required."
+    )
+    assert run_context.session_state["pending_property_confirmation"] == {
+        "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
+        "resolved_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
+
+
+def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_confirms_resolved_parcel(
+    monkeypatch,
+) -> None:
+    gridics_calls: list[dict[str, str]] = []
+    knowledge_calls: list[str] = []
+    run_context = DummyRunContext({"client_id": "springfield"})
+
+    class FakeGridicsClient:
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            gridics_calls.append(
+                {
+                    "state_env": state_env,
+                    "address": address,
+                    "zip_code": zip_code,
+                }
+            )
+            return {"mock": "payload"}
+
+    def fake_build_gridics_client():
+        return FakeGridicsClient()
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "resolved_address": "4729 NE MIAMI PL",
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "T3-L",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 0.8,
+                "max_units": 1,
+                "max_height_ft": 25,
+                "front_setback_ft": 20,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        knowledge_calls.append(query)
+        return {"query": query, "results": [{"name": "Parcel standards", "content": "Parcel-specific answer."}]}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+    monkeypatch.setattr(
+        "app.agents.tools.grounding_verdict",
+        lambda evidence_pack, min_refs=1: {"answer_ready": True, "evidence_count": 1},
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.citation_completeness_report",
+        lambda **kwargs: {"is_complete": True, "missing_sources": []},
+    )
+
+    first_result = analyze_customer_zoning_request(
+        query="What can I build at 2060 Biscayne Blvd, Miami, FL 33137?",
+        run_context=run_context,
+    )
+
+    second_result = analyze_customer_zoning_request(
+        query="4729 NE Miami Pl",
+        run_context=run_context,
+    )
+
+    assert first_result["response_guardrail"]["needs_confirmation"] is True
+    assert second_result["question_type"] == "specific_address"
+    assert second_result["address_context"] == {
+        "address_source": "confirmation",
+        "detected_address": "4729 NE MIAMI PL",
+        "standardized_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
+    assert second_result["address_resolution"] == {
+        "input_address": "4729 NE MIAMI PL",
+        "standardized_address": "4729 NE MIAMI PL",
+        "resolved_state_env": "fl",
+        "resolved_zip_code": "33137",
+        "address_source": "confirmation",
+        "lookup_ready": True,
+    }
+    assert second_result["assistant_turn"]["needs_clarification"] is False
+    assert second_result["follow_up_context"]["active_location"]["standardized_address"] == "4729 NE MIAMI PL"
+    assert gridics_calls == [
+        {
+            "state_env": "fl",
+            "address": "2060 Biscayne Blvd",
+            "zip_code": "33137",
+        },
+        {
+            "state_env": "fl",
+            "address": "4729 NE MIAMI PL",
+            "zip_code": "33137",
+        },
+    ]
+    assert knowledge_calls
+    assert "pending_property_confirmation" not in run_context.session_state
+
+
+def test_analyze_customer_zoning_request_uses_pending_confirmation_for_affirmative_reply(monkeypatch) -> None:
+    gridics_calls: list[dict[str, str]] = []
+    knowledge_calls: list[str] = []
+    run_context = DummyRunContext({"client_id": "springfield"})
+    run_context.session_state["pending_property_confirmation"] = {
+        "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
+        "resolved_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
+
+    class FakeGridicsClient:
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            gridics_calls.append(
+                {
+                    "state_env": state_env,
+                    "address": address,
+                    "zip_code": zip_code,
+                }
+            )
+            return {"mock": "payload"}
+
+    def fake_build_gridics_client():
+        return FakeGridicsClient()
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "resolved_address": "4729 NE MIAMI PL",
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "T3-L",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 0.8,
+                "max_units": 1,
+                "max_height_ft": 25,
+                "front_setback_ft": 20,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        knowledge_calls.append(query)
+        return {"query": query, "results": [{"name": "Parcel standards", "content": "Parcel-specific answer."}]}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+    monkeypatch.setattr(
+        "app.agents.tools.grounding_verdict",
+        lambda evidence_pack, min_refs=1: {"answer_ready": True, "evidence_count": 1},
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.citation_completeness_report",
+        lambda **kwargs: {"is_complete": True, "missing_sources": []},
+    )
+
+    result = analyze_customer_zoning_request(
+        query="yes continue",
+        run_context=run_context,
+    )
+
+    assert result["question_type"] == "specific_address"
+    assert result["address_context"] == {
+        "address_source": "confirmation",
+        "detected_address": "4729 NE MIAMI PL",
+        "standardized_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
+    assert result["assistant_turn"]["needs_clarification"] is False
+    assert result["follow_up_context"]["active_location"]["standardized_address"] == "4729 NE MIAMI PL"
+    assert gridics_calls == [
+        {
+            "state_env": "fl",
+            "address": "4729 NE MIAMI PL",
+            "zip_code": "33137",
+        }
+    ]
+    assert knowledge_calls
+    assert "pending_property_confirmation" not in run_context.session_state
+
+
+def test_analyze_customer_zoning_request_keeps_pending_confirmation_open_when_reply_is_ambiguous(
+    monkeypatch,
+) -> None:
+    gridics_called = False
+    run_context = DummyRunContext({"client_id": "springfield"})
+    run_context.session_state["pending_property_confirmation"] = {
+        "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
+        "resolved_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
+
+    def fake_classify_pending_property_confirmation_response(*, query: str, pending_context: dict[str, object], tenant_client=None):
+        return {
+            "decision": "clarify",
+            "reason": "Ambiguous confirmation response.",
+            "confidence": 0.4,
+            "clarification_prompt": "Please confirm that I should use 4729 NE MIAMI PL or give me the correct address.",
+        }
+
+    def fail_if_gridics_called(*args, **kwargs):
+        nonlocal gridics_called
+        gridics_called = True
+        raise AssertionError("Gridics should not be called while confirmation is still pending")
+
+    monkeypatch.setattr("app.agents.tools.classify_pending_property_confirmation_response", fake_classify_pending_property_confirmation_response)
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", fail_if_gridics_called)
+
+    result = analyze_customer_zoning_request(
+        query="not sure",
+        run_context=run_context,
+    )
+
+    assert gridics_called is False
+    assert result["question_type"] == "specific_address"
+    assert result["response_guardrail"]["needs_confirmation"] is True
+    assert result["response_guardrail"]["message"] == "Please confirm that I should use 4729 NE MIAMI PL or give me the correct address."
+    assert result["assistant_turn"]["needs_clarification"] is True
+    assert result["clarification_prompt"] == "Please confirm that I should use 4729 NE MIAMI PL or give me the correct address."
+    assert run_context.session_state["pending_property_confirmation"] == {
+        "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
+        "resolved_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
 
 
 def test_analyze_customer_zoning_request_requests_full_address_when_location_details_missing(monkeypatch) -> None:
@@ -490,7 +796,7 @@ def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeyp
                 "path": "/property-record",
                 "params": {
                     "state_env": "il",
-                    "address": "123 Main Street, Springfield, IL 62704",
+                    "address": "123 Main Street",
                     "zipCode": "62704",
                 },
             }
@@ -542,7 +848,7 @@ def test_analyze_customer_zoning_request_surfaces_failure_diagnostics_after_retr
                 "path": "/property-record",
                 "params": {
                     "state_env": "il",
-                    "address": "123 Main Street, Springfield, IL 62704",
+                    "address": "123 Main Street",
                     "zipCode": "62704",
                 },
             },
@@ -633,6 +939,55 @@ def test_analyze_customer_zoning_request_uses_tenant_default_zip_for_lookup(monk
             "state_env": "il",
             "address": "123 Main Street, Springfield, IL",
             "zip_code": "62704",
+        }
+    ]
+
+
+def test_analyze_customer_zoning_request_allows_zipless_lookup_when_city_and_state_are_present(monkeypatch) -> None:
+    gridics_calls: list[dict[str, object]] = []
+
+    class FakeGridicsClient:
+        call_log: list[dict[str, object]] = []
+
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str | None):
+            gridics_calls.append({"state_env": state_env, "address": address, "zip_code": zip_code})
+            return {"mock": "payload"}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr(
+        "app.agents.tools._extract_gridics_zoning_summary",
+        lambda payload: {
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "T5-U",
+            "typology": "Urban Center",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 2.5,
+                "max_units": 8,
+                "max_height_ft": 55,
+                "front_setback_ft": 10,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        },
+    )
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", lambda **kwargs: {"results": []})
+
+    result = analyze_customer_zoning_request(
+        query="How high can I build a fence on 3148 Mary St, Miami, FL?",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert result["question_type"] == "specific_address"
+    assert result["address_context"]["state_env"] == "fl"
+    assert result["address_context"]["zip_code"] is None
+    assert gridics_calls == [
+        {
+            "state_env": "fl",
+            "address": "3148 Mary St",
+            "zip_code": None,
         }
     ]
 

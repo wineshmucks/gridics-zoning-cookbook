@@ -23,6 +23,11 @@ type Props = {
   backendBase: string
 }
 
+type EmbedChatActions = {
+  copyConversation: () => void
+  newChat: () => void
+}
+
 function readTokenFromLocation(): string {
   if (typeof window === 'undefined') {
     return ''
@@ -60,6 +65,7 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
   const [session, setSession] = useState<EmbedSession | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
+  const [chatActions, setChatActions] = useState<EmbedChatActions | null>(null)
 
   useEffect(() => {
     const nextToken = readTokenFromLocation()
@@ -146,7 +152,14 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
             <div className="embed-widget-header-actions">
               <button
                 type="button"
-                onClick={() => dispatchEmbedChatAction('copy')}
+                onClick={() => {
+                  if (chatActions?.copyConversation) {
+                    chatActions.copyConversation()
+                    return
+                  }
+
+                  dispatchEmbedChatAction('copy')
+                }}
                 aria-label="Copy conversation"
                 className="embed-widget-header-button"
                 title="Copy conversation"
@@ -155,7 +168,14 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => dispatchEmbedChatAction('new-chat')}
+                onClick={() => {
+                  if (chatActions?.newChat) {
+                    chatActions.newChat()
+                    return
+                  }
+
+                  dispatchEmbedChatAction('new-chat')
+                }}
                 aria-label="Start a new chat"
                 className="embed-widget-header-button"
                 title="New chat"
@@ -187,6 +207,7 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
                   initialAccepted={false}
                   requestHeaders={backendHeaders}
                   embedSessionToken={token}
+                  onEmbedChatActionsChange={setChatActions}
                 />
               </div>
             ) : (

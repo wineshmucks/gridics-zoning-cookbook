@@ -295,6 +295,7 @@ class TenantExperienceSettingsRead(BaseModel):
     assistant_disclaimer_text: str
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    code_default_assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     assistant_agent_prompts: dict[str, str] = Field(default_factory=dict)
     raw_settings_json: dict | None = None
     debug_received_assistant_provider_keys: dict[str, str | None] | None = None
@@ -315,6 +316,7 @@ class PlatformAssistantSettingsRead(BaseModel):
     assistant_disclaimer_text: str
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
     assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
+    code_default_assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     assistant_agent_prompts: dict[str, str] = Field(default_factory=dict)
     raw_settings_json: dict | None = None
 
@@ -362,6 +364,11 @@ class ZoningKnowledgeQueryResultRead(BaseModel):
     content: str
     name: str | None
     meta_data: dict | None
+    page_url: str | None = None
+    section_url: str | None = None
+    source_title: str | None = None
+    source_anchor: str | None = None
+    source_url: str | None = None
 
 
 class ZoningKnowledgeQueryResponse(BaseModel):

@@ -1,13 +1,6 @@
 import { JurisdictionPickerClient } from './JurisdictionPickerClient'
 import { buildServerBackendApiUrl } from '../lib/backend'
-
-type CustomerChoice = {
-  orgid: string
-  path_alias?: string | null
-  client_id: string
-  city_name: string
-  department_name: string
-}
+import { isSelectableJurisdiction, type JurisdictionPickerCustomer } from '../lib/jurisdiction-picker'
 
 type PageProps = {
   searchParams?: Promise<{
@@ -24,7 +17,8 @@ async function loadCustomers() {
       return []
     }
 
-    return (await response.json()) as CustomerChoice[]
+    const customers = (await response.json()) as JurisdictionPickerCustomer[]
+    return customers.filter(isSelectableJurisdiction)
   } catch {
     return []
   }

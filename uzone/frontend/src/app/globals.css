@@ -1,38 +1,90 @@
 :root {
-  --bg: #eef3f8;
-  --surface: #ffffff;
-  --surface-muted: #f6f8fb;
-  --ink: #10233f;
-  --text-primary: #10233f;
-  --text-secondary: #5e7088;
-  --muted: #5e7088;
-  --line: #d7e1ec;
-  --border-subtle: #d7e1ec;
-  --border-strong: #9bb8d3;
-  --accent: #1f5f9d;
-  --accent-strong: #174b7c;
+  --app-bg: #eef3f8;
+  --surface-base: #ffffff;
+  --surface-elevated: #f6f8fb;
+  --surface-muted: #edf3f8;
+  --surface-overlay: #ffffff;
+  --text-primary-role: #10233f;
+  --text-secondary-role: #4f6178;
+  --text-muted-role: #60748d;
+  --border-default-role: #d3dde8;
+  --border-emphasis-role: #8caed0;
+  --action-primary-bg: #1f5f9d;
+  --action-primary-bg-hover: #174b7c;
+  --action-primary-text: #ffffff;
+  --action-secondary-bg: #ffffff;
+  --action-secondary-bg-hover: #f6f8fb;
+  --action-secondary-border: #d7e1ec;
+  --input-bg: #fafbfd;
+  --input-border: #cfd9e4;
+  --input-placeholder: #657890;
+  --focus-ring: rgba(31, 95, 157, 0.24);
+  --focus-ring-soft: rgba(55, 124, 54, 0.14);
+  --focus-ring-strong: rgba(55, 124, 54, 0.2);
+  --card-shadow: 0 1px 0 rgba(17, 24, 39, 0.02);
+  --card-shadow-hover: 0 10px 22px rgba(17, 24, 39, 0.06);
+  --button-shadow: 0 8px 20px rgba(31, 95, 157, 0.16);
+  --button-shadow-hover: 0 12px 24px rgba(31, 95, 157, 0.18);
+  --bg: var(--app-bg);
+  --surface: var(--surface-base);
+  --surface-muted: var(--surface-elevated);
+  --ink: var(--text-primary-role);
+  --text-primary: var(--text-primary-role);
+  --text-secondary: var(--text-secondary-role);
+  --muted: var(--text-muted-role);
+  --line: var(--border-default-role);
+  --border-subtle: var(--border-default-role);
+  --border-strong: var(--border-emphasis-role);
+  --accent: var(--action-primary-bg);
+  --accent-strong: var(--action-primary-bg-hover);
   --accent-2: #2f78ba;
   --accent-soft: #e8f1fb;
-  --soft: #edf3f8;
+  --soft: var(--surface-muted);
   --footer: #10233f;
 }
 
 html[data-theme='dark'] {
-  --bg: #0b1220;
-  --surface: #111827;
-  --surface-muted: #172131;
-  --ink: #e5edf7;
-  --text-primary: #e5edf7;
-  --text-secondary: #9fb0c5;
-  --muted: #9fb0c5;
-  --line: #2a384d;
-  --border-subtle: #2a384d;
-  --border-strong: #47698d;
-  --accent: #5a93cb;
-  --accent-strong: #7db1e2;
+  --app-bg: #0b1220;
+  --surface-base: #111827;
+  --surface-elevated: #172131;
+  --surface-muted: #132033;
+  --surface-overlay: #0f172a;
+  --text-primary-role: #edf4fb;
+  --text-secondary-role: #c0ccdb;
+  --text-muted-role: #95a8be;
+  --border-default-role: #283549;
+  --border-emphasis-role: #58779b;
+  --action-primary-bg: #5a93cb;
+  --action-primary-bg-hover: #7db1e2;
+  --action-primary-text: #ffffff;
+  --action-secondary-bg: #101a2c;
+  --action-secondary-bg-hover: #17263d;
+  --action-secondary-border: #314155;
+  --input-bg: #0f1a2a;
+  --input-border: #33445a;
+  --input-placeholder: #90a3ba;
+  --focus-ring: rgba(90, 147, 203, 0.28);
+  --focus-ring-soft: rgba(90, 147, 203, 0.18);
+  --focus-ring-strong: rgba(125, 177, 226, 0.22);
+  --card-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+  --card-shadow-hover: 0 12px 24px rgba(2, 6, 23, 0.28);
+  --button-shadow: 0 10px 24px rgba(2, 6, 23, 0.26);
+  --button-shadow-hover: 0 14px 28px rgba(2, 6, 23, 0.3);
+  --bg: var(--app-bg);
+  --surface: var(--surface-base);
+  --surface-muted: var(--surface-elevated);
+  --ink: var(--text-primary-role);
+  --text-primary: var(--text-primary-role);
+  --text-secondary: var(--text-secondary-role);
+  --muted: var(--text-muted-role);
+  --line: var(--border-default-role);
+  --border-subtle: var(--border-default-role);
+  --border-strong: var(--border-emphasis-role);
+  --accent: var(--action-primary-bg);
+  --accent-strong: var(--action-primary-bg-hover);
   --accent-2: #5a93cb;
   --accent-soft: rgba(90, 147, 203, 0.16);
-  --soft: #172131;
+  --soft: var(--surface-muted);
   --footer: #020817;
 }
 
@@ -309,7 +361,7 @@ main {
   border: 1px solid var(--border-subtle);
   border-radius: 20px;
   padding: 22px;
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.02);
+  box-shadow: var(--card-shadow);
 }
 
 .title {
@@ -319,7 +371,7 @@ main {
 }
 
 .subtitle {
-  color: var(--muted);
+  color: var(--text-secondary);
   font-size: 18px;
   line-height: 1.6;
   margin: 0 0 20px;
@@ -336,15 +388,15 @@ main {
   border: 0;
   border-radius: 12px;
   padding: 11px 16px;
-  background: var(--accent);
-  color: white;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
   font-size: 14px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  box-shadow: 0 10px 24px rgba(31, 95, 157, 0.18);
+  box-shadow: var(--button-shadow);
   transition:
     background-color 0.18s ease,
     transform 0.18s ease,
@@ -352,25 +404,25 @@ main {
 }
 
 .button:hover {
-  background: var(--accent-strong);
+  background: var(--action-primary-bg-hover);
   transform: translateY(-1px);
-  box-shadow: 0 16px 28px rgba(31, 95, 157, 0.22);
+  box-shadow: var(--button-shadow-hover);
 }
 
 .button:focus-visible {
-  outline: 3px solid rgba(31, 95, 157, 0.24);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
 .button.secondary {
-  background: white;
-  color: var(--ink);
-  border: 1px solid var(--line);
+  background: var(--action-secondary-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--action-secondary-border);
   box-shadow: none;
 }
 
 .button.secondary:hover {
-  background: var(--surface-muted);
+  background: var(--action-secondary-bg-hover);
   border-color: var(--border-strong);
 }
 
@@ -641,70 +693,76 @@ main {
 .jurisdiction-picker-page {
   width: 100%;
   min-height: calc(100vh - 120px);
-  padding: 24px 0 48px;
-  background:
-    linear-gradient(180deg, #f7fbf7 0%, #ffffff 38%),
-    radial-gradient(circle at top left, rgba(55, 124, 54, 0.14), transparent 24%),
-    radial-gradient(circle at top right, rgba(17, 24, 39, 0.05), transparent 20%);
+  padding: 20px 0 44px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 96%, var(--surface) 4%) 0%, var(--bg) 100%);
 }
 
 .jurisdiction-picker-shell {
   display: grid;
-  gap: 14px;
-  width: min(1120px, calc(100vw - 48px));
+  gap: 18px;
+  width: min(1240px, calc(100vw - 40px));
   margin: 0 auto;
 }
 
 .jurisdiction-picker-hero {
-  padding: 20px 28px;
-  border: 1px solid rgba(55, 124, 54, 0.2);
-  border-radius: 20px;
-  background:
-    linear-gradient(135deg, rgba(55, 124, 54, 0.16), rgba(255, 255, 255, 0.96)),
-    var(--surface);
-  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
+  width: 100%;
+  padding: 24px 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 98%, var(--bg) 2%);
+  box-shadow: var(--card-shadow);
+}
+
+.jurisdiction-picker-hero-instruction {
+  max-width: none;
 }
 
 .jurisdiction-picker-title {
   margin: 0 0 8px;
-  font-size: clamp(30px, 3.8vw, 46px);
-  line-height: 1.04;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .jurisdiction-picker-subtitle {
-  max-width: 700px;
+  width: 100%;
+  max-width: none;
   margin-bottom: 0;
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 
 .jurisdiction-picker-stack {
   display: grid;
-  gap: 14px;
+  gap: 18px;
 }
 
 .jurisdiction-picker-toolbar {
   display: block;
-  padding: 14px 18px;
+  padding: 20px 22px 22px;
   border: 1px solid var(--border-subtle);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.04);
+  background: var(--surface-elevated);
+  box-shadow: var(--card-shadow);
 }
 
 .jurisdiction-picker-search {
   margin-bottom: 0;
+  gap: 8px;
+  font-size: 14px;
 }
 
 .jurisdiction-picker-search-field {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 46px;
-  padding: 0 12px;
-  border: 1px solid var(--border-subtle);
+  min-height: 60px;
+  padding: 0 15px;
+  border: 1px solid var(--input-border);
   border-radius: 14px;
-  background: white;
+  background: var(--input-bg);
   transition:
     border-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -712,10 +770,10 @@ main {
 }
 
 .jurisdiction-picker-search-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  color: var(--text-secondary);
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--accent);
   pointer-events: none;
 }
 
@@ -726,6 +784,7 @@ main {
 
 .jurisdiction-picker-search-input {
   height: 100%;
+  width: 100%;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -733,6 +792,10 @@ main {
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.35;
+  min-width: 0;
 }
 
 .jurisdiction-picker-search-input::-webkit-search-decoration,
@@ -744,24 +807,18 @@ main {
 }
 
 .jurisdiction-picker-search-input::placeholder {
-  color: #7d8796;
+  color: var(--input-placeholder);
 }
 
 .jurisdiction-picker-search-field:focus-within {
-  border-color: rgba(55, 124, 54, 0.4);
+  border-color: var(--border-strong);
   box-shadow:
-    0 0 0 3px rgba(55, 124, 54, 0.14),
-    0 8px 20px rgba(55, 124, 54, 0.08);
+    0 0 0 3px var(--focus-ring-soft),
+    0 8px 20px rgba(17, 24, 39, 0.08);
 }
 
 .jurisdiction-picker-search-input:focus-visible {
   outline: none;
-}
-
-.jurisdiction-picker-search-note {
-  color: var(--text-secondary);
-  font-size: 12px;
-  margin-top: 4px;
 }
 
 .jurisdiction-picker-grid {
@@ -770,16 +827,55 @@ main {
   gap: 10px;
 }
 
+.jurisdiction-picker-search-section,
+.jurisdiction-picker-results-section {
+  display: grid;
+  gap: 12px;
+}
+
+.jurisdiction-picker-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.jurisdiction-picker-section-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
+.jurisdiction-picker-section-copy {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.42;
+}
+
+.jurisdiction-picker-results-list {
+  display: grid;
+  gap: 12px;
+}
+
+.jurisdiction-picker-results-list-suggested {
+  grid-template-columns: 1fr;
+}
+
+.jurisdiction-picker-results-list-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .jurisdiction-picker-card {
   display: grid;
-  gap: 10px;
+  gap: 0;
   min-height: 0;
-  padding: 16px 20px;
-  border: 1px solid #d3ddd2;
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(244, 244, 244, 0.62), rgba(255, 255, 255, 1)),
-    var(--surface);
+  padding: 20px 20px 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--surface-elevated);
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,
@@ -790,59 +886,38 @@ main {
 .jurisdiction-picker-card:focus-within,
 .jurisdiction-picker-card.is-expanded {
   transform: translateY(-1px);
-  border-color: rgba(55, 124, 54, 0.42);
-  box-shadow: 0 14px 28px rgba(17, 24, 39, 0.08);
-}
-
-.jurisdiction-picker-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.jurisdiction-picker-status {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  border-color: var(--border-strong);
+  box-shadow: var(--card-shadow-hover);
 }
 
 .jurisdiction-picker-card-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.95fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr);
   align-items: center;
-  gap: 16px 24px;
+  gap: 18px 24px;
 }
 
 .jurisdiction-picker-card-identity {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 15px;
   min-width: 0;
 }
 
 .jurisdiction-picker-card-logo {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  flex: 0 0 52px;
-  border: 1px solid rgba(55, 124, 54, 0.12);
-  border-radius: 14px;
-  background: rgba(55, 124, 54, 0.08);
-  color: var(--accent-strong);
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-overlay);
+  color: var(--accent);
 }
 
 .jurisdiction-picker-card-logo.has-image {
-  background: #fff;
+  background: var(--surface-overlay);
   color: inherit;
 }
 
@@ -860,22 +935,36 @@ main {
 
 .jurisdiction-picker-card-title {
   margin: 0;
-  font-size: 20px;
-  line-height: 1.1;
+  font-size: 18px;
+  line-height: 1.12;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .jurisdiction-picker-card-copy {
   color: var(--text-secondary);
   line-height: 1.45;
   margin: 0;
-  margin-top: 4px;
+  margin-top: 2px;
+}
+
+.jurisdiction-picker-card-copy-stack {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.jurisdiction-picker-card-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
 }
 
 .jurisdiction-picker-metadata {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-start;
   align-content: center;
 }
@@ -883,14 +972,21 @@ main {
 .jurisdiction-picker-meta-item {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 11px;
-  border: 1px solid rgba(55, 124, 54, 0.14);
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-subtle);
   border-radius: 999px;
-  background: rgba(55, 124, 54, 0.05);
+  background: var(--surface-overlay);
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
+}
+
+.jurisdiction-picker-card-support {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  align-content: center;
 }
 
 .jurisdiction-picker-actions {
@@ -900,17 +996,23 @@ main {
 }
 
 .jurisdiction-picker-button-primary {
-  min-width: 164px;
-  min-height: 38px;
+  min-width: 156px;
+  min-height: 42px;
+  font-weight: 700;
+  align-self: center;
 }
 
 .jurisdiction-picker-empty,
 .jurisdiction-picker-empty-copy {
-  color: var(--muted);
+  color: var(--text-secondary);
+}
+
+.jurisdiction-picker-empty-state {
+  padding: 20px 22px;
 }
 
 .jurisdiction-picker-support {
-  padding: 8px 2px 0;
+  padding: 6px 2px 0;
   color: var(--text-secondary);
   font-size: 14px;
 }
@@ -5687,8 +5789,17 @@ html[data-theme='dark'] .assistant-tool-result-details pre {
     gap: 12px;
   }
 
+  .jurisdiction-picker-results-list-compact,
+  .jurisdiction-picker-results-list-suggested {
+    grid-template-columns: 1fr;
+  }
+
   .jurisdiction-picker-card-identity {
     align-items: flex-start;
+  }
+
+  .jurisdiction-picker-card-support {
+    justify-items: start;
   }
 
   .jurisdiction-picker-metadata {
@@ -6279,8 +6390,8 @@ html[data-theme='dark'] .assistant-tool-result-details pre {
   border-radius: 12px;
   padding: 10px 12px;
   font: inherit;
-  color: var(--ink);
-  background: white;
+  color: var(--text-primary);
+  background: var(--input-bg);
   transition:
     border-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -6337,10 +6448,16 @@ html[data-theme='dark'] .assistant-tool-result-details pre {
 .field select:focus-visible,
 .field textarea:focus-visible {
   outline: none;
-  border-color: rgba(55, 124, 54, 0.42);
+  border-color: var(--border-strong);
   box-shadow:
-    0 0 0 3px rgba(55, 124, 54, 0.14),
-    0 8px 20px rgba(55, 124, 54, 0.08);
+    0 0 0 3px var(--focus-ring-soft),
+    0 8px 20px rgba(17, 24, 39, 0.08);
+}
+
+.field input::placeholder,
+.field select::placeholder,
+.field textarea::placeholder {
+  color: var(--input-placeholder);
 }
 
 .admin-form-actions {

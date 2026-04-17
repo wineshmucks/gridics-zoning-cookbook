@@ -2,6 +2,9 @@
 
 This is the canonical host/path routing model for the split product setup.
 
+For deploys, the canonical public URLs are configured with `AGENTIC_PUBLIC_BASE_URL` and
+`LETTERS_PUBLIC_BASE_URL`. The older host-map fallback is still available for local testing.
+
 ## Public Tenant Routes
 
 ### Assistant Host

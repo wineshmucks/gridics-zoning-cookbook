@@ -1,8 +1,7 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
-
 import { AdminSidebarItem } from './AdminSurfacePrimitives'
+import { useHydratedPathname } from '../lib/use-hydrated-pathname'
 
 const workspaceItems = [
   { href: '/super-admin', label: 'Jurisdictions', icon: 'jurisdiction-details' as const },
@@ -20,7 +19,7 @@ function isItemActive(pathname: string, href: string) {
 }
 
 export function SuperAdminWorkspaceSidebar() {
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
 
   return (
     <aside className="super-admin-sidebar super-admin-workspace-sidebar">

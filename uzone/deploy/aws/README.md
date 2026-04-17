@@ -32,6 +32,8 @@ If you also need to reuse an existing shared ALB, set:
 - `existing_alb_host_header`
 - `public_base_url`
 
+The ALB ARN and listener ARN(s) must belong to the same AWS account and region as the credentials you use for Terraform. If they come from another account, AWS will reject the lookup with a `DescribeLoadBalancers` validation error.
+
 Routing is path-based:
 
 - `/` -> frontend
@@ -135,13 +137,48 @@ aws sts get-caller-identity
 
 ## Deploy Flow
 
-You can do the first deployment without a custom domain:
+The easiest path for both staging and production is to use `deploy-from-env.sh` with the matching environment file:
+
+```bash
+# staging
+ENV_FILE=uzone/.env-deploy.staging DEPLOY_ENVIRONMENT=staging ./uzone/deploy/aws/deploy-from-env.sh
+
+# production
+ENV_FILE=uzone/.env-deploy.prod DEPLOY_ENVIRONMENT=prod ./uzone/deploy/aws/deploy-from-env.sh
+```
+
+Keep `uzone/.env-deploy` as the shared baseline and create `uzone/.env-deploy.prod` locally when you need a production deploy file. The production file should stay untracked.
+
+The script will:
+
+- source the selected `.env-deploy.*` file
+- generate `terraform.tfvars`
+- build and push the application images
+- apply Terraform
+- run smoke tests against the deployed environment
+- select a Terraform workspace scoped to the current AWS account, so state from another account is not reused accidentally
+
+Make sure the `AWS_PROFILE` value inside the selected env file exists in your local AWS config. The deploy scripts refuse `AWS_PROFILE=default` so they cannot accidentally write to the wrong AWS account.
+Set `UZONE_TAG_ENV` and `UZONE_TAG_NAME` in `.env-deploy.staging` and your local `.env-deploy.prod` if you want provider-level default tags applied automatically to every AWS resource. In this setup, `Env` is `dev` for staging and `prod` for production, and `Name` is `gridics-zoning-suite`.
+Set `UZONE_DB_ENGINE_VERSION` if you need to pin the RDS Postgres version explicitly. The current deploy files use `16.13`.
+Set `AGENTIC_PUBLIC_BASE_URL` and `LETTERS_PUBLIC_BASE_URL` in `.env-deploy.staging` and your local `.env-deploy.prod`
+to define the canonical public URLs for the assistant and letters experiences. `deploy-from-env.sh`
+mirrors those into `NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL` and `NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL`
+for the frontend build/runtime.
+
+The deploy flow also includes a title smoke test for the agentic home page and the jurisdiction picker so the browser tab never leaks a real jurisdiction name there. If you want to run it manually against a deployed environment, use:
+
+```bash
+./uzone/deploy/aws/verify-select-jurisdiction-title.sh https://st1-agentic.gridics.com
+```
+
+You can still do the first deployment without a custom domain:
 
 - leave `certificate_arn = ""`
 - use the ALB DNS name over HTTP
 - verify ECS, RDS, migrations, and page routing first
 - `deploy-from-env.sh` now uses the Terraform `alb_dns_name` automatically for smoke tests unless you explicitly set `SMOKE_TEST_BASE_URL`
-- if `UZONE_PUBLIC_BASE_URL` is set in `.env-deploy`, the deploy script will smoke test that public URL before falling back to the ALB hostname
+- if `AGENTIC_PUBLIC_BASE_URL` is set in `.env-deploy.staging` or your local `.env-deploy.prod`, the deploy script will smoke test that assistant public URL before falling back to the ALB hostname
 
 After that, add a real domain or subdomain you control, request an ACM certificate, set `certificate_arn`, and re-apply Terraform to enable HTTPS.
 
@@ -192,6 +229,10 @@ For the current app configuration in [uzone/.env](/workspaces/gridics-zoning-coo
 - `backend_environment.UZONE_CLERK_AUTHORIZED_PARTIES`
 - `backend_environment.UZONE_ASSETS_PREFIX`
 - `frontend_environment.GRIDICS_CLERK_ORGANIZATION_SLUG`
+- `frontend_environment.AGENTIC_PUBLIC_BASE_URL`
+- `frontend_environment.LETTERS_PUBLIC_BASE_URL`
+- `frontend_environment.NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL`
+- `frontend_environment.NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL`
 - `frontend_secret_arns.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `frontend_secret_arns.CLERK_SECRET_KEY`
 
@@ -258,7 +299,7 @@ If you reused an existing shared ALB, `alb_dns_name` will return that existing A
 If you want the deploy script to smoke test a real custom domain instead of the ALB hostname, override it explicitly:
 
 ```bash
-SMOKE_TEST_BASE_URL=https://uzones.dev ./deploy-from-env.sh
+ENV_FILE=uzone/.env-deploy.staging SMOKE_TEST_BASE_URL=https://uzones.dev ./uzone/deploy/aws/deploy-from-env.sh
 ```
 
 ## Recommended Mapping From The Current `.env`
@@ -309,6 +350,8 @@ Use plain Terraform maps for non-secret config:
 
 - `backend_environment`
 - `frontend_environment`
+- `tag_env`
+- `tag_name`
 
 Use `backend_secret_arns` and `frontend_secret_arns` for secrets already stored in AWS Secrets Manager or SSM Parameter Store.
 
@@ -321,10 +364,15 @@ Common backend variables:
 - `UZONE_EMAIL_FROM`
 - `UZONE_CLERK_JWKS_URL`
 - `UZONE_CLERK_AUTHORIZED_PARTIES`
+- `UZONE_DB_ENGINE_VERSION`
+- `AGENTIC_PUBLIC_BASE_URL`
+- `LETTERS_PUBLIC_BASE_URL`
 
 Common frontend variables:
 
 - `CLERK_SECRET_KEY`
+- `NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL`
+- `NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL`
 
 ## Notes
 
@@ -336,3 +384,105 @@ Common frontend variables:
 - If you need a custom domain, attach Route 53 records to the ALB after the initial deploy.
 - If you are deploying into an existing staging VPC, supply the VPC and subnet IDs through `use_existing_vpc` / `existing_*_subnet_ids` instead of letting Terraform create a new network.
 - If you are deploying through an existing shared ALB, also supply `use_existing_alb`, the ALB ARN, at least one listener ARN, a host header, and `public_base_url`.
+
+## Troubleshooting
+
+When a deploy succeeds but the site still fails in the browser, check the live ECS service events and CloudWatch logs first.
+
+The Terraform outputs give you the deployed cluster and service names:
+
+```bash
+terraform -chdir=uzone/deploy/aws/terraform output -raw ecs_cluster_name
+terraform -chdir=uzone/deploy/aws/terraform output -raw frontend_service_name
+terraform -chdir=uzone/deploy/aws/terraform output -raw backend_service_name
+```
+
+Useful AWS CLI commands:
+
+```bash
+# Service health and recent ECS events
+aws ecs describe-services \
+  --cluster "$(terraform -chdir=uzone/deploy/aws/terraform output -raw ecs_cluster_name)" \
+  --services \
+    "$(terraform -chdir=uzone/deploy/aws/terraform output -raw frontend_service_name)" \
+    "$(terraform -chdir=uzone/deploy/aws/terraform output -raw backend_service_name)" \
+  --profile staging \
+  --region us-east-1 \
+  --query 'services[].{name:serviceName,running:runningCount,pending:pendingCount,events:events[0:5].message}' \
+  --output table
+
+# Tail frontend logs
+aws logs tail \
+  "/ecs/$(terraform -chdir=uzone/deploy/aws/terraform output -raw frontend_service_name)" \
+  --profile staging \
+  --region us-east-1 \
+  --since 30m \
+  --follow
+
+# Tail backend logs
+aws logs tail \
+  "/ecs/$(terraform -chdir=uzone/deploy/aws/terraform output -raw backend_service_name)" \
+  --profile staging \
+  --region us-east-1 \
+  --since 30m \
+  --follow
+```
+
+If the frontend only fails in the browser and the ECS logs stay clean, that usually points to a hydration or runtime error in Next.js rather than an API or container startup failure. In that case, capture the browser console stack trace before changing infrastructure.
+
+The frontend also reports browser `error` and `unhandledrejection` events to `/api/client-error`, so those failures should show up in the frontend CloudWatch log stream once the app is running.
+
+If you need to reproduce the browser issue directly from this workspace, use a headless browser against the live URL and record console output:
+
+```bash
+# On Ubuntu 24.04, install the system libraries Chromium needs first.
+# The Playwright helper is the easiest route if you have sudo:
+sudo npx playwright install-deps chromium
+
+# If you prefer the explicit apt packages on Ubuntu 24.04, this is the minimum
+# set that fixed the missing-shared-library error in this workspace:
+sudo apt-get update
+sudo apt-get install -y libnspr4 libnss3 libasound2t64
+
+# Install Playwright browsers once if needed
+npx playwright install chromium
+
+# Run a one-off repro that captures console errors and the rendered body
+NODE_PATH="$(npm root -g 2>/dev/null):${NODE_PATH:-}" \
+PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 \
+node <<'NODE'
+const { chromium } = require('playwright')
+
+(async () => {
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
+  const page = await browser.newPage()
+  const messages = []
+
+  page.on('console', (msg) => messages.push({ type: msg.type(), text: msg.text() }))
+  page.on('pageerror', (err) => messages.push({ type: 'pageerror', text: String(err) }))
+  page.on('requestfailed', (req) =>
+    messages.push({
+      type: 'requestfailed',
+      text: `${req.method()} ${req.url()} ${req.failure()?.errorText || ''}`.trim(),
+    }),
+  )
+
+  const response = await page.goto('https://st1-agentic.gridics.com/', {
+    waitUntil: 'networkidle',
+    timeout: 120000,
+  })
+
+  console.log(JSON.stringify({
+    status: response && response.status(),
+    url: page.url(),
+    title: await page.title(),
+    text: await page.locator('body').innerText().catch(() => ''),
+    messages,
+  }, null, 2))
+
+  await browser.close()
+})()
+NODE
+```
+
+If Playwright cannot run on the host because browser libraries are missing, fall back to the CloudWatch client-error log path above and/or capture the browser console stack trace from a local machine that can launch Chromium.

@@ -1,28 +1,45 @@
 import './globals.css'
 import { Inter } from 'next/font/google'
+import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 
 import { AuthControls, ClerkShell } from '../components/ClerkShell'
+import { ClientErrorReporter } from '../components/ClientErrorReporter'
 import { HeaderBrand } from '../components/HeaderBrand'
 import { PublicNav } from '../components/PublicNav'
-import { getCurrentHost, getCurrentOrgId, getCurrentProduct, getCurrentScopePath } from '../lib/org-context'
+import { getCurrentHost, getCurrentOrgId, getCurrentPathname, getCurrentProduct, getCurrentScopePath } from '../lib/org-context'
 import { getPermissionContext } from '../lib/permissions'
 import { getTenantConfig } from '../lib/tenant'
+import { resolveAgenticBrowserTitle } from '../lib/public-branding'
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
 })
 
-export const metadata = {
-  title: 'UZone',
-  description: 'Zoning verification workflow',
+export async function generateMetadata(): Promise<Metadata> {
+  const currentPathname = await getCurrentPathname()
+  const currentProduct = await getCurrentProduct()
+  const orgId = await getCurrentOrgId()
+  const tenant = await getTenantConfig()
+
+  return {
+    title: resolveAgenticBrowserTitle({
+      pathname: currentPathname,
+      currentProduct,
+      orgId,
+      publicSiteTitle: tenant.public_site_title,
+      cityName: tenant.city_name,
+    }),
+    description: 'Zoning verification workflow',
+  }
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const orgId = await getCurrentOrgId()
   const currentScopePath = await getCurrentScopePath()
+  const currentPathname = await getCurrentPathname()
   const currentHost = await getCurrentHost()
   const currentProduct = await getCurrentProduct()
   const isEmbedSurface = currentScopePath?.startsWith('/embed') ?? false
@@ -31,7 +48,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const permissions = await getPermissionContext(clerkEnabled)
   const displayCityName = orgId ? tenant.city_name : 'UZone'
   const displayDepartmentName = orgId ? tenant.department_name : 'Choose a Jurisdiction'
-  const logoUrl = !isSuperAdminScope && orgId ? tenant.logo_path || null : null
+  const isJurisdictionPickerRoute =
+    currentPathname === '/select-jurisdiction' ||
+    (currentPathname === '/' && currentProduct === 'assistant')
+  const brandTitle = resolveAgenticBrowserTitle({
+    pathname: currentPathname,
+    currentProduct,
+    orgId,
+    publicSiteTitle: tenant.public_site_title,
+    cityName: tenant.city_name,
+  })
+  const logoUrl = !isSuperAdminScope && !isJurisdictionPickerRoute && orgId ? tenant.logo_path || null : null
+  const brandVariant = isSuperAdminScope || isJurisdictionPickerRoute ? 'gridics' : 'tenant'
 
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
@@ -53,6 +81,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <ClerkShell clerkEnabled={clerkEnabled}>
+          <ClientErrorReporter />
           {isEmbedSurface ? (
             <main>{children}</main>
           ) : (
@@ -63,9 +92,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     clerkEnabled={clerkEnabled}
                     cityName={displayCityName}
                     departmentName={displayDepartmentName}
+                    title={brandTitle}
                     logoUrl={logoUrl}
-                    brandVariant={isSuperAdminScope ? 'gridics' : 'tenant'}
+                    brandVariant={brandVariant}
                     currentScopePath={currentScopePath}
+                    currentProduct={currentProduct}
+                    currentOrgId={orgId}
                     currentCustomerName={permissions.currentClientMembership?.organizationName || null}
                     adminMemberships={permissions.adminMemberships}
                     selectedAdminOrganizationId={permissions.selectedAdminMembership?.organizationId || null}

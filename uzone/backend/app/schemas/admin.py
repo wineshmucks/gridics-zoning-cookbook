@@ -250,6 +250,7 @@ class TenantClientCreate(BaseModel):
     city_name: str = Field(min_length=1, max_length=255)
     department_name: str = Field(min_length=1, max_length=255, default="Planning & Zoning Department")
     jurisdiction_id: str | None = None
+    market: str | None = Field(default=None, max_length=255)
     standard_letter_fee_cents: int = Field(default=0, ge=0)
     comprehensive_letter_fee_cents: int = Field(default=0, ge=0)
     expedited_fee_cents: int = Field(default=0, ge=0)
@@ -287,6 +288,7 @@ class TenantClientUpdate(BaseModel):
     clerk_organization_id: str | None = Field(default=None, min_length=1, max_length=255)
     clerk_slug: str | None = Field(default=None, min_length=1, max_length=255)
     path_alias: str | None = Field(default=None, max_length=255)
+    market: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
 
 

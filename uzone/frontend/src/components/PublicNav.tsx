@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 
 import { buildAssistantHref, buildLettersHref } from '../lib/org-url'
 import type { UzoneProduct } from '../lib/product-routing'
+import { useHydratedPathname } from '../lib/use-hydrated-pathname'
+import { isAgenticPickerRoute } from '../lib/public-branding'
 
 type NavItem = {
   href: string
@@ -31,7 +32,7 @@ export function PublicNav({
   currentHost: string | null
   currentProduct: UzoneProduct
 }) {
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
   const isAssistantSurface =
     pathname === '/ai-assistant' ||
     pathname.startsWith('/ai-assistant/') ||
@@ -40,7 +41,11 @@ export function PublicNav({
         pathname.startsWith(`${scopePath}/assistant/`) ||
         (currentProduct === 'assistant' && pathname === scopePath)
       : false)
-  const isJurisdictionPicker = pathname === '/select-jurisdiction'
+  const isJurisdictionPicker = isAgenticPickerRoute({
+    pathname,
+    currentProduct,
+    orgId,
+  })
 
   if (isAssistantSurface || isJurisdictionPicker) {
     return null

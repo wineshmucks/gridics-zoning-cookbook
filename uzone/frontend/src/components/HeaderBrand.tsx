@@ -1,20 +1,25 @@
 'use client'
 
 import { useClerk } from '@clerk/nextjs'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { startTransition, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import type { ClientMembership } from '../lib/permissions'
 import { buildInternalOrgScopePath, replaceScopePathInPathname } from '../lib/org-url'
+import { useHydratedPathname } from '../lib/use-hydrated-pathname'
+import { isAgenticPickerRoute } from '../lib/public-branding'
 import { BuildingLogo } from './BuildingLogo'
 
 type Props = {
   clerkEnabled: boolean
   cityName: string
   departmentName: string
+  title?: string | null
   logoUrl: string | null
   brandVariant: 'tenant' | 'gridics'
   currentScopePath: string | null
+  currentProduct?: 'assistant' | 'letters'
+  currentOrgId?: string | null
   currentCustomerName: string | null
   adminMemberships: ClientMembership[]
   selectedAdminOrganizationId: string | null
@@ -24,9 +29,12 @@ export function HeaderBrand({
   clerkEnabled,
   cityName,
   departmentName,
+  title,
   logoUrl,
   brandVariant,
   currentScopePath,
+  currentProduct,
+  currentOrgId,
   currentCustomerName,
   adminMemberships,
   selectedAdminOrganizationId,
@@ -36,6 +44,7 @@ export function HeaderBrand({
       <StaticHeaderBrand
         cityName={cityName}
         departmentName={departmentName}
+        title={title}
         logoUrl={logoUrl}
         brandVariant={brandVariant}
       />
@@ -46,9 +55,12 @@ export function HeaderBrand({
     <ClerkHeaderBrand
       cityName={cityName}
       departmentName={departmentName}
+      title={title}
       logoUrl={logoUrl}
       brandVariant={brandVariant}
       currentScopePath={currentScopePath}
+      currentProduct={currentProduct}
+      currentOrgId={currentOrgId}
       currentCustomerName={currentCustomerName}
       adminMemberships={adminMemberships}
       selectedAdminOrganizationId={selectedAdminOrganizationId}
@@ -59,17 +71,21 @@ export function HeaderBrand({
 function StaticHeaderBrand({
   cityName,
   departmentName,
+  title,
   logoUrl,
   brandVariant,
 }: {
   cityName: string
   departmentName: string
+  title?: string | null
   logoUrl: string | null
   brandVariant: 'tenant' | 'gridics'
+  currentProduct?: 'assistant' | 'letters'
+  currentOrgId?: string | null
 }) {
   const showSubtitle = Boolean(departmentName.trim())
   const isGridicsBrand = brandVariant === 'gridics'
-  const title = isGridicsBrand ? 'Gridics' : cityName
+  const resolvedTitle = title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
   const subtitle = isGridicsBrand ? '' : departmentName
 
   return (
@@ -78,7 +94,7 @@ function StaticHeaderBrand({
         {isGridicsBrand ? <GridicsLogo /> : <BuildingLogo logoUrl={logoUrl} alt={`${cityName} logo`} />}
       </div>
       <div className="brand-copy">
-        <div className="brand-title">{title}</div>
+        <div className="brand-title">{resolvedTitle}</div>
         {showSubtitle && subtitle ? <div className="brand-subtitle">{subtitle}</div> : null}
       </div>
     </div>
@@ -88,15 +104,18 @@ function StaticHeaderBrand({
 function ClerkHeaderBrand({
   cityName,
   departmentName,
+  title,
   logoUrl,
   brandVariant,
+  currentProduct,
+  currentOrgId,
   currentScopePath,
   currentCustomerName,
   adminMemberships,
   selectedAdminOrganizationId,
 }: Omit<Props, 'clerkEnabled'>) {
   const { setActive } = useClerk()
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(false)
@@ -108,19 +127,23 @@ function ClerkHeaderBrand({
       : pathname
   const isAdminRoute = currentScopedPathname.startsWith('/admin')
   const isSuperAdminRoute = currentScopedPathname.startsWith('/super-admin')
-  const isJurisdictionPickerRoute = pathname.startsWith('/select-jurisdiction')
+  const isJurisdictionPickerRoute = isAgenticPickerRoute({
+    pathname,
+    currentProduct: currentProduct ?? null,
+    orgId: currentOrgId ?? null,
+  })
   const canSwitchOrganizations = isAdminRoute && adminMemberships.length > 1
   const selectedMembership =
     adminMemberships.find((membership) => membership.organizationId === selectedAdminOrganizationId) ||
     null
   const resolvedCustomerName = currentCustomerName || selectedMembership?.organizationName || cityName
-  const title = isSuperAdminRoute
+  const resolvedTitle = isSuperAdminRoute
     ? 'Super Admin'
     : isJurisdictionPickerRoute
-      ? 'Gridics'
+      ? title?.trim() || 'Gridics AI Assistant'
     : isAdminRoute
       ? selectedMembership?.organizationName || resolvedCustomerName
-      : resolvedCustomerName
+      : title?.trim() || resolvedCustomerName
   const subtitle = isJurisdictionPickerRoute ? '' : departmentName
 
   async function switchOrganization(nextOrganizationId: string) {
@@ -160,12 +183,12 @@ function ClerkHeaderBrand({
   return (
     <div className="brand brand-header">
       <div className={`brand-mark brand-mark-public${logoUrl ? ' brand-mark-has-image' : ''}`}>
-        {brandVariant === 'gridics' ? <GridicsLogo /> : <BuildingLogo logoUrl={logoUrl} alt={`${title} logo`} />}
+        {brandVariant === 'gridics' ? <GridicsLogo /> : <BuildingLogo logoUrl={logoUrl} alt={`${resolvedTitle} logo`} />}
       </div>
       <div className="brand-copy">
         <div className="brand-title-row">
           <div>
-            <div className="brand-title">{title}</div>
+            <div className="brand-title">{resolvedTitle}</div>
             {subtitle ? <div className="brand-subtitle">{subtitle}</div> : null}
           </div>
           {canSwitchOrganizations ? (

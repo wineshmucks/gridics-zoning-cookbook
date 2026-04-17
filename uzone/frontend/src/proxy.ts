@@ -9,7 +9,7 @@ import {
   UNSCOPED_ROUTE_PREFIXES,
 } from './lib/org-constants'
 import { getServerBackendOrigin } from './lib/backend'
-import { inferProductFromHost } from './lib/product-routing'
+import { inferProductFromHost, isKnownProductHost } from './lib/product-routing'
 
 function isProtectedPath(pathname: string) {
   return (
@@ -32,11 +32,6 @@ function isAssistantAliasRoute(pathname: string, scopePath: string | null): bool
   }
 
   return pathname === `${scopePath}/assistant` || pathname.startsWith(`${scopePath}/assistant/`)
-}
-
-function isBrandedProductHost(host: string | null | undefined) {
-  const normalized = (host || '').toLowerCase()
-  return normalized.includes('agentic.') || normalized.includes('zvl.')
 }
 
 async function resolveAliasPrefix(
@@ -104,6 +99,12 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
   let scopedPathname = pathname
   let isScopedRoute = false
   let shouldClearOrgCookies = false
+
+  if (isHomepage && currentProduct === 'assistant') {
+    effectiveOrgId = ''
+    effectiveScopePath = ''
+    shouldClearOrgCookies = true
+  }
 
   if (isAiAssistantRoute) {
     const assistantScopePath = pathname === '/ai-assistant' ? '' : pathname.slice('/ai-assistant'.length)
@@ -174,6 +175,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
   requestHeaders.set('x-uzone-host', req.headers.get('host') || '')
   requestHeaders.set('x-uzone-clientid', req.nextUrl.searchParams.get('clientid') || '')
   requestHeaders.set('x-uzone-orgid', effectiveOrgId)
+  requestHeaders.set('x-uzone-pathname', pathname)
   requestHeaders.set('x-uzone-scope-path', effectiveScopePath)
   requestHeaders.set('x-uzone-scoped-path', scopedPathname)
   requestHeaders.set('x-uzone-product', currentProduct)
@@ -184,7 +186,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
     await auth.protect()
   }
 
-  if (!isExcludedRoute && isHomepage && !isBrandedProductHost(requestHost)) {
+  if (!isExcludedRoute && isHomepage && !isKnownProductHost(requestHost)) {
     const redirectUrl = req.nextUrl.clone()
     redirectUrl.pathname = '/select-jurisdiction'
     redirectUrl.search = ''

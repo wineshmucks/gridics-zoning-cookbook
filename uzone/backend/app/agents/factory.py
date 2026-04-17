@@ -77,7 +77,7 @@ def build_agent_model(
     api_key: str | None = None,
     base_url: str | None = None,
     max_tokens: int = 4096,
-    allow_env_fallback: bool = False,
+    allow_env_fallback: bool = True,
     allow_missing_api_key: bool = False,
 ):
     """Construct the Agno chat model configured for zoning chat agents."""

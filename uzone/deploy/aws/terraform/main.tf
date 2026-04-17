@@ -11,6 +11,12 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  default_tags {
+    tags = merge(local.common_tags, {
+      Name = var.tag_name
+    })
+  }
 }
 
 data "aws_availability_zones" "available" {
@@ -29,7 +35,7 @@ locals {
   common_tags = merge(
     {
       Project     = var.project
-      Environment = var.environment
+      Env         = var.tag_env
       ManagedBy   = "terraform"
     },
     var.tags
@@ -111,9 +117,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-vpc"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_internet_gateway" "main" {
@@ -121,9 +125,7 @@ resource "aws_internet_gateway" "main" {
 
   vpc_id = aws_vpc.main[0].id
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-igw"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_subnet" "public" {
@@ -135,7 +137,6 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-public-${count.index + 1}"
     Tier = "public"
   })
 }
@@ -148,7 +149,6 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-private-${count.index + 1}"
     Tier = "private"
   })
 }
@@ -163,9 +163,7 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.main[0].id
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-public-rt"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_route_table_association" "public" {
@@ -179,9 +177,7 @@ resource "aws_db_subnet_group" "postgres" {
   name       = "${local.name_prefix}-db-subnets"
   subnet_ids = local.effective_private_subnet_ids
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-db-subnets"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_security_group" "alb" {
@@ -215,9 +211,7 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-alb"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_security_group" "frontend" {
@@ -239,9 +233,7 @@ resource "aws_security_group" "frontend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-frontend"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_security_group" "backend" {
@@ -263,9 +255,7 @@ resource "aws_security_group" "backend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-backend"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_security_group" "postgres" {
@@ -287,9 +277,7 @@ resource "aws_security_group" "postgres" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-postgres"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_db_instance" "postgres" {
@@ -312,9 +300,7 @@ resource "aws_db_instance" "postgres" {
   multi_az                   = false
   auto_minor_version_upgrade = true
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-postgres"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_ecr_repository" "backend" {
@@ -325,9 +311,7 @@ resource "aws_ecr_repository" "backend" {
     scan_on_push = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-backend"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_ecr_repository" "frontend" {
@@ -338,9 +322,7 @@ resource "aws_ecr_repository" "frontend" {
     scan_on_push = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-frontend"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "backend" {
@@ -360,9 +342,7 @@ resource "aws_cloudwatch_log_group" "frontend" {
 resource "aws_s3_bucket" "logo_assets" {
   bucket = local.assets_bucket_name
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-logo-assets"
-  })
+  tags = local.common_tags
 }
 
 resource "aws_s3_bucket_public_access_block" "logo_assets" {
@@ -400,7 +380,6 @@ resource "aws_ecs_cluster" "main" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-cluster"
   })
 }
 
@@ -504,7 +483,6 @@ resource "aws_lb" "app" {
   subnets            = local.effective_public_subnet_ids
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-alb"
   })
 }
 

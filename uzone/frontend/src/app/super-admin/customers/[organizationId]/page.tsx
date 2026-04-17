@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { fetchCustomerRecord } from '../../../../app/admin/actions'
 import { SuperAdminCustomerManageClient } from '../../../../components/SuperAdminCustomerManageClient'
 import { getClerkManagementClient } from '../../../../lib/clerk'
+import { getMarketOptions } from '../../../../lib/markets'
 import { getPermissionContext } from '../../../../lib/permissions'
 
 type PageProps = {
@@ -38,6 +39,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
   }
 
   const displayName = organization?.name || tenantRecord?.city_name || organizationId
+  const marketOptions = getMarketOptions()
 
   const [adminMembers, pendingInvites] = organization
     ? await Promise.all([
@@ -91,6 +93,14 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
                 typeof (tenantRecord.settings_json as Record<string, unknown>).pathAlias === 'string'
               ? ((tenantRecord.settings_json as Record<string, unknown>).pathAlias as string)
             : null,
+        market:
+          tenantRecord?.settings_json &&
+          typeof tenantRecord.settings_json.market === 'string'
+            ? tenantRecord.settings_json.market
+            : tenantRecord?.settings_json &&
+                typeof (tenantRecord.settings_json as Record<string, unknown>).marketName === 'string'
+              ? ((tenantRecord.settings_json as Record<string, unknown>).marketName as string)
+              : null,
         logoPath:
           tenantRecord?.settings_json &&
           typeof tenantRecord.settings_json.header_logo_path === 'string'
@@ -103,6 +113,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
       }}
       adminMembers={adminMembers}
       pendingInvites={pendingInvites}
+      marketOptions={marketOptions}
     />
   )
 }

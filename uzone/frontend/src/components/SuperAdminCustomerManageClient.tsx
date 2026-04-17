@@ -38,6 +38,7 @@ type SelectedCustomer = {
   name: string
   departmentName: string | null
   pathAlias: string | null
+  market: string | null
   logoPath: string | null
   clerkOrganizationId: string
   slug: string | null
@@ -64,10 +65,12 @@ export function SuperAdminCustomerManageClient({
   customer,
   adminMembers,
   pendingInvites,
+  marketOptions,
 }: {
   customer: SelectedCustomer
   adminMembers: AdminMember[]
   pendingInvites: PendingInvite[]
+  marketOptions: string[]
 }) {
   const [inviteState, inviteAction, invitePending] = useActionState(inviteClientAdminAction, initialInviteState)
   const [removeState, removeAction, removePending] = useActionState(removeClientAdminAction, initialRemoveState)
@@ -201,6 +204,22 @@ export function SuperAdminCustomerManageClient({
               <label className="field">
                 <span>Public path alias</span>
                 <input name="pathAlias" defaultValue={customer.pathAlias || ''} placeholder="/us/fl/miami" />
+              </label>
+              <label className="field">
+                <span>Market served</span>
+                <input
+                  name="market"
+                  defaultValue={customer.market || ''}
+                  list="market-options"
+                  placeholder="Miami, FL"
+                  required
+                />
+                <datalist id="market-options">
+                  {marketOptions.map((market) => (
+                    <option key={market} value={market} />
+                  ))}
+                </datalist>
+                <small>Start typing to find the Gridics market this jurisdiction belongs to.</small>
               </label>
             </div>
 

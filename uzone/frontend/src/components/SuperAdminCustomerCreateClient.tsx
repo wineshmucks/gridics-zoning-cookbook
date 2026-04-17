@@ -14,7 +14,7 @@ const initialProvisionState: ProvisionClientState = {
   organizationId: null,
 }
 
-export function SuperAdminCustomerCreateClient() {
+export function SuperAdminCustomerCreateClient({ marketOptions }: { marketOptions: string[] }) {
   const [provisionState, provisionAction, provisionPending] = useActionState(
     provisionClientAction,
     initialProvisionState,
@@ -49,6 +49,21 @@ export function SuperAdminCustomerCreateClient() {
         <label className="field">
           <span>Jurisdiction name</span>
           <input name="clientName" required />
+        </label>
+        <label className="field">
+          <span>Market served</span>
+          <input
+            name="market"
+            list="market-options"
+            placeholder="Miami, FL"
+            required
+          />
+          <datalist id="market-options">
+            {marketOptions.map((market) => (
+              <option key={market} value={market} />
+            ))}
+          </datalist>
+          <small>Start typing to find the Gridics market this jurisdiction belongs to.</small>
         </label>
         <button className="button" type="submit" disabled={provisionPending}>
           {provisionPending ? 'Creating…' : 'Create Jurisdiction'}

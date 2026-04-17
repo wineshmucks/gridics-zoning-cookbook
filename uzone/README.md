@@ -47,6 +47,8 @@ It includes:
 - Terraform for ECR, ECS Fargate, ALB, and RDS PostgreSQL
 - a build-and-push script for publishing images to ECR
 
+The shared deploy baseline lives in `uzone/.env-deploy`. If you need a production deploy file, create `uzone/.env-deploy.prod` locally and keep it untracked.
+
 ## Seeded Demo Users
 
 - `admin@uzone.local` / `password123`
@@ -74,6 +76,32 @@ UZONE_API_BASE=http://localhost:8000 NEXT_PUBLIC_UZONE_API_BASE=http://localhost
 For local testing of the split host routing model (`agentic` vs `zvl`) with Windows or Linux hosts files, see:
 
 - [routing-matrix.md](/home/ben/gprojects/gridics-zoning-cookbook/uzone/docs/routing-matrix.md)
+
+The canonical public URLs for the split app surfaces are set with:
+
+- `AGENTIC_PUBLIC_BASE_URL`
+- `LETTERS_PUBLIC_BASE_URL`
+
+`deploy-from-env.sh` mirrors those into `NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL` and
+`NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL` for the frontend build/runtime. Example:
+
+```bash
+AGENTIC_PUBLIC_BASE_URL=https://st1-agentic.gridics.com
+LETTERS_PUBLIC_BASE_URL=https://st1-zvl.gridics.com
+```
+
+For local development, the frontend still supports the older
+`NEXT_PUBLIC_UZONE_PRODUCT_HOST_MAP` fallback, but the base URL variables are the preferred source
+of truth for staging and production.
+
+For AWS deploys, keep `uzone/.env-deploy` in git as the baseline and create `uzone/.env-deploy.prod`
+locally when you need a production-specific env file. Do not commit the prod file.
+
+Frontend host routing:
+
+- `AGENTIC_PUBLIC_BASE_URL=...`
+- `LETTERS_PUBLIC_BASE_URL=...`
+- optional fallback: `NEXT_PUBLIC_UZONE_PRODUCT_HOST_MAP=...`
 
 ## Current Scope
 

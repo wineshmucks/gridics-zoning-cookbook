@@ -209,7 +209,7 @@ variable "db_instance_class" {
 variable "db_engine_version" {
   description = "Postgres engine version."
   type        = string
-  default     = "16.6"
+  default     = "16.13"
 }
 
 variable "db_allocated_storage" {
@@ -324,4 +324,24 @@ variable "tags" {
   description = "Additional tags to apply to all resources."
   type        = map(string)
   default     = {}
+}
+
+variable "tag_env" {
+  description = "Environment tag value applied to provider default tags."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.tag_env) != ""
+    error_message = "tag_env must be set."
+  }
+}
+
+variable "tag_name" {
+  description = "Name tag value applied to provider default tags."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.tag_name) != ""
+    error_message = "tag_name must be set."
+  }
 }

@@ -1,11 +1,12 @@
 'use client'
 
 import { useClerk } from '@clerk/nextjs'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { startTransition, useState } from 'react'
 
 import type { ClientMembership } from '../lib/permissions'
 import { buildInternalOrgScopePath, replaceScopePathInPathname } from '../lib/org-url'
+import { useHydratedPathname } from '../lib/use-hydrated-pathname'
 
 type Props = {
   memberships: ClientMembership[]
@@ -15,7 +16,7 @@ type Props = {
 
 export function AdminOrganizationSwitcher({ memberships, selectedOrganizationId, currentScopePath }: Props) {
   const { setActive } = useClerk()
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [pendingOrganizationId, setPendingOrganizationId] = useState<string | null>(null)

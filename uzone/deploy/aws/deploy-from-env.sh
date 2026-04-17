@@ -16,12 +16,15 @@ APP_ALLOWED_ORIGINS_OVERRIDE="${APP_ALLOWED_ORIGINS_OVERRIDE:-}"
 DB_USERNAME_OVERRIDE="${DB_USERNAME_OVERRIDE:-}"
 DB_PASSWORD_OVERRIDE="${DB_PASSWORD_OVERRIDE:-}"
 DB_NAME_OVERRIDE="${DB_NAME_OVERRIDE:-}"
+DB_ENGINE_VERSION="${UZONE_DB_ENGINE_VERSION:-16.13}"
 CERTIFICATE_ARN_OVERRIDE="${CERTIFICATE_ARN_OVERRIDE:-}"
 SKIP_TERRAFORM_APPLY="${SKIP_TERRAFORM_APPLY:-0}"
 SKIP_IMAGE_PUSH="${SKIP_IMAGE_PUSH:-0}"
 SMOKE_TEST_TIMEOUT_SECONDS="${SMOKE_TEST_TIMEOUT_SECONDS:-180}"
 SMOKE_TEST_BASE_URL="${SMOKE_TEST_BASE_URL:-}"
 UZONE_PUBLIC_BASE_URL="${UZONE_PUBLIC_BASE_URL:-}"
+AGENTIC_PUBLIC_BASE_URL="${AGENTIC_PUBLIC_BASE_URL:-${UZONE_PUBLIC_BASE_URL:-}}"
+LETTERS_PUBLIC_BASE_URL="${LETTERS_PUBLIC_BASE_URL:-}"
 
 require_command() {
   local name="$1"
@@ -91,6 +94,36 @@ read_existing_tfvars_string() {
   sed -nE "s/^${key}[[:space:]]*=[[:space:]]*\"(.*)\"[[:space:]]*$/\\1/p" "${TFVARS_PATH}" | head -n 1
 }
 
+validate_elb_arn() {
+  local label="$1"
+  local arn="$2"
+
+  if [[ -z "${arn}" ]]; then
+    return 0
+  fi
+
+  if [[ "${arn}" =~ ^arn:aws:elasticloadbalancing:([^:]+):([0-9]{12}): ]]; then
+    local arn_region="${BASH_REMATCH[1]}"
+    local arn_account="${BASH_REMATCH[2]}"
+
+    if [[ "${arn_region}" != "${AWS_REGION}" ]]; then
+      echo "error: ${label} region ${arn_region} does not match AWS_REGION=${AWS_REGION}" >&2
+      exit 1
+    fi
+
+    if [[ "${arn_account}" != "${ACCOUNT_ID}" ]]; then
+      echo "error: ${label} account ${arn_account} does not match the active AWS account ${ACCOUNT_ID}" >&2
+      echo "hint: switch AWS_PROFILE or update ${label} to an ARN that exists in the current account" >&2
+      exit 1
+    fi
+
+    return 0
+  fi
+
+  echo "error: ${label} must be a valid ELB ARN" >&2
+  exit 1
+}
+
 resolve_secret_arn() {
   local secret_name="$1"
   aws secretsmanager describe-secret \
@@ -115,6 +148,30 @@ set -a
 source "${ENV_FILE}"
 set +a
 
+TAG_ENV="${UZONE_TAG_ENV:-}"
+TAG_NAME="${UZONE_TAG_NAME:-}"
+
+if [[ -z "${AWS_PROFILE:-}" ]]; then
+  echo "error: AWS_PROFILE must be set in ${ENV_FILE}; refusing to fall back to the default profile" >&2
+  exit 1
+fi
+
+if [[ "${AWS_PROFILE}" == "default" ]]; then
+  echo "error: AWS_PROFILE=default is not allowed for deploys in this workspace" >&2
+  echo "hint: use the staging profile that targets account 460508179634" >&2
+  exit 1
+fi
+
+if [[ -z "${TAG_ENV}" ]]; then
+  echo "error: UZONE_TAG_ENV must be set in ${ENV_FILE}" >&2
+  exit 1
+fi
+
+if [[ -z "${TAG_NAME}" ]]; then
+  echo "error: UZONE_TAG_NAME must be set in ${ENV_FILE}" >&2
+  exit 1
+fi
+
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text --region "${AWS_REGION}")"
 BACKEND_REPOSITORY_NAME="${PROJECT}-${DEPLOY_ENVIRONMENT}-backend"
 FRONTEND_REPOSITORY_NAME="${PROJECT}-${DEPLOY_ENVIRONMENT}-frontend"
@@ -138,6 +195,12 @@ EXISTING_ALB_HOST_HEADER="${UZONE_EXISTING_ALB_HOST_HEADER:-}"
 EXISTING_ALB_FRONTEND_RULE_PRIORITY="${UZONE_EXISTING_ALB_FRONTEND_RULE_PRIORITY:-110}"
 EXISTING_ALB_API_RULE_PRIORITY="${UZONE_EXISTING_ALB_API_RULE_PRIORITY:-100}"
 ASSETS_BUCKET_NAME="${UZONE_ASSETS_BUCKET_NAME:-gridics-uzones}"
+
+if [[ "${USE_EXISTING_ALB}" == "true" ]]; then
+  validate_elb_arn "existing_alb_arn" "${EXISTING_ALB_ARN}"
+  validate_elb_arn "existing_alb_http_listener_arn" "${EXISTING_ALB_HTTP_LISTENER_ARN}"
+  validate_elb_arn "existing_alb_https_listener_arn" "${EXISTING_ALB_HTTPS_LISTENER_ARN}"
+fi
 
 wait_for_expected_status() {
   local url="$1"
@@ -171,6 +234,11 @@ resolve_smoke_test_base_url() {
 
   if [[ -n "${SMOKE_TEST_BASE_URL}" ]]; then
     printf '%s' "${SMOKE_TEST_BASE_URL%/}"
+    return
+  fi
+
+  if [[ -n "${AGENTIC_PUBLIC_BASE_URL}" ]]; then
+    printf '%s' "${AGENTIC_PUBLIC_BASE_URL%/}"
     return
   fi
 
@@ -212,6 +280,8 @@ cat > "${TFVARS_PATH}" <<EOF
 aws_region          = $(escape_hcl_string "${AWS_REGION}")
 project             = $(escape_hcl_string "${PROJECT}")
 environment         = $(escape_hcl_string "${DEPLOY_ENVIRONMENT}")
+tag_env             = $(escape_hcl_string "${TAG_ENV}")
+tag_name            = $(escape_hcl_string "${TAG_NAME}")
 app_allowed_origins = $(escape_hcl_string "${APP_ALLOWED_ORIGINS}")
 $(emit_bool "use_existing_vpc" "${USE_EXISTING_VPC}")
 $(emit_bool "use_existing_alb" "${USE_EXISTING_ALB}")
@@ -230,6 +300,7 @@ public_base_url     = $(escape_hcl_string "${UZONE_PUBLIC_BASE_URL}")
 db_username = $(escape_hcl_string "${DB_USERNAME}")
 db_password = $(escape_hcl_string "${DB_PASSWORD}")
 db_name     = $(escape_hcl_string "${DB_NAME}")
+db_engine_version = $(escape_hcl_string "${DB_ENGINE_VERSION}")
 
 backend_image_tag  = $(escape_hcl_string "${IMAGE_TAG}")
 frontend_image_tag = $(escape_hcl_string "${IMAGE_TAG}")
@@ -256,6 +327,10 @@ $(emit_kv_if_set "GRIDICS_CLERK_ORGANIZATION_SLUG" "${GRIDICS_CLERK_ORGANIZATION
 
 frontend_environment = {
 $(emit_kv_if_set "GRIDICS_CLERK_ORGANIZATION_SLUG" "${GRIDICS_CLERK_ORGANIZATION_SLUG:-}")
+$(emit_kv_if_set "AGENTIC_PUBLIC_BASE_URL" "${AGENTIC_PUBLIC_BASE_URL:-}")
+$(emit_kv_if_set "LETTERS_PUBLIC_BASE_URL" "${LETTERS_PUBLIC_BASE_URL:-}")
+$(emit_kv_if_set "NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL" "${AGENTIC_PUBLIC_BASE_URL:-}")
+$(emit_kv_if_set "NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL" "${LETTERS_PUBLIC_BASE_URL:-}")
 }
 
 backend_secret_arns = {
@@ -288,11 +363,7 @@ cd "${TF_DIR}"
 terraform init
 
 if [[ -z "${TERRAFORM_WORKSPACE}" ]]; then
-  if [[ "${DEPLOY_ENVIRONMENT}" == "prod" ]]; then
-    TERRAFORM_WORKSPACE="default"
-  else
-    TERRAFORM_WORKSPACE="${DEPLOY_ENVIRONMENT}"
-  fi
+  TERRAFORM_WORKSPACE="${DEPLOY_ENVIRONMENT}-${ACCOUNT_ID}"
 fi
 
 if terraform workspace select "${TERRAFORM_WORKSPACE}" >/dev/null 2>&1; then
@@ -307,7 +378,12 @@ ensure_ecr_repository_in_state() {
   local repository_name="$2"
 
   if terraform state show "${address}" >/dev/null 2>&1; then
-    return
+    if aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${repository_name}" >/dev/null 2>&1; then
+      return
+    fi
+
+    echo "stale Terraform state detected for ${repository_name}; removing and recreating it"
+    terraform state rm "${address}" >/dev/null
   fi
 
   if aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${repository_name}" >/dev/null 2>&1; then
@@ -318,6 +394,225 @@ ensure_ecr_repository_in_state() {
 
 ensure_ecr_repository_in_state "aws_ecr_repository.backend" "${BACKEND_REPOSITORY_NAME}"
 ensure_ecr_repository_in_state "aws_ecr_repository.frontend" "${FRONTEND_REPOSITORY_NAME}"
+
+TARGET_VPC_ID="${EXISTING_VPC_ID:-}"
+if [[ -z "${TARGET_VPC_ID}" && "${USE_EXISTING_VPC}" == "true" && -n "${EXISTING_ALB_ARN}" ]]; then
+  TARGET_VPC_ID="$(aws elbv2 describe-load-balancers \
+    --region "${AWS_REGION}" \
+    --load-balancer-arns "${EXISTING_ALB_ARN}" \
+    --query 'LoadBalancers[0].VpcId' \
+    --output text)"
+fi
+
+import_if_missing() {
+  local address="$1"
+  local import_id="$2"
+  shift 2
+
+  if terraform state show "${address}" >/dev/null 2>&1; then
+    return
+  fi
+
+  local probe
+  probe="$("$@" 2>/dev/null || true)"
+  if [[ -n "${probe}" && "${probe}" != "None" && "${probe}" != "[]" ]]; then
+    echo "importing existing ${address}"
+    terraform import "${address}" "${import_id}"
+  fi
+}
+
+import_named_log_group() {
+  local address="$1"
+  local log_group_name="$2"
+
+  import_if_missing "${address}" "${log_group_name}" aws logs describe-log-groups \
+    --region "${AWS_REGION}" \
+    --log-group-name-prefix "${log_group_name}" \
+    --query "logGroups[?logGroupName=='${log_group_name}'].logGroupName | [0]" \
+    --output text
+}
+
+import_security_group() {
+  local address="$1"
+  local group_name="$2"
+
+  if [[ -z "${TARGET_VPC_ID}" ]]; then
+    return
+  fi
+
+  local group_id
+  group_id="$(aws ec2 describe-security-groups \
+    --region "${AWS_REGION}" \
+    --filters "Name=vpc-id,Values=${TARGET_VPC_ID}" "Name=group-name,Values=${group_name}" \
+    --query 'SecurityGroups[0].GroupId' \
+    --output text 2>/dev/null || true)"
+
+  if [[ -n "${group_id}" && "${group_id}" != "None" ]]; then
+    import_if_missing "${address}" "${group_id}" aws ec2 describe-security-groups \
+      --region "${AWS_REGION}" \
+      --filters "Name=vpc-id,Values=${TARGET_VPC_ID}" "Name=group-name,Values=${group_name}" \
+      --query 'SecurityGroups[0].GroupId' \
+      --output text
+  fi
+}
+
+import_target_group() {
+  local address="$1"
+  local target_group_name="$2"
+
+  local target_group_arn
+  target_group_arn="$(aws elbv2 describe-target-groups \
+    --region "${AWS_REGION}" \
+    --names "${target_group_name}" \
+    --query 'TargetGroups[0].TargetGroupArn' \
+    --output text 2>/dev/null || true)"
+
+  if [[ -n "${target_group_arn}" && "${target_group_arn}" != "None" ]]; then
+    import_if_missing "${address}" "${target_group_arn}" aws elbv2 describe-target-groups \
+      --region "${AWS_REGION}" \
+      --names "${target_group_name}" \
+      --query 'TargetGroups[0].TargetGroupArn' \
+      --output text
+  fi
+}
+
+import_listener_rule() {
+  local address="$1"
+  local listener_arn="$2"
+  local priority="$3"
+
+  if [[ -z "${listener_arn}" ]]; then
+    return
+  fi
+
+  local rule_arn
+  rule_arn="$(aws elbv2 describe-rules \
+    --region "${AWS_REGION}" \
+    --listener-arn "${listener_arn}" \
+    --query "Rules[?Priority=='${priority}'].RuleArn | [0]" \
+    --output text 2>/dev/null || true)"
+
+  if [[ -n "${rule_arn}" && "${rule_arn}" != "None" ]]; then
+    import_if_missing "${address}" "${rule_arn}" aws elbv2 describe-rules \
+      --region "${AWS_REGION}" \
+      --listener-arn "${listener_arn}" \
+      --query "Rules[?Priority=='${priority}'].RuleArn | [0]" \
+      --output text
+  fi
+}
+
+import_db_subnet_group() {
+  local address="$1"
+  local name="$2"
+
+  import_if_missing "${address}" "${name}" aws rds describe-db-subnet-groups \
+    --region "${AWS_REGION}" \
+    --db-subnet-group-name "${name}" \
+    --query 'DBSubnetGroups[0].DBSubnetGroupName' \
+    --output text
+}
+
+import_db_instance() {
+  local address="$1"
+  local identifier="$2"
+
+  import_if_missing "${address}" "${identifier}" aws rds describe-db-instances \
+    --region "${AWS_REGION}" \
+    --db-instance-identifier "${identifier}" \
+    --query 'DBInstances[0].DBInstanceIdentifier' \
+    --output text
+}
+
+import_bucket() {
+  local address="$1"
+  local bucket_name="$2"
+
+  if aws s3api head-bucket --bucket "${bucket_name}" >/dev/null 2>&1; then
+    if ! terraform state show "${address}" >/dev/null 2>&1; then
+      echo "importing existing ${address}"
+      terraform import "${address}" "${bucket_name}"
+    fi
+  fi
+}
+
+import_iam_role() {
+  local address="$1"
+  local role_name="$2"
+
+  import_if_missing "${address}" "${role_name}" aws iam get-role \
+    --role-name "${role_name}" \
+    --query 'Role.RoleName' \
+    --output text
+}
+
+import_ecs_cluster() {
+  local address="$1"
+  local cluster_name="$2"
+
+  import_if_missing "${address}" "${cluster_name}" aws ecs describe-clusters \
+    --region "${AWS_REGION}" \
+    --clusters "${cluster_name}" \
+    --query 'clusters[0].clusterArn' \
+    --output text
+}
+
+import_ecs_service() {
+  local address="$1"
+  local cluster_name="$2"
+  local service_name="$3"
+
+  local service_arn
+  service_arn="$(aws ecs describe-services \
+    --region "${AWS_REGION}" \
+    --cluster "${cluster_name}" \
+    --services "${service_name}" \
+    --query 'services[0].serviceArn' \
+    --output text 2>/dev/null || true)"
+
+  if [[ -n "${service_arn}" && "${service_arn}" != "None" ]]; then
+    import_if_missing "${address}" "${cluster_name}/${service_name}" aws ecs describe-services \
+      --region "${AWS_REGION}" \
+      --cluster "${cluster_name}" \
+      --services "${service_name}" \
+      --query 'services[0].serviceArn' \
+      --output text
+  fi
+}
+
+bootstrap_existing_resources() {
+  import_db_subnet_group "aws_db_subnet_group.postgres" "${PROJECT}-${DEPLOY_ENVIRONMENT}-db-subnets"
+  import_db_instance "aws_db_instance.postgres" "${PROJECT}-${DEPLOY_ENVIRONMENT}-postgres"
+
+  if [[ "${USE_EXISTING_ALB}" != "true" ]]; then
+    import_security_group "aws_security_group.alb[0]" "${PROJECT}-${DEPLOY_ENVIRONMENT}-alb"
+  fi
+  import_security_group "aws_security_group.frontend" "${PROJECT}-${DEPLOY_ENVIRONMENT}-frontend"
+  import_security_group "aws_security_group.backend" "${PROJECT}-${DEPLOY_ENVIRONMENT}-backend"
+  import_security_group "aws_security_group.postgres" "${PROJECT}-${DEPLOY_ENVIRONMENT}-postgres"
+
+  import_named_log_group "aws_cloudwatch_log_group.backend" "/ecs/${PROJECT}-${DEPLOY_ENVIRONMENT}-backend"
+  import_named_log_group "aws_cloudwatch_log_group.frontend" "/ecs/${PROJECT}-${DEPLOY_ENVIRONMENT}-frontend"
+
+  import_bucket "aws_s3_bucket.logo_assets" "${ASSETS_BUCKET_NAME}"
+
+  import_iam_role "aws_iam_role.ecs_task_execution" "${PROJECT}-${DEPLOY_ENVIRONMENT}-ecs-execution"
+  import_iam_role "aws_iam_role.ecs_task" "${PROJECT}-${DEPLOY_ENVIRONMENT}-ecs-task"
+
+  import_ecs_cluster "aws_ecs_cluster.main" "${PROJECT}-${DEPLOY_ENVIRONMENT}-cluster"
+
+  import_target_group "aws_lb_target_group.frontend" "${PROJECT}-${DEPLOY_ENVIRONMENT}-fe"
+  import_target_group "aws_lb_target_group.backend" "${PROJECT}-${DEPLOY_ENVIRONMENT}-be"
+
+  import_ecs_service "aws_ecs_service.backend" "${PROJECT}-${DEPLOY_ENVIRONMENT}-cluster" "${PROJECT}-${DEPLOY_ENVIRONMENT}-backend"
+  import_ecs_service "aws_ecs_service.frontend" "${PROJECT}-${DEPLOY_ENVIRONMENT}-cluster" "${PROJECT}-${DEPLOY_ENVIRONMENT}-frontend"
+
+  import_listener_rule "aws_lb_listener_rule.api_http_existing[0]" "${EXISTING_ALB_HTTP_LISTENER_ARN}" "${EXISTING_ALB_API_RULE_PRIORITY}"
+  import_listener_rule "aws_lb_listener_rule.frontend_http_existing[0]" "${EXISTING_ALB_HTTP_LISTENER_ARN}" "${EXISTING_ALB_FRONTEND_RULE_PRIORITY}"
+  import_listener_rule "aws_lb_listener_rule.api_https_existing[0]" "${EXISTING_ALB_HTTPS_LISTENER_ARN}" "${EXISTING_ALB_API_RULE_PRIORITY}"
+  import_listener_rule "aws_lb_listener_rule.frontend_https_existing[0]" "${EXISTING_ALB_HTTPS_LISTENER_ARN}" "${EXISTING_ALB_FRONTEND_RULE_PRIORITY}"
+}
+
+bootstrap_existing_resources
 
 backend_ecr_in_state=0
 frontend_ecr_in_state=0
@@ -335,7 +630,14 @@ if [[ "${SKIP_TERRAFORM_APPLY}" != "1" ]]; then
     terraform apply \
       -auto-approve \
       -target=aws_ecr_repository.backend \
-      -target=aws_ecr_repository.frontend
+      -target=aws_ecr_repository.frontend \
+      -target=aws_internet_gateway.main \
+      -target=aws_lb.app \
+      -target=aws_lb_listener.http \
+      -target=aws_lb_listener_rule.api_http \
+      -target=aws_route_table.public \
+      -target=aws_security_group.alb \
+      -target=aws_vpc.main
   fi
 fi
 

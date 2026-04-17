@@ -41,6 +41,7 @@ export type CustomerRecord = {
   is_active: boolean
   settings_json?: {
     header_logo_path?: string | null
+    market?: string | null
     [key: string]: unknown
   } | null
 }
@@ -801,7 +802,7 @@ export async function runSuperAdminGridicsDebugAction(
   }
 }
 
-async function createTenantClientRecord(clientName: string, organizationId: string) {
+async function createTenantClientRecord(clientName: string, organizationId: string, market: string | null) {
   const response = await fetch(buildBackendApiUrl('/api/admin/clients'), {
     method: 'POST',
     headers: {
@@ -812,6 +813,7 @@ async function createTenantClientRecord(clientName: string, organizationId: stri
       clerk_organization_id: organizationId,
       city_name: clientName,
       department_name: `${clientName} Planning & Zoning Department`,
+      market,
     }),
   })
 
@@ -845,7 +847,7 @@ async function ensureTenantClientRecord(organizationId: string) {
   const organization = await client.organizations.getOrganization({ organizationId })
 
   try {
-    await createTenantClientRecord(organization.name, organization.id)
+    await createTenantClientRecord(organization.name, organization.id, null)
   } catch (error) {
     const message = getErrorMessage(error, '')
     if (message !== 'Client ID already exists' && message !== 'Clerk organization is already linked to a tenant client') {
@@ -882,6 +884,7 @@ async function updateTenantClientGeneralDetails(
     clerkOrganizationId: string
     clerkSlug?: string | null
     pathAlias: string | null
+    market: string | null
   },
 ) {
   const response = await fetch(buildBackendApiUrl(`/api/admin/clients/${organizationId}`), {
@@ -896,6 +899,7 @@ async function updateTenantClientGeneralDetails(
       clerk_organization_id: payload.clerkOrganizationId,
       clerk_slug: payload.clerkSlug ?? null,
       path_alias: payload.pathAlias,
+      market: payload.market,
     }),
   })
 
@@ -942,7 +946,7 @@ export async function syncJurisdictionsFromClerkAction() {
     const existingRecord = recordsByClerkId.get(organization.id) || recordsByClientId.get(organization.id) || null
 
     if (!existingRecord) {
-      await createTenantClientRecord(organization.name, organization.id)
+      await createTenantClientRecord(organization.name, organization.id, null)
       createdCount += 1
       continue
     }
@@ -955,6 +959,14 @@ export async function syncJurisdictionsFromClerkAction() {
             typeof (existingRecord.settings_json as Record<string, unknown>).pathAlias === 'string'
           ? ((existingRecord.settings_json as Record<string, unknown>).pathAlias as string)
           : null
+    const market =
+      existingRecord.settings_json &&
+      typeof existingRecord.settings_json.market === 'string'
+        ? existingRecord.settings_json.market
+        : existingRecord.settings_json &&
+            typeof (existingRecord.settings_json as Record<string, unknown>).marketName === 'string'
+          ? ((existingRecord.settings_json as Record<string, unknown>).marketName as string)
+          : null
 
     await updateTenantClientGeneralDetails(existingRecord.id, {
       clientId: existingRecord.client_id,
@@ -963,6 +975,7 @@ export async function syncJurisdictionsFromClerkAction() {
       clerkOrganizationId: organization.id,
       clerkSlug: organization.slug || null,
       pathAlias,
+      market,
     })
     matchedRecordIds.add(existingRecord.id)
     updatedCount += 1
@@ -1645,6 +1658,7 @@ export async function provisionClientAction(
   }
 
   const clientName = String(formData.get('clientName') || '').trim()
+  const market = String(formData.get('market') || '').trim()
 
   if (!clientName) {
     return { ...initialProvisionState, error: 'Jurisdiction name is required.' }
@@ -1658,7 +1672,7 @@ export async function provisionClientAction(
     })
 
     try {
-      await createTenantClientRecord(clientName, organization.id)
+      await createTenantClientRecord(clientName, organization.id, market || null)
     } catch (error) {
       await client.organizations.deleteOrganization(organization.id).catch(() => null)
       throw error
@@ -1876,6 +1890,7 @@ export async function saveCustomerGeneralSettingsAction(
   const departmentName = String(formData.get('departmentName') || '').trim()
   const clerkOrganizationId = String(formData.get('clerkOrganizationId') || '').trim()
   const pathAliasRaw = String(formData.get('pathAlias') || '').trim()
+  const marketRaw = String(formData.get('market') || '').trim()
   const clerkSlugRaw = String(formData.get('clerkSlug') || '').trim()
   const clerkSlug = clerkSlugRaw || undefined
   const logoFile = formData.get('logoFile')
@@ -1912,6 +1927,7 @@ export async function saveCustomerGeneralSettingsAction(
       clerkOrganizationId,
       clerkSlug: clerkSlug || null,
       pathAlias: pathAliasRaw || null,
+      market: marketRaw || null,
     })
     if (logoFile instanceof File && logoFile.size > 0) {
       await uploadTenantClientLogo(organizationId, logoFile)

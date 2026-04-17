@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from typing import Literal
 
 from sqlalchemy import func, inspect, select
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import JurisdictionHomePageContent, TenantClient, TenantDomain
+from app.db.models import Jurisdiction, JurisdictionHomePageContent, TenantClient, TenantDomain
 from app.services.cache_service import get_cache_service
 
 
@@ -19,6 +20,7 @@ class TenantPublicConfig:
     clerk_organization_id: str | None
     city_name: str
     department_name: str
+    public_site_title: str | None
     path_alias: str | None
     logo_path: str | None
     standard_letter_fee_cents: int
@@ -30,12 +32,16 @@ class TenantPublicConfig:
     jurisdiction_id: str | None
     agent_url: str | None
     zoning_code_url: str | None
+    market: str | None
     assistant_disclaimer_text: str
     home_page_content: dict
+    surface_configs: dict[str, dict]
 
 
 AGENT_URL_SETTING_KEY = "agent_url"
 ZONING_CODE_URL_SETTING_KEY = "zoning_code_url"
+MARKET_SETTING_KEY = "market"
+SURFACE_CONFIGS_SETTING_KEY = "surface_configs"
 HEADER_LOGO_PATH_SETTING_KEY = "header_logo_path"
 PATH_ALIAS_SETTING_KEY = "path_alias"
 ASSISTANT_PROVIDER_KEYS_SETTING_KEY = "assistant_provider_keys"
@@ -61,6 +67,8 @@ RESERVED_PUBLIC_PATH_SEGMENTS = {
     "super-admin",
     "select-jurisdiction",
 }
+
+SurfaceName = Literal["assistant", "letters"]
 
 
 def _normalize_assistant_provider_keys(value: object) -> dict[str, str | None]:
@@ -144,6 +152,18 @@ def get_tenant_experience_settings(settings_json: dict | None) -> tuple[str | No
     )
 
 
+def get_tenant_market(settings_json: dict | None) -> str | None:
+    if not isinstance(settings_json, dict):
+        return None
+
+    raw_market = settings_json.get(MARKET_SETTING_KEY)
+    if not isinstance(raw_market, str):
+        return None
+
+    market = raw_market.strip()
+    return market or None
+
+
 def get_tenant_logo_path(settings_json: dict | None) -> str | None:
     if not isinstance(settings_json, dict):
         return None
@@ -195,6 +215,17 @@ def merge_tenant_path_alias_settings(existing_settings: dict | None, *, path_ali
         next_settings[PATH_ALIAS_SETTING_KEY] = path_alias
     else:
         next_settings.pop(PATH_ALIAS_SETTING_KEY, None)
+
+    return next_settings
+
+
+def merge_tenant_market_settings(existing_settings: dict | None, *, market: str | None) -> dict:
+    next_settings = dict(existing_settings) if isinstance(existing_settings, dict) else {}
+
+    if market:
+        next_settings[MARKET_SETTING_KEY] = market.strip()
+    else:
+        next_settings.pop(MARKET_SETTING_KEY, None)
 
     return next_settings
 
@@ -349,12 +380,93 @@ def merge_tenant_experience_settings(
     return next_settings
 
 
-def build_default_home_page_content(client: TenantClient) -> dict:
+def build_default_home_page_content(client: TenantClient, *, surface: SurfaceName = "letters") -> dict:
     city_name = client.city_name.strip() or "Your City"
     department_name = client.department_name.strip() or "Planning & Zoning Department"
     support_email = client.support_email.strip() if client.support_email else None
     support_phone = client.support_phone.strip() if client.support_phone else None
     contact_address = client.contact_address.strip() if client.contact_address else None
+
+    if surface == "assistant":
+        return {
+            "hero": {
+                "badge": "Gridics Agentic Assistant",
+                "title": f"Welcome to the {city_name} Assistant",
+                "subtitle": (
+                    f"Ask questions, research zoning code, and work through {department_name.lower()} "
+                    "guidance through a modern AI experience."
+                ),
+                "primary_button_text": "Open Assistant",
+                "secondary_button_text": "Choose Jurisdiction",
+                "learn_more_text": "How It Works",
+                "stats": [
+                    {"label": "Mode", "value": "Jurisdiction Aware", "icon": "◔"},
+                    {"label": "Answers", "value": "Grounded in Code", "icon": "◈"},
+                    {"label": "Coverage", "value": "Market-Specific", "icon": "◉"},
+                ],
+            },
+            "services": [
+                {
+                    "id": "assistant-qa",
+                    "title": "Ask a Question",
+                    "description": "Get fast answers about zoning, permitted uses, and next steps.",
+                    "processing_time": "Instant",
+                    "fee": "Included",
+                },
+                {
+                    "id": "assistant-code",
+                    "title": "Review Code",
+                    "description": "See citations and code references tied to the current jurisdiction.",
+                    "processing_time": "Instant",
+                    "fee": "Included",
+                },
+                {
+                    "id": "assistant-handoff",
+                    "title": "Escalate to Staff",
+                    "description": "When needed, use the assistant to prepare a clean handoff for staff review.",
+                    "processing_time": "As needed",
+                    "fee": "Included",
+                },
+            ],
+            "about": {
+                "title": "What can the assistant help with?",
+                "body": (
+                    f"The {city_name} assistant helps residents, staff, and external users ask better "
+                    "zoning questions and find cited answers faster."
+                ),
+            },
+            "faq": [
+                {
+                    "id": "assistant-market",
+                    "question": "How does the assistant know which market this belongs to?",
+                    "answer": (
+                        "The jurisdiction is tagged with a market so the assistant can scope answers "
+                        "to the right Gridics market."
+                    ),
+                },
+                {
+                    "id": "assistant-citations",
+                    "question": "Will responses include citations?",
+                    "answer": "Yes. The assistant is designed to return source-backed answers whenever possible.",
+                },
+                {
+                    "id": "assistant-support",
+                    "question": "What if the assistant is unsure?",
+                    "answer": "It should explain the gap and guide the user toward staff review or better context.",
+                },
+            ],
+            "contact": {
+                "title": "Need help using the assistant?",
+                "body": (
+                    f"Contact the {department_name} if you need help with assistant access, market setup, "
+                    "or jurisdiction-specific guidance."
+                ),
+                "email": support_email,
+                "phone": support_phone,
+                "address": contact_address,
+            },
+        }
+
     return {
         "hero": {
             "badge": "Official City Documentation",
@@ -435,6 +547,65 @@ def build_default_home_page_content(client: TenantClient) -> dict:
     }
 
 
+def build_default_surface_rules(client: TenantClient, *, surface: SurfaceName) -> list[str]:
+    if surface == "assistant":
+        return [
+            "Use the assistant for jurisdiction-aware zoning questions tied to the current market.",
+            "If a question does not apply to the active market, say so before answering.",
+            "Prefer source-backed answers and cite code or policy references when available.",
+        ]
+
+    city_name = client.city_name.strip() or "Your City"
+    return [
+        f"Use the {city_name} letters workflow for zoning verification requests and property lookups.",
+        "Keep the request focused on the selected jurisdiction.",
+        "Use the public request flow for official letter generation and tracking.",
+    ]
+
+
+def build_default_surface_config(client: TenantClient, *, surface: SurfaceName) -> dict:
+    return {
+        "home_page_content": build_default_home_page_content(client, surface=surface),
+        "rules": build_default_surface_rules(client, surface=surface),
+    }
+
+
+def _normalize_surface_config(value: object, *, client: TenantClient, surface: SurfaceName) -> dict:
+    default_config = build_default_surface_config(client, surface=surface)
+    if not isinstance(value, dict):
+        return default_config
+
+    home_page_content = value.get("home_page_content")
+    rules = value.get("rules")
+    next_config = {
+        "home_page_content": default_config["home_page_content"],
+        "rules": default_config["rules"],
+    }
+    if isinstance(home_page_content, dict):
+        next_config["home_page_content"] = home_page_content
+    if isinstance(rules, list):
+        next_config["rules"] = [item.strip() for item in rules if isinstance(item, str) and item.strip()]
+    return next_config
+
+
+def get_tenant_surface_configs(settings_json: dict | None, client: TenantClient) -> dict[str, dict]:
+    default_configs: dict[str, dict] = {
+        "assistant": build_default_surface_config(client, surface="assistant"),
+        "letters": build_default_surface_config(client, surface="letters"),
+    }
+    if not isinstance(settings_json, dict):
+        return default_configs
+
+    raw_configs = settings_json.get(SURFACE_CONFIGS_SETTING_KEY)
+    if not isinstance(raw_configs, dict):
+        return default_configs
+
+    return {
+        "assistant": _normalize_surface_config(raw_configs.get("assistant"), client=client, surface="assistant"),
+        "letters": _normalize_surface_config(raw_configs.get("letters"), client=client, surface="letters"),
+    }
+
+
 def get_home_page_content_payload(
     record: JurisdictionHomePageContent | None,
     client: TenantClient,
@@ -487,11 +658,18 @@ def _to_public_config(
     agent_url, zoning_code_url = get_tenant_experience_settings(client.settings_json)
     home_page_content_record = get_home_page_content_record(db, client.jurisdiction_id)
     platform_settings_json = get_platform_assistant_settings_json(db)
+    jurisdiction_public_site_title = None
+    if client.jurisdiction_id:
+        jurisdiction = db.get(Jurisdiction, client.jurisdiction_id)
+        if jurisdiction is not None and isinstance(jurisdiction.public_site_title, str):
+            site_title = jurisdiction.public_site_title.strip()
+            jurisdiction_public_site_title = site_title or None
     return TenantPublicConfig(
         client_id=client.client_id,
         clerk_organization_id=client.clerk_organization_id,
         city_name=client.city_name,
         department_name=client.department_name,
+        public_site_title=jurisdiction_public_site_title,
         path_alias=get_tenant_path_alias(client.settings_json),
         logo_path=get_tenant_logo_path(client.settings_json),
         standard_letter_fee_cents=client.standard_letter_fee_cents,
@@ -503,8 +681,10 @@ def _to_public_config(
         jurisdiction_id=client.jurisdiction_id,
         agent_url=agent_url,
         zoning_code_url=zoning_code_url,
+        market=get_tenant_market(client.settings_json),
         assistant_disclaimer_text=get_effective_assistant_disclaimer_text(platform_settings_json, client.settings_json),
         home_page_content=get_home_page_content_payload(home_page_content_record, client),
+        surface_configs=get_tenant_surface_configs(client.settings_json, client),
     )
 
 
@@ -531,7 +711,10 @@ def resolve_tenant_public_config(
     if cached is not cache.cache_miss:
         if cached is None:
             return None
-        return TenantPublicConfig(**cached)
+        try:
+            return TenantPublicConfig(**cached)
+        except TypeError:
+            cache.delete(key)
 
     client: TenantClient | None = None
     if normalized_client_id:

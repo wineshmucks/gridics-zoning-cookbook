@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.agents.tools import _build_gridics_client
+from app.services.gridics_client import _build_gridics_client
 
 router = APIRouter()
 

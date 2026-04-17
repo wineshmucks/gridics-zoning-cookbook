@@ -1,8 +1,9 @@
 'use client'
 
-import { usePathname, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 import { AdminSidebarGroup, AdminSidebarItem } from './AdminSurfacePrimitives'
+import { useHydratedPathname } from '../lib/use-hydrated-pathname'
 
 type SelectedCustomer = {
   id: string
@@ -21,7 +22,7 @@ const agenticSections = [
 ] as const
 
 export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCustomer }) {
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
   const searchParams = useSearchParams()
   const baseHref = `/super-admin/customers/${customer.id}`
   const sectionParam = searchParams.get('section')

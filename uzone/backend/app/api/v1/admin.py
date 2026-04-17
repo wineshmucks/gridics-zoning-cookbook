@@ -98,6 +98,7 @@ from app.services.tenant_service import (
     has_home_page_content_storage,
     invalidate_tenant_cache,
     merge_tenant_branding_settings,
+    merge_tenant_market_settings,
     merge_tenant_path_alias_settings,
     merge_tenant_experience_settings,
     normalize_tenant_path_alias,
@@ -485,6 +486,11 @@ def create_tenant_client(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jurisdiction not found")
 
     tenant_client = TenantClient(**payload.model_dump())
+    if payload.market is not None:
+        tenant_client.settings_json = merge_tenant_market_settings(
+            tenant_client.settings_json,
+            market=payload.market,
+        )
     db.add(tenant_client)
     if not tenant_client.jurisdiction_id:
         _ensure_tenant_jurisdiction(db, tenant_client)
@@ -599,6 +605,12 @@ def update_tenant_client(
         tenant_client.settings_json = merge_tenant_path_alias_settings(
             tenant_client.settings_json,
             path_alias=normalized_path_alias,
+        )
+
+    if payload.market is not None:
+        tenant_client.settings_json = merge_tenant_market_settings(
+            tenant_client.settings_json,
+            market=payload.market,
         )
 
     if payload.is_active is not None:

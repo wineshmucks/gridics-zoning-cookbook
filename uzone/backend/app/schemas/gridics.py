@@ -112,33 +112,29 @@ class GridicsEnvelope(BaseModel):
     LodgingDensityUL: Optional[bool] = None
 
 class GridicsZoningAllowance(BaseModel):
-    ZoneId: str
-    SubZoneId: Optional[str] = None
-    ZoneTypeId: Optional[str] = None
-    BuildingTypologyId: Optional[str] = None
+    # Broaden type hints to allow Pydantic to natively accept integers before coercing to strings
+    ZoneId: Union[str, int]
+    SubZoneId: Union[str, int, None] = None
+    ZoneTypeId: Union[str, int, None] = None
+    BuildingTypologyId: Union[str, int, None] = None
     ZoningRegulationName: str
     ZoningRegulationLink: str
     ZoneCombinationName: str
 
-    @field_validator("SubZoneId", mode="before")
+    @field_validator("SubZoneId", "ZoneTypeId", "BuildingTypologyId", mode="before")
     @classmethod
-    def _normalize_sub_zone_id(cls, value: Any) -> Optional[str]:
+    def _normalize_optional_ids(cls, value: Any) -> Optional[str]:
         if value is None:
             return None
         if isinstance(value, str):
             stripped = value.strip()
             return stripped or None
         return str(value)
-
-    @field_validator("ZoneTypeId", mode="before")
+        
+    @field_validator("ZoneId", mode="before")
     @classmethod
-    def _normalize_zone_type_id(cls, value: Any) -> Optional[str]:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-        return str(value)
+    def _normalize_zone_id(cls, value: Any) -> str:
+        return str(value).strip() if value is not None else ""
 
 class GridicsCalibrationGeneral(BaseModel):
     PFrontSetbackPrincipalMax: Optional[float] = None

@@ -54,7 +54,11 @@ def _summarize_gridics_record(data_row: dict[str, Any]) -> dict[str, Any]:
         "LotType": data_row.get("LotType"),
         "ZoneCombinationName": zoning_allowance.get("ZoneCombinationName") if isinstance(zoning_allowance, dict) else None,
         "ZoneId": zoning_allowance.get("ZoneId") if isinstance(zoning_allowance, dict) else None,
-        "ZoneTypeId": zoning_allowance.get("ZoneTypeId") if isinstance(zoning_allowance, dict) else None,
+        "ZoneTypeId": (
+            str(zoning_allowance.get("ZoneTypeId"))
+            if isinstance(zoning_allowance, dict) and zoning_allowance.get("ZoneTypeId") is not None
+            else None
+        ),
         "OverlayCount": len(first_building.get("Overlays") or []) if isinstance(first_building, dict) else 0,
         "UseCount": len(first_building.get("Uses") or []) if isinstance(first_building, dict) else 0,
         "Envelope": {
@@ -175,9 +179,9 @@ def _has_conversation_review_storage(db) -> bool:
     return all(
         inspector.has_table(table_name)
         for table_name in (
-            "assistant_turn_events",
-            "assistant_run_telemetry",
-            "assistant_message_feedback",
+            "agentic_assistant_turn_events",
+            "agentic_assistant_run_telemetry",
+            "agentic_assistant_message_feedback",
         )
     )
 

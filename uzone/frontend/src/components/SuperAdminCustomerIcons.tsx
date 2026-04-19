@@ -1,6 +1,6 @@
 'use client'
 
-type IconName = 'jurisdiction-details' | 'assistant-setup' | 'assistant' | 'admin-users' | 'back'
+type IconName = 'jurisdiction-details' | 'assistant-setup' | 'assistant' | 'admin-users' | 'database' | 'back'
 
 function IconPath({ name }: { name: IconName }) {
   if (name === 'jurisdiction-details') {
@@ -34,6 +34,15 @@ function IconPath({ name }: { name: IconName }) {
     return (
       <path
         d="M8.3 11.3a3.3 3.3 0 1 1 0-6.6 3.3 3.3 0 0 1 0 6.6Zm7.4-1.1a2.7 2.7 0 1 1 0-5.4 2.7 2.7 0 0 1 0 5.4ZM3 18.7c0-2.4 2.8-4.3 5.3-4.3s5.3 1.9 5.3 4.3V20H3v-1.3Zm12.7 1.3v-1c0-1.1-.3-2.1-.9-3 .4-.1.8-.1 1.2-.1 2 0 4 1.4 4 3.2V20h-4.3Z"
+        fill="currentColor"
+      />
+    )
+  }
+
+  if (name === 'database') {
+    return (
+      <path
+        d="M12 3c-4.4 0-8 1.7-8 3.8v10.4C4 19.3 7.6 21 12 21s8-1.7 8-3.8V6.8C20 4.7 16.4 3 12 3Zm0 2c3.5 0 6 .9 6 1.8s-2.5 1.8-6 1.8-6-.9-6-1.8S8.5 5 12 5Zm0 14c-3.5 0-6-.9-6-1.8v-2c1.4 1 3.7 1.5 6 1.5s4.6-.5 6-1.5v2c0 .9-2.5 1.8-6 1.8Zm0-5.8c-3.5 0-6-.9-6-1.8v-2c1.4 1 3.7 1.5 6 1.5s4.6-.5 6-1.5v2c0 .9-2.5 1.8-6 1.8Z"
         fill="currentColor"
       />
     )

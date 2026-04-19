@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+CUSTOMER_ZONING_ASSISTANT_TARGET_ID = "customer_zoning_team"
+LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = "customer-zoning-agent"
+PUBLIC_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = "customer-zoning-team"
+
 ASSISTANT_TARGET_IDS = (
-    "customer-zoning-agent",
+    CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
     "parcel-data-agent",
     "code-researcher-agent",
 )
 
 CODE_DEFAULT_ASSISTANT_MODEL_TARGETS: dict[str, dict[str, str | None]] = {
-    "customer-zoning-agent": {
+    CUSTOMER_ZONING_ASSISTANT_TARGET_ID: {
         "provider": "gemini",
         "model_id": "gemini-2.5-flash-lite",
         "base_url": None,
@@ -26,3 +30,7 @@ CODE_DEFAULT_ASSISTANT_MODEL_TARGETS: dict[str, dict[str, str | None]] = {
     },
 }
 
+ASSISTANT_TARGET_ID_ALIASES = {
+    LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID: CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+    PUBLIC_CUSTOMER_ZONING_ASSISTANT_TARGET_ID: CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+}

@@ -5,6 +5,11 @@ import { useAuth } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 
 import { buildApiUrl, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
+import {
+  buildStaffAssignPayload,
+  buildStaffDeliverPayload,
+  buildStaffWorkflowPayload,
+} from '../lib/request-action-payloads'
 import { ErrorCard, LoadingCard } from './RemoteState'
 
 type RequestRow = {
@@ -150,41 +155,35 @@ function StaffRequestsTable({
       if (kind === 'assign') {
         await postJsonWithToken(
           `/api/staff/requests/${requestId}/assign`,
-          {
-            assigned_to_user_id: localUserId,
-            ...(clerkEnabled ? {} : { assigned_by_user_id: localUserId }),
-          },
+          buildStaffAssignPayload(clerkEnabled, localUserId),
           getToken,
         )
       }
       if (kind === 'start') {
         await postJsonWithToken(
           `/api/staff/requests/${requestId}/start-review`,
-          clerkEnabled ? {} : { actor_user_id: localUserId },
+          buildStaffWorkflowPayload(clerkEnabled, localUserId),
           getToken,
         )
       }
       if (kind === 'draft') {
         await postJsonWithToken(
           `/api/staff/requests/${requestId}/drafts`,
-          clerkEnabled ? {} : { actor_user_id: localUserId },
+          buildStaffWorkflowPayload(clerkEnabled, localUserId),
           getToken,
         )
       }
       if (kind === 'approve') {
         await postJsonWithToken(
           `/api/staff/requests/${requestId}/approve`,
-          clerkEnabled ? {} : { actor_user_id: localUserId },
+          buildStaffWorkflowPayload(clerkEnabled, localUserId),
           getToken,
         )
       }
       if (kind === 'deliver') {
         await postJsonWithToken(
           `/api/staff/requests/${requestId}/deliver`,
-          {
-            ...(clerkEnabled ? {} : { actor_user_id: localUserId }),
-            destination: 'customer@delivery.local',
-          },
+          buildStaffDeliverPayload(clerkEnabled, localUserId),
           getToken,
         )
       }

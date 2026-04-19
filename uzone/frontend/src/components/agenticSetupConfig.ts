@@ -1,14 +1,16 @@
-export const providerFields = [
+import {
+  ASSISTANT_MODEL_PROVIDER_OPTIONS,
+  CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+} from './assistantTargetIds'
+
+export const assistantProviderKeyFields = [
   { id: 'gemini', label: 'Gemini API key', fieldName: 'providerKeyGemini' },
-  { id: 'openrouter', label: 'OpenRouter API key', fieldName: 'providerKeyOpenrouter' },
-  { id: 'openai', label: 'OpenAI API key', fieldName: 'providerKeyOpenai' },
-  { id: 'groq', label: 'Groq API key', fieldName: 'providerKeyGroq' },
 ] as const
 
 export const modelTargetFields = [
   {
-    id: 'customer-zoning-agent',
-    label: 'Lead team',
+    id: CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+    label: 'Customer zoning team',
     providerFieldName: 'targetProviderCustomerZoningAgent',
     modelFieldName: 'targetModelCustomerZoningAgent',
     baseUrlFieldName: 'targetBaseUrlCustomerZoningAgent',
@@ -28,6 +30,8 @@ export const modelTargetFields = [
     baseUrlFieldName: 'targetBaseUrlCodeResearcherAgent',
   },
 ] as const
+
+export const assistantModelProviderOptions = ASSISTANT_MODEL_PROVIDER_OPTIONS
 
 export type AssistantModelTargetValue = {
   provider: string | null
@@ -57,8 +61,8 @@ export function describeAssistantModelTarget(value: AssistantModelTargetValue | 
 
 export const agentPromptFields = [
   {
-    id: 'customer-zoning-agent',
-    label: 'Customer Zoning Lead Agent',
+    id: CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+    label: 'Customer Zoning Team',
     description: 'Controls the main synthesis team instructions.',
     fieldName: 'promptCustomerZoningAgent',
   },
@@ -77,8 +81,8 @@ export const agentPromptFields = [
 ] as const
 
 export const codeDefaultAgentPrompts = {
-  'customer-zoning-agent': [
-    'You are the Lead Customer Zoning Knowledge Agent.',
+  [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]: [
+    'You are the Customer Zoning Team.',
     'TONE: Act like a highly knowledgeable, friendly zoning consultant speaking directly to a client.',
     '',
     '--- STRICT DELEGATION SEQUENCE (MANDATORY) ---',

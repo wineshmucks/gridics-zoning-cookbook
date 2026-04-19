@@ -12,7 +12,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
-        "jurisdiction_home_page_content",
+        "shared_jurisdiction_home_page_content",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("jurisdiction_id", sa.String(length=36), nullable=False),
         sa.Column("hero_json", sa.JSON(), nullable=False),
@@ -22,11 +22,11 @@ def upgrade() -> None:
         sa.Column("contact_json", sa.JSON(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["jurisdiction_id"], ["jurisdictions.id"]),
+        sa.ForeignKeyConstraint(["jurisdiction_id"], ["shared_jurisdictions.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("jurisdiction_id"),
     )
 
 
 def downgrade() -> None:
-    op.drop_table("jurisdiction_home_page_content")
+    op.drop_table("shared_jurisdiction_home_page_content")

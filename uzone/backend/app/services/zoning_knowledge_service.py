@@ -32,7 +32,7 @@ from app.services.tenant_service import ZONING_CODE_URL_SETTING_KEY
 from app.services.compat import build_with_supported_kwargs
 
 VECTOR_SCHEMA = "ai"
-VECTOR_TABLE = "customer_zoning_chunks"
+VECTOR_TABLE = "agentic_customer_zoning_chunks"
 VECTOR_DIMENSIONS = settings.zoning_embedder_dimensions
 MAX_CRAWL_PAGES = 40
 MAX_CHUNK_CHARS = 1800
@@ -258,9 +258,45 @@ def build_zoning_knowledge_status(db: Session, tenant_client: TenantClient) -> d
     except Exception:
         chunk_count = 0
 
+    progress_percent = 0.0
+    progress_message = "No knowledge ingestion run has started yet."
+    is_complete = False
+    if latest_run is not None:
+        pages_crawled = int(getattr(latest_run, "pages_crawled", 0) or 0)
+        documents_extracted = int(getattr(latest_run, "documents_extracted", 0) or 0)
+        sections_extracted = int(getattr(latest_run, "sections_extracted", 0) or 0)
+        chunks_upserted = int(getattr(latest_run, "chunks_upserted", 0) or 0)
+        status = str(getattr(latest_run, "status", "") or "").strip().lower()
+        if status == "completed":
+            progress_percent = 100.0
+            progress_message = "Ingestion complete."
+            is_complete = True
+        elif status == "failed":
+            progress_percent = min(99.0, max(0.0, (pages_crawled / MAX_CRAWL_PAGES) * 100.0))
+            progress_message = "Ingestion failed."
+        elif status == "queued":
+            progress_percent = 0.0
+            progress_message = "Run queued and waiting to start."
+        else:
+            progress_percent = (
+                min(99.0, max(1.0, (pages_crawled / MAX_CRAWL_PAGES) * 100.0))
+                if pages_crawled
+                else 1.0
+            )
+            progress_message = (
+                f"Processing {pages_crawled} of up to {MAX_CRAWL_PAGES} pages, "
+                f"{documents_extracted} documents, {sections_extracted} sections, and {chunks_upserted} chunks."
+            )
+
     return {
         "client_id": tenant_client.client_id,
         "zoning_code_url": get_tenant_zoning_code_url(tenant_client),
+        "embedder_provider": settings.zoning_embedder_provider.strip().lower(),
+        "embedder_model_id": settings.zoning_embedder_model_id.strip(),
+        "embedder_dimensions": int(settings.zoning_embedder_dimensions),
+        "progress_percent": round(progress_percent, 1),
+        "progress_message": progress_message,
+        "is_complete": is_complete,
         "documents": int(document_count),
         "sections": int(section_count),
         "chunks": int(chunk_count),

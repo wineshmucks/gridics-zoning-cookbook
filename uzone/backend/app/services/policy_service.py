@@ -152,7 +152,10 @@ def classify_scope(query: str, tenant_client: TenantClient | None = None) -> tup
     if not normalized:
         return "clarify", "Please provide your zoning question."
 
-    agent_decision = _classify_scope_with_agent(query, tenant_client=tenant_client)
+    try:
+        agent_decision = _classify_scope_with_agent(query, tenant_client=tenant_client)
+    except TypeError:
+        agent_decision = _classify_scope_with_agent(query)
     if agent_decision is not None:
         return agent_decision
 

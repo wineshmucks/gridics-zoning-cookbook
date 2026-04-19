@@ -1,8 +1,9 @@
 'use client'
 
-import { ClerkProvider, SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs'
+import { ClerkProvider, SignedIn, SignedOut, UserButton } from '@clerk/nextjs'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { appendScopePathToHref } from '../lib/org-url'
 
 type Props = {
@@ -16,6 +17,7 @@ type AuthControlsProps = {
   isSuperAdmin: boolean
   currentOrgId: string | null
   currentScopePath: string | null
+  compact?: boolean
 }
 
 type AppTheme = 'light' | 'dark'
@@ -87,6 +89,7 @@ function AuthControls({
   isSuperAdmin,
   currentOrgId,
   currentScopePath,
+  compact = false,
 }: AuthControlsProps) {
   const adminHref = currentScopePath
     ? appendScopePathToHref('/admin', currentScopePath)
@@ -96,7 +99,7 @@ function AuthControls({
 
   if (!clerkEnabled) {
     return (
-      <div className="auth-controls-group">
+      <div className={`auth-controls-group${compact ? ' auth-controls-group-compact' : ''}`}>
         <ThemeToggleButton />
         <a className="button button-signin" href="/account/requests">
           <span className="button-signin-icon">•</span>
@@ -107,34 +110,40 @@ function AuthControls({
   }
 
   return (
-    <div className="auth-controls-group">
+    <div className={`auth-controls-group${compact ? ' auth-controls-group-compact' : ''}`}>
       <ThemeToggleButton />
       <SignedOut>
-        <SignInButton mode="modal">
-          <button className="button button-signin">
+        {compact ? (
+          <Link className="button secondary button-signin button-signin-compact" href="/sign-in">
+            Sign In
+          </Link>
+        ) : (
+          <Link className="button button-signin" href="/sign-in">
             <span className="button-signin-icon">•</span>
             Sign In
-          </button>
-        </SignInButton>
+          </Link>
+        )}
       </SignedOut>
       <SignedIn>
         <UserButton afterSignOutUrl="/">
-          <UserButton.MenuItems>
-            {canAccessAdminScreens ? (
-              <UserButton.Link
-                href={adminHref}
-                label="Admin"
-                labelIcon={<span aria-hidden="true">A</span>}
-              />
-            ) : null}
-            {isSuperAdmin ? (
-              <UserButton.Link
-                href="/super-admin"
-                label="Super Admin"
-                labelIcon={<span aria-hidden="true">S</span>}
-              />
-            ) : null}
-          </UserButton.MenuItems>
+          {compact ? null : (
+            <UserButton.MenuItems>
+              {canAccessAdminScreens ? (
+                <UserButton.Link
+                  href={adminHref}
+                  label="Admin"
+                  labelIcon={<span aria-hidden="true">A</span>}
+                />
+              ) : null}
+              {isSuperAdmin ? (
+                <UserButton.Link
+                  href="/super-admin"
+                  label="Super Admin"
+                  labelIcon={<span aria-hidden="true">S</span>}
+                />
+              ) : null}
+            </UserButton.MenuItems>
+          )}
         </UserButton>
       </SignedIn>
     </div>

@@ -9,6 +9,29 @@ from app.services.embed_service import decode_embed_session_token, parse_embed_t
 
 from app.core.config import settings
 
+PUBLIC_CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS = (
+    "customer-zoning-team",
+    "customer-zoning-agent",
+)
+CUSTOMER_ZONING_TEAM_ROUTE_PREFIX = "/teams/customer_zoning_team"
+
+
+def _rewrite_scope_path(request, prefix: str) -> None:
+    rewritten = request.scope["path"].replace(prefix, CUSTOMER_ZONING_TEAM_ROUTE_PREFIX, 1)
+    request.scope["path"] = rewritten
+    if request.scope.get("raw_path") is not None:
+        request.scope["raw_path"] = rewritten.encode()
+
+
+def _rewrite_customer_zoning_assistant_route(request) -> bool:
+    path = request.scope.get("path", "")
+    for route_id in PUBLIC_CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS:
+        for prefix in (f"/api/agents/{route_id}", f"/agents/{route_id}"):
+            if path.startswith(prefix):
+                _rewrite_scope_path(request, prefix)
+                return True
+    return False
+
 
 def _build_agent_os_db():
     from agno.db.postgres.postgres import PostgresDb
@@ -44,7 +67,15 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
             "Rebuild the backend image so the current Python dependencies are installed."
         ) from exc
 
-    from app.agents.registry import ALL_AGENTS, ALL_TEAMS
+    try:
+        from app.agents.registry import ALL_AGENTS
+    except ImportError:
+        ALL_AGENTS = []
+
+    try:
+        from app.agents.registry import ALL_TEAMS
+    except ImportError:
+        ALL_TEAMS = []
 
     agent_os = AgentOS(
         agents=ALL_AGENTS,
@@ -73,16 +104,8 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()
-        elif path.startswith("/api/agents/customer-zoning-agent"):
-            rewritten = path.replace("/api/agents/customer-zoning-agent", "/teams/customer-zoning-agent", 1)
-            request.scope["path"] = rewritten
-            if request.scope.get("raw_path") is not None:
-                request.scope["raw_path"] = rewritten.encode()
-        elif path.startswith("/agents/customer-zoning-agent"):
-            rewritten = path.replace("/agents/customer-zoning-agent", "/teams/customer-zoning-agent", 1)
-            request.scope["path"] = rewritten
-            if request.scope.get("raw_path") is not None:
-                request.scope["raw_path"] = rewritten.encode()
+        elif _rewrite_customer_zoning_assistant_route(request):
+            pass
         elif path.startswith("/api/agents"):
             rewritten = path[4:]
             request.scope["path"] = rewritten

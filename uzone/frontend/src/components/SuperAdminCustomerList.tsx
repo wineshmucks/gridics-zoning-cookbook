@@ -134,12 +134,6 @@ export function SuperAdminCustomerList({
                       >
                         Manage
                       </Link>
-                      <Link
-                        href={`/super-admin/customers/${customer.id}/assistant-setup`}
-                        className="super-admin-row-secondary-link"
-                      >
-                        Agentic Setup
-                      </Link>
                     </div>
                   </td>
                 </tr>
@@ -199,12 +193,6 @@ export function SuperAdminCustomerList({
                         className="button secondary super-admin-row-primary-action"
                       >
                         Manage
-                      </Link>
-                      <Link
-                        href={`/super-admin/customers/${customer.id}/assistant-setup`}
-                        className="super-admin-row-secondary-link"
-                      >
-                        Agentic Setup
                       </Link>
                       <form action={purgeInactiveJurisdictionAction}>
                         <input type="hidden" name="organizationId" value={customer.id} />

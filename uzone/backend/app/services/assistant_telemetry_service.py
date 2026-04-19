@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from contextlib import nullcontext
 from typing import Any
 
 from sqlalchemy import func, inspect, select
@@ -20,6 +21,13 @@ _TELEMETRY_DEBUG_COUNTERS = {
 }
 
 
+def _session_context():
+    session = SessionLocal()
+    if hasattr(session, "__enter__") and hasattr(session, "__exit__"):
+        return session
+    return nullcontext(session)
+
+
 def _resolve_tenant_id(db, client_id: str | None) -> str | None:
     normalized = (client_id or "").strip()
     if not normalized:
@@ -30,7 +38,7 @@ def _resolve_tenant_id(db, client_id: str | None) -> str | None:
 
 def _has_assistant_run_telemetry_storage(db) -> bool:
     bind = db.get_bind()
-    return bool(bind is not None and inspect(bind).has_table("assistant_run_telemetry"))
+    return bool(bind is not None and inspect(bind).has_table("agentic_assistant_run_telemetry"))
 
 
 def _empty_telemetry_payload() -> dict[str, Any]:
@@ -217,7 +225,7 @@ def _extract_metrics(payload: dict[str, Any]) -> dict[str, Any]:
 def record_assistant_run_telemetry(*, client_id: str | None, payload: dict[str, Any]) -> None:
     """Best-effort persistence of agent telemetry events."""
     try:
-        with SessionLocal() as db:
+        with _session_context() as db:
             if not _has_assistant_run_telemetry_storage(db):
                 return
             tenant_client_id = _resolve_tenant_id(db, client_id)
@@ -298,7 +306,7 @@ def list_assistant_run_telemetry(
     page: int = 1,
     search: str | None = None,
 ) -> dict[str, Any]:
-    with SessionLocal() as db:
+    with _session_context() as db:
         if not _has_assistant_run_telemetry_storage(db):
             return _empty_telemetry_payload()
         tenant = db.scalar(select(TenantClient).where(TenantClient.client_id == (client_id or "").strip()))
@@ -322,7 +330,8 @@ def list_assistant_run_telemetry(
                 | func.lower(func.coalesce(AssistantRunTelemetry.model_provider, "")).like(pattern)
             )
 
-        total_runs = db.scalar(select(func.count(AssistantRunTelemetry.id)).select_from(base_stmt.subquery())) or 0
+        count_subquery = base_stmt.order_by(None).subquery()
+        total_runs = db.scalar(select(func.count()).select_from(count_subquery)) or 0
         total_pages = max(1, (int(total_runs) + page_size - 1) // page_size) if total_runs else 0
         page = min(page, total_pages or 1)
         offset = (page - 1) * page_size
@@ -335,9 +344,9 @@ def list_assistant_run_telemetry(
         )
         rows = db.scalars(runs_stmt).all()
 
-        summary_subquery = base_stmt.subquery()
+        summary_subquery = base_stmt.order_by(None).subquery()
         summary_stmt = select(
-            func.count(summary_subquery.c.id),
+            func.count(),
             func.coalesce(func.sum(summary_subquery.c.input_tokens), 0),
             func.coalesce(func.sum(summary_subquery.c.output_tokens), 0),
             func.coalesce(func.sum(summary_subquery.c.total_tokens), 0),

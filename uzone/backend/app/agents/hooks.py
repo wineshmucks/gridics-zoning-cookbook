@@ -13,6 +13,8 @@ from app.db.models import TenantClient
 from app.db.session import SessionLocal
 from app.services.embed_service import decode_embed_session_token
 from app.services.assistant_telemetry_service import record_assistant_run_telemetry
+from app.agents.assistant_defaults import ASSISTANT_TARGET_IDS as DEFAULT_ASSISTANT_TARGET_IDS
+from app.agents.assistant_defaults import CODE_DEFAULT_ASSISTANT_MODEL_TARGETS
 from app.services.platform_settings_service import get_platform_assistant_settings_json
 from app.services.tenant_service import (
     get_tenant_assistant_agent_prompts,
@@ -22,27 +24,30 @@ from app.services.tenant_service import (
     merge_assistant_provider_keys,
 )
 
-# ==============================================================================
-# MISSING CONSTANTS & RESOLVERS
-# Replace with: from app.config.settings import ASSISTANT_TARGET_IDS, _resolve_target_config
-# ==============================================================================
-ASSISTANT_TARGET_IDS = [
-    "customer_zoning_team", 
-    "code-researcher-agent", 
-    "property-specialist-agent"
-]
+ASSISTANT_TARGET_IDS = list(DEFAULT_ASSISTANT_TARGET_IDS)
+
 
 def _resolve_target_config(target_id: str, model_targets: dict) -> dict:
-    """Safely resolves the model configuration for a given agent target."""
-    # If the tenant DB doesn't have an override for this specific agent, 
-    # fallback to the default Gemini configuration.
-    default_config = {
-        "provider": "gemini", 
-        "model_id": "gemini-2.5-flash",
-        "base_url": None
+    """Resolve the assistant target config, forcing Gemini-only runtime models."""
+    default_config = CODE_DEFAULT_ASSISTANT_MODEL_TARGETS.get(
+        target_id,
+        {"provider": "gemini", "model_id": None, "base_url": None},
+    )
+    raw_config = model_targets.get(target_id) if isinstance(model_targets, dict) else None
+    if not isinstance(raw_config, dict):
+        return default_config
+
+    provider = str(raw_config.get("provider") or "").strip().lower()
+    if provider != "gemini":
+        return default_config
+
+    model_id = str(raw_config.get("model_id") or "").strip() or default_config.get("model_id")
+    base_url = str(raw_config.get("base_url") or "").strip() or default_config.get("base_url")
+    return {
+        "provider": "gemini",
+        "model_id": model_id,
+        "base_url": base_url,
     }
-    return model_targets.get(target_id, default_config)
-# ==============================================================================
 
 _MODEL_OVERRIDE_METADATA_KEY = "assistant_model_id"
 _MODEL_OVERRIDE_STATE_KEY = "_assistant_model_override_active"
@@ -162,21 +167,16 @@ def _apply_tenant_assistant_config(agent: Agent | None = None, team: Team | None
     # Iterate over the target definitions to update models dynamically
     for target_id in ASSISTANT_TARGET_IDS:
         config = _resolve_target_config(target_id, model_targets)
-        provider = str(config.get("provider") or "").strip().lower()
+        provider = "gemini"
         model_id = str(config.get("model_id") or "").strip()
         base_url = str(config.get("base_url") or "").strip() or None
-        
+        api_key = provider_keys.get("gemini")
         resolved_target = targets_by_id.get(target_id)
 
-        if not resolved_target or not provider or not model_id:
+        if not resolved_target or not model_id or not api_key:
             continue
 
-        api_key = provider_keys.get(provider)
-        if not api_key:
-            raise RuntimeError(
-                f"Assistant setup is incomplete for this jurisdiction. "
-                f"Missing API key for provider '{provider}' used by target '{target_id}'."
-            )
+        # Gemini is the only supported assistant provider now.
             
         original_models[target_id] = getattr(resolved_target, "model", None)
         

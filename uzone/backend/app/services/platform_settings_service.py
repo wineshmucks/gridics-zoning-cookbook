@@ -14,7 +14,7 @@ PLATFORM_ASSISTANT_SETTINGS_KEY = "assistant_settings"
 
 def has_platform_settings_storage(db: Session) -> bool:
     bind = db.get_bind()
-    return bool(bind is not None and inspect(bind).has_table("platform_settings"))
+    return bool(bind is not None and inspect(bind).has_table("shared_platform_settings"))
 
 
 def get_platform_setting_record(db: Session, key: str) -> PlatformSetting | None:
@@ -28,7 +28,7 @@ def get_platform_assistant_settings_json(db: Session) -> dict | None:
     try:
         record = get_platform_setting_record(db, PLATFORM_ASSISTANT_SETTINGS_KEY)
     except ProgrammingError as exc:
-        if "platform_settings" in str(exc):
+        if "shared_platform_settings" in str(exc):
             db.rollback()
             return None
         raise

@@ -28,10 +28,9 @@ const allowedDevOrigins = Array.from(
   ])
 )
 
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
 }
 
-module.exports = nextConfig
+export default nextConfig

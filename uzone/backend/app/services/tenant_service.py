@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import Jurisdiction, JurisdictionHomePageContent, TenantClient, TenantDomain
+from app.agents.assistant_defaults import ASSISTANT_TARGET_ID_ALIASES
 from app.services.cache_service import get_cache_service
 
 
@@ -86,6 +87,19 @@ def _normalize_assistant_provider_keys(value: object) -> dict[str, str | None]:
     return normalized
 
 
+def _normalize_assistant_target_id(target_id: str) -> str:
+    return ASSISTANT_TARGET_ID_ALIASES.get(target_id, target_id)
+
+
+def _normalize_assistant_model_provider(provider: object) -> str | None:
+    if not isinstance(provider, str):
+        return None
+    normalized = provider.strip().lower()
+    if normalized == "gemini":
+        return "gemini"
+    return None
+
+
 def _normalize_assistant_model_targets(value: object) -> dict[str, dict[str, str | None]]:
     if not isinstance(value, dict):
         return {}
@@ -94,11 +108,16 @@ def _normalize_assistant_model_targets(value: object) -> dict[str, dict[str, str
     for target_id, raw_target in value.items():
         if not isinstance(target_id, str) or not isinstance(raw_target, dict):
             continue
-        provider = raw_target.get("provider")
+        canonical_target_id = _normalize_assistant_target_id(target_id)
+        if target_id != canonical_target_id and canonical_target_id in normalized:
+            continue
+        provider = _normalize_assistant_model_provider(raw_target.get("provider"))
+        if isinstance(raw_target.get("provider"), str) and raw_target.get("provider").strip() and provider is None:
+            continue
         model_id = raw_target.get("model_id")
         base_url = raw_target.get("base_url")
-        normalized[target_id] = {
-            "provider": provider.strip().lower() if isinstance(provider, str) and provider.strip() else None,
+        normalized[canonical_target_id] = {
+            "provider": provider,
             "model_id": model_id.strip() if isinstance(model_id, str) and model_id.strip() else None,
             "base_url": base_url.strip() if isinstance(base_url, str) and base_url.strip() else None,
         }
@@ -113,11 +132,14 @@ def _normalize_assistant_agent_prompts(value: object) -> dict[str, str]:
     for target_id, raw_prompt in value.items():
         if not isinstance(target_id, str):
             continue
+        canonical_target_id = _normalize_assistant_target_id(target_id)
+        if target_id != canonical_target_id and canonical_target_id in normalized:
+            continue
         if not isinstance(raw_prompt, str):
             continue
         prompt = raw_prompt.strip()
         if prompt:
-            normalized[target_id] = prompt
+            normalized[canonical_target_id] = prompt
     return normalized
 
 def normalize_hostname(host: str | None) -> str | None:
@@ -638,7 +660,7 @@ def get_home_page_content_record(
     except ProgrammingError as exc:
         # Allow environments that have the code deployed before the new migration runs
         # to fall back to generated default content instead of returning a 500.
-        if "jurisdiction_home_page_content" in str(exc):
+        if "shared_jurisdiction_home_page_content" in str(exc):
             db.rollback()
             return None
         raise
@@ -646,7 +668,7 @@ def get_home_page_content_record(
 
 def has_home_page_content_storage(db: Session) -> bool:
     bind = db.get_bind()
-    return bool(bind is not None and inspect(bind).has_table("jurisdiction_home_page_content"))
+    return bool(bind is not None and inspect(bind).has_table("shared_jurisdiction_home_page_content"))
 
 
 def _to_public_config(

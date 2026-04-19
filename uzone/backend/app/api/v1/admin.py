@@ -46,6 +46,8 @@ from app.schemas import (
     HomePageContentUpsert,
     JurisdictionCreate,
     JurisdictionRead,
+    DatabaseCleanupResultRead,
+    DatabaseInfoRead,
     LetterTemplateCreate,
     LetterTemplateRead,
     PlatformAssistantSettingsRead,
@@ -62,6 +64,7 @@ from app.schemas import (
 )
 from app.core.config import settings
 from app.services.assistant_conversation_review_service import list_assistant_conversation_reviews
+from app.services.database_maintenance_service import cleanup_dangling_records, get_database_info
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
 from app.services.cache_service import get_cache_service
 from app.services.clerk_service import get_clerk_organization
@@ -485,7 +488,8 @@ def create_tenant_client(
     if payload.jurisdiction_id and db.get(Jurisdiction, payload.jurisdiction_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jurisdiction not found")
 
-    tenant_client = TenantClient(**payload.model_dump())
+    tenant_client_data = payload.model_dump(exclude={"market"})
+    tenant_client = TenantClient(**tenant_client_data)
     if payload.market is not None:
         tenant_client.settings_json = merge_tenant_market_settings(
             tenant_client.settings_json,
@@ -526,7 +530,7 @@ def update_tenant_client(
         client_id = payload.client_id.strip()
         if not client_id:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Client ID is required",
             )
         existing_client = db.scalar(
@@ -545,14 +549,14 @@ def update_tenant_client(
     if payload.city_name is not None:
         city_name = payload.city_name.strip()
         if not city_name:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="City name is required")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="City name is required")
         tenant_client.city_name = city_name
 
     if payload.department_name is not None:
         department_name = payload.department_name.strip()
         if not department_name:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Department name is required",
         )
         tenant_client.department_name = department_name
@@ -561,7 +565,7 @@ def update_tenant_client(
         clerk_organization_id = payload.clerk_organization_id.strip()
         if not clerk_organization_id:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Clerk organization ID is required",
             )
         if settings.clerk_secret_key and get_clerk_organization(clerk_organization_id) is None:
@@ -584,7 +588,7 @@ def update_tenant_client(
             normalized_path_alias = normalize_tenant_path_alias(payload.path_alias)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
             ) from exc
 
@@ -660,7 +664,7 @@ async def upload_tenant_client_logo(
 
     payload = await file.read()
     if not payload:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Logo file is required.")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Logo file is required.")
     if len(payload) > MAX_LOGO_UPLOAD_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Logo must be 2 MB or smaller.")
 
@@ -1047,7 +1051,7 @@ def create_tenant_assistant_embed_preview_session(
     )
     normalized_origin = payload.origin.strip()
     if not normalized_origin:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid origin")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid origin")
 
     token, expires_at = issue_embed_session_token(
         tenant_client=tenant_client,
@@ -1498,3 +1502,13 @@ def reset_email_template_override(
 
     db.delete(override_template)
     db.commit()
+
+
+@router.get("/database-info", response_model=DatabaseInfoRead)
+def get_database_info_route(db: Session = Depends(get_db)) -> DatabaseInfoRead:
+    return DatabaseInfoRead.model_validate(get_database_info(db))
+
+
+@router.post("/database-info/cleanup-dangling", response_model=DatabaseCleanupResultRead)
+def cleanup_database_dangling_records_route(db: Session = Depends(get_db)) -> DatabaseCleanupResultRead:
+    return DatabaseCleanupResultRead.model_validate(cleanup_dangling_records(db))

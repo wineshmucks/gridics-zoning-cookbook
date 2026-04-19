@@ -6,11 +6,13 @@ import type { PlatformAssistantSettings } from '../app/admin/actions'
 import { buildApiUrl } from '../lib/api'
 import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
 import {
+  assistantModelProviderOptions,
+  assistantProviderKeyFields,
   describeAssistantModelTarget,
   hasAssistantModelTarget,
   modelTargetFields,
-  providerFields,
 } from './agenticSetupConfig'
+import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 
 type PlatformAssistantSettingsState = {
   error: string | null
@@ -52,7 +54,7 @@ export function PlatformAssistantSetupPanel({
         <input type="hidden" name="assistantDisclaimerText" value={currentSettings.assistant_disclaimer_text} />
       ) : null}
       {options.includeProviderKeys
-        ? providerFields.map((provider) => (
+        ? assistantProviderKeyFields.map((provider) => (
             <input
               key={provider.id}
               type="hidden"
@@ -97,7 +99,7 @@ export function PlatformAssistantSetupPanel({
               type="hidden"
               name={(() => {
                 switch (targetId) {
-                  case 'customer-zoning-agent':
+                  case CUSTOMER_ZONING_ASSISTANT_TARGET_ID:
                     return 'promptCustomerZoningAgent'
                   case 'parcel-data-agent':
                     return 'promptParcelDataAgent'
@@ -144,7 +146,7 @@ export function PlatformAssistantSetupPanel({
         groq: String(formData.get('providerKeyGroq') || '').trim() || null,
       },
       assistant_model_targets: {
-        'customer-zoning-agent': {
+        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]: {
           provider: String(formData.get('targetProviderCustomerZoningAgent') || '').trim() || null,
           model_id: String(formData.get('targetModelCustomerZoningAgent') || '').trim() || null,
           base_url: String(formData.get('targetBaseUrlCustomerZoningAgent') || '').trim() || null,
@@ -161,7 +163,8 @@ export function PlatformAssistantSetupPanel({
         },
       },
       assistant_agent_prompts: {
-        'customer-zoning-agent': agentPrompts['customer-zoning-agent'] || null,
+        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
+          agentPrompts[CUSTOMER_ZONING_ASSISTANT_TARGET_ID] || null,
         'parcel-data-agent': agentPrompts['parcel-data-agent'] || null,
         'code-researcher-agent': agentPrompts['code-researcher-agent'] || null,
       },
@@ -249,7 +252,7 @@ export function PlatformAssistantSetupPanel({
           </form>
         </FormSection>
 
-        <FormSection title="API Keys" icon="assistant-setup">
+        <FormSection title="Gemini Key" icon="assistant-setup">
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeDisclaimer: true,
@@ -272,7 +275,7 @@ export function PlatformAssistantSetupPanel({
               </span>
             </label>
             <div className="admin-form-grid admin-form-grid-single">
-              {providerFields.map((provider) => (
+              {assistantProviderKeyFields.map((provider) => (
                 <label key={provider.id} className="field field-full">
                   <span>{provider.label}</span>
                   <input
@@ -282,13 +285,13 @@ export function PlatformAssistantSetupPanel({
                     placeholder={`Optional platform ${provider.id} key`}
                     defaultValue={providerKeys[provider.id] || ''}
                   />
-                  <small>Used whenever a jurisdiction does not provide its own provider key.</small>
+                  <small>Used whenever a jurisdiction does not provide its own Gemini key.</small>
                 </label>
               ))}
             </div>
             <div className="admin-form-actions">
               <button className="button button-fit" type="submit" disabled={pending}>
-                {pending ? 'Saving…' : 'Save baseline API keys'}
+                {pending ? 'Saving…' : 'Save Gemini key'}
               </button>
             </div>
             {settingsState.error ? <div className="status-banner status-banner-error">{settingsState.error}</div> : null}
@@ -321,13 +324,13 @@ export function PlatformAssistantSetupPanel({
                     <div className="admin-form-grid admin-form-grid-3">
                       <label className="field">
                         <span>Provider</span>
-                        <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
-                          <option value="">Use code default</option>
-                          <option value="gemini">Gemini</option>
-                          <option value="openrouter">OpenRouter</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="groq">Groq</option>
-                        </select>
+                          <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
+                            {assistantModelProviderOptions.map((option) => (
+                              <option key={option.value || 'default'} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                       </label>
                       <label className="field">
                         <span>Model ID</span>

@@ -12,10 +12,10 @@ depends_on = None
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
     op.execute("CREATE SCHEMA IF NOT EXISTS ai;")
-    op.execute("DROP TABLE IF EXISTS ai.customer_zoning_chunks")
+    op.execute("DROP TABLE IF EXISTS ai.agentic_customer_zoning_chunks")
     op.execute(
         """
-        CREATE TABLE ai.customer_zoning_chunks (
+        CREATE TABLE ai.agentic_customer_zoning_chunks (
             id VARCHAR PRIMARY KEY,
             name VARCHAR,
             meta_data JSONB DEFAULT '{}'::jsonb,
@@ -30,23 +30,23 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute("CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_id ON ai.customer_zoning_chunks (id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_name ON ai.customer_zoning_chunks (name)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_id ON ai.agentic_customer_zoning_chunks (id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_name ON ai.agentic_customer_zoning_chunks (name)")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_content_hash ON ai.customer_zoning_chunks (content_hash)"
+        "CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_content_hash ON ai.agentic_customer_zoning_chunks (content_hash)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_content_id ON ai.customer_zoning_chunks (content_id)"
+        "CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_content_id ON ai.agentic_customer_zoning_chunks (content_id)"
     )
     # pgvector HNSW indexes cannot exceed 2000 dimensions in this environment.
     # Keep the table writable at 2048 dims and rely on sequential scan until a compatible index strategy is added.
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS ai.customer_zoning_chunks")
+    op.execute("DROP TABLE IF EXISTS ai.agentic_customer_zoning_chunks")
     op.execute(
         """
-        CREATE TABLE ai.customer_zoning_chunks (
+        CREATE TABLE ai.agentic_customer_zoning_chunks (
             id VARCHAR PRIMARY KEY,
             name VARCHAR,
             meta_data JSONB DEFAULT '{}'::jsonb,
@@ -61,18 +61,18 @@ def downgrade() -> None:
         )
         """
     )
-    op.execute("CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_id ON ai.customer_zoning_chunks (id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_name ON ai.customer_zoning_chunks (name)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_id ON ai.agentic_customer_zoning_chunks (id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_name ON ai.agentic_customer_zoning_chunks (name)")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_content_hash ON ai.customer_zoning_chunks (content_hash)"
+        "CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_content_hash ON ai.agentic_customer_zoning_chunks (content_hash)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_content_id ON ai.customer_zoning_chunks (content_id)"
+        "CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_content_id ON ai.agentic_customer_zoning_chunks (content_id)"
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_embedding_hnsw
-        ON ai.customer_zoning_chunks
+        CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_embedding_hnsw
+        ON ai.agentic_customer_zoning_chunks
         USING hnsw (embedding vector_cosine_ops)
         """
     )

@@ -11,14 +11,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("tenant_clients", sa.Column("clerk_organization_id", sa.String(length=255), nullable=True))
+    op.add_column("shared_tenant_clients", sa.Column("clerk_organization_id", sa.String(length=255), nullable=True))
     op.create_unique_constraint(
         "uq_tenant_clients_clerk_organization_id",
-        "tenant_clients",
+        "shared_tenant_clients",
         ["clerk_organization_id"],
     )
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_tenant_clients_clerk_organization_id", "tenant_clients", type_="unique")
-    op.drop_column("tenant_clients", "clerk_organization_id")
+    op.drop_constraint("uq_tenant_clients_clerk_organization_id", "shared_tenant_clients", type_="unique")
+    op.drop_column("shared_tenant_clients", "clerk_organization_id")

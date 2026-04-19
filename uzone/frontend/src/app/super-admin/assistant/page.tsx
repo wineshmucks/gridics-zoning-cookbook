@@ -1,4 +1,5 @@
 import { AgentChatPanel } from '../../../components/AgentChatPanel'
+import { CUSTOMER_ZONING_ASSISTANT_ROUTE_ID } from '../../../components/assistantRouteIds'
 import { SuperAdminWorkspaceShell } from '../../../components/SuperAdminWorkspaceShell'
 import { getPermissionContext } from '../../../lib/permissions'
 import { getTenantConfig } from '../../../lib/tenant'
@@ -52,7 +53,7 @@ export default async function SuperAdminAssistantPage() {
         </div>
 
         <AgentChatPanel
-          agentId="customer-zoning-agent"
+          agentId={CUSTOMER_ZONING_ASSISTANT_ROUTE_ID}
           backendBase={backendBase}
           customerName={tenant.city_name}
           clientId={tenant.client_id}

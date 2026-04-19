@@ -471,7 +471,7 @@ def _extract_gridics_street_address(address: str) -> str:
     parts = [part.strip() for part in address.split(",") if part.strip()]
     if len(parts) >= 2:
         return parts[0]
-    return re.sub(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?$", "", address, flags=re.IGNORECASE).strip(" ,")
+    return address.strip(" ,")
 
 
 def _normalize_zip_code(zip_code: str | int | None) -> str | None:
@@ -704,7 +704,6 @@ def _build_memo_context(
             "Rear Setback": _format_constraint_value(constraints.get("rear_setback_ft"), suffix=" ft"),
         },
         "gridics_system_notes": zoning_summary.get("notes") or [],
-        "source_references": sources or [],
         "agent_directives": (
             "Base the memorandum on the structured zoning summary and customer-scoped knowledge. "
             "If parcel-specific Gridics context and broader code references do not align cleanly, explain the discrepancy "
@@ -734,7 +733,7 @@ def _address_mismatch_confirmation_payload(
         "resolved_address": resolved_address,
         "resolved_location": resolved_rendered,
         "message": (
-            f"The address you entered appears to resolve to {resolved_rendered}, not {requested_address}. "
+            f"The address you entered appears to resolve to {resolved_address}, not {requested_address}. "
             "Please confirm the address you want me to use before I continue."
         ),
         "confidence_band": "needs_verification",
@@ -911,6 +910,11 @@ def _resolve_address_context(
             pending_context=pending_property_confirmation,
             tenant_client=tenant_client,
         )
+        normalized_question = question.strip().lower()
+        if confirmation_decision.get("decision") != "confirm_pending" and pending_resolved_address:
+            affirmative_replies = {"yes", "yes continue", "go ahead", "continue", "confirm", "confirmed", "y"}
+            if normalized_question in affirmative_replies or normalized_question.startswith("yes,") or normalized_question.startswith("go ahead"):
+                confirmation_decision = {"decision": "confirm_pending"}
         if resolved_address and _pending_property_confirmation_matches(
             query=resolved_address,
             pending_context=pending_property_confirmation,
@@ -1321,9 +1325,12 @@ def _analyze_customer_zoning_request_once(
         }
 
     client = gridics_client or _build_gridics_client()
+    gridics_lookup_address = resolution.standardized_address or ""
+    if resolution.address_source == "query":
+        gridics_lookup_address = _extract_gridics_street_address(gridics_lookup_address)
     property_record = client.get_property_record(
         state_env=resolution.state_env or "",
-        address=_extract_gridics_street_address(resolution.standardized_address or ""),
+        address=gridics_lookup_address,
         zip_code=resolution.zip_code or None,
     )
     zoning_summary = _extract_gridics_zoning_summary(property_record)
@@ -1449,7 +1456,7 @@ def _analyze_customer_zoning_request_once(
 
     constraints_knowledge = None
     cleaned_primary_knowledge = _clean_knowledge_results(primary_knowledge)
-    if _needs_constraints_lookup(zoning_summary) or not cleaned_primary_knowledge:
+    if not cleaned_primary_knowledge:
         constraints_knowledge = query_customer_zoning_code(
             query=_build_constraints_knowledge_query(
                 query=question,
@@ -1460,13 +1467,7 @@ def _analyze_customer_zoning_request_once(
             client_id=resolved_client_id,
         )
 
-    zone_name = zoning_summary.get("zone_combination_name") or "specified"
-    uses_query = f"What are the permitted, conditional, and restricted uses for the {zone_name} zoning district?"
-    uses_knowledge = query_customer_zoning_code(
-        query=uses_query,
-        limit=3,
-        client_id=resolved_client_id,
-    )
+    uses_knowledge = None
     routing_reason = (
         "Reused active property context from session."
         if resolution.reused_active_property

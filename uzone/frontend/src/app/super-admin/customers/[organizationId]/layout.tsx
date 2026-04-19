@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { fetchCustomerRecord } from '../../../../app/admin/actions'
 import { SuperAdminCustomerSidebar } from '../../../../components/SuperAdminCustomerSidebar'
+import { getCurrentHost } from '../../../../lib/org-context'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
 
@@ -16,6 +17,7 @@ type LayoutProps = {
 export default async function SuperAdminCustomerLayout({ children, params }: LayoutProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
+  const currentHost = await getCurrentHost()
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
@@ -40,6 +42,11 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
   }
 
   const displayName = organization?.name || tenantRecord?.city_name || organizationId
+  const pathAlias =
+    tenantRecord?.settings_json && typeof tenantRecord.settings_json.path_alias === 'string'
+      ? tenantRecord.settings_json.path_alias.trim()
+      : null
+  const normalizedPathAlias = pathAlias ? (pathAlias.startsWith('/') ? pathAlias : `/${pathAlias}`) : null
 
   return (
     <div className="super-admin-shell">
@@ -50,6 +57,8 @@ export default async function SuperAdminCustomerLayout({ children, params }: Lay
             name: displayName,
             slug: organization?.slug || null,
             customerId: organization?.id || tenantRecord?.clerk_organization_id || organizationId,
+            pathAlias: normalizedPathAlias,
+            currentHost,
           }}
         />
         <div className="super-admin-content">{children}</div>

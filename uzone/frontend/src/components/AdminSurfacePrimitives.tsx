@@ -114,15 +114,24 @@ export function AdminSidebarItem({
   active,
   indent = false,
   icon,
+  target,
+  rel,
 }: {
   href: string
   label: string
   active?: boolean
   indent?: boolean
   icon?: SidebarIconName
+  target?: string
+  rel?: string
 }) {
   return (
-    <Link href={href} className={`admin-sidebar-item${active ? ' is-active' : ''}${indent ? ' is-child' : ''}`}>
+    <Link
+      href={href}
+      className={`admin-sidebar-item${active ? ' is-active' : ''}${indent ? ' is-child' : ''}`}
+      target={target}
+      rel={rel}
+    >
       {icon ? <SuperAdminCustomerIcon name={icon} className="is-sidebar" /> : null}
       <span className="admin-sidebar-item-label">{label}</span>
     </Link>

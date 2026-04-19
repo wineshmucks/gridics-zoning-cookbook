@@ -12,7 +12,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
-        "platform_settings",
+        "shared_platform_settings",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("key", sa.String(length=100), nullable=False),
         sa.Column("json_value", sa.JSON(), nullable=True),
@@ -24,4 +24,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("platform_settings")
+    op.drop_table("shared_platform_settings")

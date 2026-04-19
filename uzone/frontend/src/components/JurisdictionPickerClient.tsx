@@ -226,7 +226,7 @@ export function JurisdictionPickerClient({ customers, suggestedCustomers, return
                 onChange={(event) => {
                   setQuery(event.target.value)
                 }}
-                placeholder="Search by city, state, department, or jurisdiction ID"
+                placeholder="Search by city or state"
                 autoComplete="off"
                 spellCheck={false}
                 autoCapitalize="off"

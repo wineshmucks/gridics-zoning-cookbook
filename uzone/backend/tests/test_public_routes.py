@@ -16,6 +16,7 @@ from app.db.models import Jurisdiction, JurisdictionHomePageContent, TenantClien
 def _load_public_module():
     stub_dependencies = types.ModuleType("app.api.dependencies")
     stub_dependencies.get_db = lambda: None
+    stub_dependencies.get_optional_auth_context = lambda: None
     sys.modules["app.api.dependencies"] = stub_dependencies
     sys.modules.pop("app.api.v1.public", None)
     return importlib.import_module("app.api.v1.public")
@@ -66,6 +67,8 @@ def test_list_public_customers_excludes_customers_without_clerk_org_id(monkeypat
             {
                 "orgid": "org_sunnyvale",
                 "client_id": "sunnyvale",
+                "path_alias": None,
+                "logo_path": None,
                 "city_name": "City of Sunnyvale",
                 "department_name": "Planning",
             }
@@ -126,6 +129,8 @@ def test_list_public_customers_excludes_missing_clerk_organizations(monkeypatch)
             {
                 "orgid": "org_sunnyvale",
                 "client_id": "sunnyvale",
+                "path_alias": None,
+                "logo_path": None,
                 "city_name": "City of Sunnyvale",
                 "department_name": "Planning",
             }

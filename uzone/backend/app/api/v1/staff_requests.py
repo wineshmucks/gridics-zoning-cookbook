@@ -304,7 +304,10 @@ def approve_staff_request(
         raise HTTPException(status_code=404, detail="Draft not found")
 
     if request.status == "in_progress":
-        ensure_transition_allowed("in_progress", "awaiting_final_signature")
+        try:
+            ensure_transition_allowed("in_progress", "awaiting_final_signature")
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         request.status = "awaiting_final_signature"
         db.add(
             RequestStatusEvent(

@@ -74,6 +74,7 @@ def build_agent_model(
     *,
     provider: str | None = None,
     model_id: str | None = None,
+    model_id_override: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
     max_tokens: int = 4096,
@@ -84,7 +85,7 @@ def build_agent_model(
     
     # 1. Determine actual provider and model (fallback to settings if None)
     active_provider = (provider or settings.zoning_agent_llm_provider).strip().lower()
-    active_model_id = (model_id or settings.zoning_agent_llm_model_id).strip()
+    active_model_id = (model_id_override or model_id or settings.zoning_agent_llm_model_id).strip()
     
     # 2. Fetch the safe API key
     api_key, api_key_source = _get_agent_model_api_key(

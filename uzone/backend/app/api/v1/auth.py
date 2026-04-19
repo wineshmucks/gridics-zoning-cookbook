@@ -1,6 +1,6 @@
 """Authentication routes."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -69,7 +69,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> AuthSessionRe
         expires_at=expires_at.replace(tzinfo=None),
     )
     db.add(session)
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = datetime.now(UTC)
     db.commit()
     db.refresh(user)
     return AuthSessionRead(

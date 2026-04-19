@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import { AgentChatPanel } from '../../../../../components/AgentChatPanel'
+import { CUSTOMER_ZONING_ASSISTANT_ROUTE_ID } from '../../../../../components/assistantRouteIds'
 import { SuperAdminCustomerHeader } from '../../../../../components/SuperAdminCustomerIcons'
 import { fetchCustomerZoningKnowledgeStatus } from '../../../../admin/actions'
 import { getClerkManagementClient } from '../../../../../lib/clerk'
@@ -56,7 +57,7 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
       </section>
 
       <AgentChatPanel
-        agentId="customer-zoning-agent"
+        agentId={CUSTOMER_ZONING_ASSISTANT_ROUTE_ID}
         backendBase={backendBase}
         customerName={displayName}
         clientId={zoningKnowledgeStatus.client_id}

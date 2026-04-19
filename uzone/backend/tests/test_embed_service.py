@@ -12,7 +12,7 @@ from app.services import embed_service
 
 @pytest.fixture(autouse=True)
 def clear_embed_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config.settings, "embed_session_signing_secret", "test-secret")
+    monkeypatch.setattr(config.settings, "embed_session_signing_secret", "test-secret-0123456789abcdef0123456789")
     monkeypatch.setattr(config.settings, "embed_session_issuer", "uzone")
     monkeypatch.setattr(config.settings, "embed_session_audience", "uzone-embed-widget")
     monkeypatch.setattr(config.settings, "embed_session_ttl_seconds", 3600)

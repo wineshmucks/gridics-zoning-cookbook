@@ -330,6 +330,48 @@ class PlatformAssistantSettingsUpdate(BaseModel):
     assistant_agent_prompts: dict[str, str | None] = Field(default_factory=dict)
 
 
+class DatabaseTableSummaryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    table_name: str
+    row_count: int
+    size_bytes: int | None = None
+    size_label: str | None = None
+
+
+class DanglingTableSummaryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    table_name: str
+    dangling_rows: int
+    sample_ids: list[str] = Field(default_factory=list)
+
+
+class DatabaseInfoRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    database_name: str | None = None
+    total_size_bytes: int | None = None
+    total_size_label: str | None = None
+    tables: list[DatabaseTableSummaryRead]
+    dangling_tables: list[DanglingTableSummaryRead]
+
+
+class DatabaseCleanupTableResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    table_name: str
+    deleted_rows: int
+
+
+class DatabaseCleanupResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    deleted_rows_total: int
+    deleted_by_table: list[DatabaseCleanupTableResultRead]
+    database_info: DatabaseInfoRead
+
+
 class ZoningKnowledgeLatestRunRead(BaseModel):
     id: str
     mode: str
@@ -347,6 +389,12 @@ class ZoningKnowledgeLatestRunRead(BaseModel):
 class ZoningKnowledgeStatusRead(BaseModel):
     client_id: str
     zoning_code_url: str | None
+    embedder_provider: str
+    embedder_model_id: str
+    embedder_dimensions: int
+    progress_percent: float
+    progress_message: str
+    is_complete: bool
     documents: int
     sections: int
     chunks: int

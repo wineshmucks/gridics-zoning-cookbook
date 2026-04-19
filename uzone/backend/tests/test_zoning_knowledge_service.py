@@ -23,6 +23,7 @@ from app.services.zoning_knowledge_service import (
     _upsert_vector_documents,
     _to_agno_documents,
     _validate_crawl_output,
+    build_zoning_knowledge_status,
     chunk_normalized_section,
     extract_codehub_page_content,
     get_tenant_zoning_code_url,
@@ -42,6 +43,57 @@ def test_get_tenant_zoning_code_url_reads_settings_json() -> None:
     tenant = DummyTenant()
 
     assert get_tenant_zoning_code_url(tenant) == "https://example.com/code"
+
+
+def test_build_zoning_knowledge_status_includes_gemini_embedder_metadata(monkeypatch) -> None:
+    tenant = DummyTenant()
+    monkeypatch.setattr(
+        "app.services.zoning_knowledge_service.settings.zoning_embedder_provider",
+        "gemini",
+    )
+    monkeypatch.setattr(
+        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
+        "gemini-embedding-001",
+    )
+    monkeypatch.setattr(
+        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
+        VECTOR_DIMENSIONS,
+    )
+    latest_run = SimpleNamespace(
+        id="run-1",
+        mode="ingest",
+        status="completed",
+        source_url="https://example.com/code",
+        pages_crawled=1,
+        documents_extracted=1,
+        sections_extracted=1,
+        chunks_upserted=1,
+        error_message=None,
+        started_at=SimpleNamespace(),
+        completed_at=SimpleNamespace(),
+    )
+
+    class FakeDB:
+        def __init__(self) -> None:
+            self._scalar_calls = 0
+
+        def scalar(self, *args, **kwargs):
+            self._scalar_calls += 1
+            if self._scalar_calls == 1:
+                return latest_run
+            return 2
+
+        def execute(self, *args, **kwargs):
+            return SimpleNamespace(scalar_one=lambda: 4)
+
+    status = build_zoning_knowledge_status(FakeDB(), tenant)
+
+    assert status["embedder_provider"] == "gemini"
+    assert status["embedder_model_id"] == "gemini-embedding-001"
+    assert status["embedder_dimensions"] == VECTOR_DIMENSIONS
+    assert status["progress_percent"] == 100.0
+    assert status["progress_message"] == "Ingestion complete."
+    assert status["is_complete"] is True
 
 
 def test_query_customer_zoning_knowledge_returns_lookup_timing(monkeypatch) -> None:
@@ -257,7 +309,7 @@ def test_build_embedder_pair_falls_back_to_google_genai_for_gemini(monkeypatch) 
             calls.append(kwargs)
 
             class Response:
-                embeddings = [types.SimpleNamespace(values=[0.1, 0.2, 0.3])]
+                embeddings = [types.SimpleNamespace(values=[0.1] * VECTOR_DIMENSIONS)]
                 metadata = types.SimpleNamespace(billable_character_count=42)
 
             return Response()
@@ -286,7 +338,7 @@ def test_build_embedder_pair_falls_back_to_google_genai_for_gemini(monkeypatch) 
     vector, usage = query_embedder.get_embedding_and_usage("query text")
 
     assert document_embedder is not None
-    assert vector == [0.1, 0.2, 0.3]
+    assert vector == [0.1] * VECTOR_DIMENSIONS
     assert usage == {"billable_character_count": 42}
     assert calls[0]["model"] == "gemini-embedding-001"
     assert calls[0]["config"]["task_type"] == "RETRIEVAL_QUERY"
@@ -391,7 +443,7 @@ def test_delete_vector_rows_for_client_falls_back_to_sql() -> None:
     _delete_vector_rows_for_client(FakeSession(), "tenant-1", LegacyVectorDb())
 
     assert len(calls) == 1
-    assert "DELETE FROM ai.customer_zoning_chunks" in calls[0][0]
+    assert "DELETE FROM ai.agentic_customer_zoning_chunks" in calls[0][0]
     assert calls[0][1] == {"metadata": '{"client_id": "tenant-1"}'}
 
 
@@ -556,7 +608,7 @@ def test_build_vector_db_filters_unsupported_pgvector_kwargs(monkeypatch) -> Non
     vector_db = _build_vector_db()
 
     assert isinstance(vector_db, FakePgVector)
-    assert captured["table_name"] == "customer_zoning_chunks"
+    assert captured["table_name"] == "agentic_customer_zoning_chunks"
     assert captured["schema"] == "ai"
     assert captured["db_url"] == "postgresql://test"
     assert captured["embedder"] == "query"

@@ -11,7 +11,7 @@ PROJECT="${PROJECT:-uzone}"
 DEPLOY_ENVIRONMENT="${DEPLOY_ENVIRONMENT:-prod}"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d%H%M%S)}"
 TFVARS_PATH="${TFVARS_PATH:-${TF_DIR}/terraform.tfvars}"
-TERRAFORM_WORKSPACE="${TERRAFORM_WORKSPACE:-}"
+TERRAFORM_WORKSPACE_OVERRIDE="${TERRAFORM_WORKSPACE:-}"
 APP_ALLOWED_ORIGINS_OVERRIDE="${APP_ALLOWED_ORIGINS_OVERRIDE:-}"
 DB_USERNAME_OVERRIDE="${DB_USERNAME_OVERRIDE:-}"
 DB_PASSWORD_OVERRIDE="${DB_PASSWORD_OVERRIDE:-}"
@@ -362,9 +362,14 @@ echo "generated ${TFVARS_PATH}"
 cd "${TF_DIR}"
 terraform init
 
-if [[ -z "${TERRAFORM_WORKSPACE}" ]]; then
-  TERRAFORM_WORKSPACE="${DEPLOY_ENVIRONMENT}-${ACCOUNT_ID}"
+EXPECTED_TERRAFORM_WORKSPACE="${DEPLOY_ENVIRONMENT}-${ACCOUNT_ID}"
+if [[ -n "${TERRAFORM_WORKSPACE_OVERRIDE}" && "${TERRAFORM_WORKSPACE_OVERRIDE}" != "${EXPECTED_TERRAFORM_WORKSPACE}" ]]; then
+  echo "error: TERRAFORM_WORKSPACE=${TERRAFORM_WORKSPACE_OVERRIDE} does not match the expected workspace ${EXPECTED_TERRAFORM_WORKSPACE}" >&2
+  echo "hint: unset TERRAFORM_WORKSPACE or set it to the expected workspace before rerunning" >&2
+  exit 1
 fi
+
+TERRAFORM_WORKSPACE="${EXPECTED_TERRAFORM_WORKSPACE}"
 
 if terraform workspace select "${TERRAFORM_WORKSPACE}" >/dev/null 2>&1; then
   echo "selected terraform workspace: ${TERRAFORM_WORKSPACE}"
@@ -418,6 +423,38 @@ import_if_missing() {
   if [[ -n "${probe}" && "${probe}" != "None" && "${probe}" != "[]" ]]; then
     echo "importing existing ${address}"
     terraform import "${address}" "${import_id}"
+  fi
+}
+
+state_attr_value() {
+  local address="$1"
+  local attr="$2"
+
+  terraform state show "${address}" 2>/dev/null | sed -nE "s/^${attr}[[:space:]]*=[[:space:]]*\"(.*)\"[[:space:]]*$/\\1/p" | head -n 1
+}
+
+remove_state_if_present() {
+  local address="$1"
+
+  if terraform state show "${address}" >/dev/null 2>&1; then
+    terraform state rm "${address}" >/dev/null
+  fi
+}
+
+remove_stale_named_state_if_needed() {
+  local address="$1"
+  local attr="$2"
+  local expected_name="$3"
+
+  if ! terraform state show "${address}" >/dev/null 2>&1; then
+    return
+  fi
+
+  local current_name
+  current_name="$(state_attr_value "${address}" "${attr}")"
+  if [[ -n "${current_name}" && "${current_name}" != "${expected_name}" ]]; then
+    echo "stale Terraform state detected for ${address}: ${attr}=${current_name}; expected ${expected_name}. removing from state"
+    terraform state rm "${address}" >/dev/null
   fi
 }
 
@@ -527,6 +564,16 @@ import_bucket() {
   local address="$1"
   local bucket_name="$2"
 
+  local current_bucket_name
+  current_bucket_name="$(state_attr_value "${address}" "bucket")"
+  if [[ -n "${current_bucket_name}" && "${current_bucket_name}" != "${bucket_name}" ]]; then
+    echo "stale Terraform state detected for ${address}: bucket=${current_bucket_name}; expected ${bucket_name}. removing S3 resources from state"
+    remove_state_if_present "aws_s3_bucket_public_access_block.logo_assets"
+    remove_state_if_present "aws_s3_bucket_versioning.logo_assets"
+    remove_state_if_present "aws_s3_bucket_server_side_encryption_configuration.logo_assets"
+    remove_state_if_present "${address}"
+  fi
+
   if aws s3api head-bucket --bucket "${bucket_name}" >/dev/null 2>&1; then
     if ! terraform state show "${address}" >/dev/null 2>&1; then
       echo "importing existing ${address}"
@@ -549,6 +596,8 @@ import_ecs_cluster() {
   local address="$1"
   local cluster_name="$2"
 
+  remove_stale_named_state_if_needed "${address}" "name" "${cluster_name}"
+
   import_if_missing "${address}" "${cluster_name}" aws ecs describe-clusters \
     --region "${AWS_REGION}" \
     --clusters "${cluster_name}" \
@@ -561,21 +610,23 @@ import_ecs_service() {
   local cluster_name="$2"
   local service_name="$3"
 
-  local service_arn
-  service_arn="$(aws ecs describe-services \
+  local service_status
+  service_status="$(aws ecs describe-services \
     --region "${AWS_REGION}" \
     --cluster "${cluster_name}" \
     --services "${service_name}" \
-    --query 'services[0].serviceArn' \
+    --query 'services[0].status' \
     --output text 2>/dev/null || true)"
 
-  if [[ -n "${service_arn}" && "${service_arn}" != "None" ]]; then
+  if [[ "${service_status}" == "ACTIVE" ]]; then
     import_if_missing "${address}" "${cluster_name}/${service_name}" aws ecs describe-services \
       --region "${AWS_REGION}" \
       --cluster "${cluster_name}" \
       --services "${service_name}" \
       --query 'services[0].serviceArn' \
       --output text
+  elif [[ "${service_status}" == "INACTIVE" ]]; then
+    echo "skipping import for inactive ECS service ${cluster_name}/${service_name}; Terraform will recreate it if needed"
   fi
 }
 

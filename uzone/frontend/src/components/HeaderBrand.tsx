@@ -15,6 +15,8 @@ type Props = {
   cityName: string
   departmentName: string
   title?: string | null
+  superAdminCustomerName?: string | null
+  superAdminCustomerId?: string | null
   logoUrl: string | null
   brandVariant: 'tenant' | 'gridics'
   currentScopePath: string | null
@@ -30,6 +32,8 @@ export function HeaderBrand({
   cityName,
   departmentName,
   title,
+  superAdminCustomerName,
+  superAdminCustomerId,
   logoUrl,
   brandVariant,
   currentScopePath,
@@ -45,6 +49,8 @@ export function HeaderBrand({
         cityName={cityName}
         departmentName={departmentName}
         title={title}
+        superAdminCustomerName={superAdminCustomerName}
+        superAdminCustomerId={superAdminCustomerId}
         logoUrl={logoUrl}
         brandVariant={brandVariant}
       />
@@ -56,6 +62,8 @@ export function HeaderBrand({
       cityName={cityName}
       departmentName={departmentName}
       title={title}
+      superAdminCustomerName={superAdminCustomerName}
+      superAdminCustomerId={superAdminCustomerId}
       logoUrl={logoUrl}
       brandVariant={brandVariant}
       currentScopePath={currentScopePath}
@@ -72,12 +80,16 @@ function StaticHeaderBrand({
   cityName,
   departmentName,
   title,
+  superAdminCustomerName,
+  superAdminCustomerId,
   logoUrl,
   brandVariant,
 }: {
   cityName: string
   departmentName: string
   title?: string | null
+  superAdminCustomerName?: string | null
+  superAdminCustomerId?: string | null
   logoUrl: string | null
   brandVariant: 'tenant' | 'gridics'
   currentProduct?: 'assistant' | 'letters'
@@ -111,6 +123,8 @@ function ClerkHeaderBrand({
   currentOrgId,
   currentScopePath,
   currentCustomerName,
+  superAdminCustomerName,
+  superAdminCustomerId,
   adminMemberships,
   selectedAdminOrganizationId,
 }: Omit<Props, 'clerkEnabled'>) {
@@ -138,13 +152,19 @@ function ClerkHeaderBrand({
     null
   const resolvedCustomerName = currentCustomerName || selectedMembership?.organizationName || cityName
   const resolvedTitle = isSuperAdminRoute
-    ? 'Super Admin'
+    ? 'SUPER ADMIN'
     : isJurisdictionPickerRoute
       ? title?.trim() || 'Gridics AI Assistant'
     : isAdminRoute
       ? selectedMembership?.organizationName || resolvedCustomerName
       : title?.trim() || resolvedCustomerName
-  const subtitle = isJurisdictionPickerRoute ? '' : departmentName
+  const subtitle = isSuperAdminRoute || isJurisdictionPickerRoute ? '' : departmentName
+  const superAdminSubtitle = isSuperAdminRoute
+    ? {
+        name: superAdminCustomerName || resolvedCustomerName,
+        id: superAdminCustomerId || currentOrgId || null,
+      }
+    : null
 
   async function switchOrganization(nextOrganizationId: string) {
     if (!nextOrganizationId || nextOrganizationId === selectedAdminOrganizationId) {
@@ -189,7 +209,16 @@ function ClerkHeaderBrand({
         <div className="brand-title-row">
           <div>
             <div className="brand-title">{resolvedTitle}</div>
-            {subtitle ? <div className="brand-subtitle">{subtitle}</div> : null}
+            {superAdminSubtitle ? (
+              <div className="brand-super-admin-meta">
+                <div className="brand-subtitle brand-super-admin-name">{superAdminSubtitle.name}</div>
+                {superAdminSubtitle.id ? (
+                  <div className="brand-super-admin-orgid">{superAdminSubtitle.id}</div>
+                ) : null}
+              </div>
+            ) : subtitle ? (
+              <div className="brand-subtitle">{subtitle}</div>
+            ) : null}
           </div>
           {canSwitchOrganizations ? (
             <div className="brand-switcher">

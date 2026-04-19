@@ -28,7 +28,7 @@ class TimestampMixin:
 
 
 class User(Base, TimestampMixin):
-    __tablename__ = "users"
+    __tablename__ = "shared_users"
 
     id: Mapped[str] = uuid_pk()
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
@@ -44,7 +44,7 @@ class User(Base, TimestampMixin):
 
 
 class Role(Base, TimestampMixin):
-    __tablename__ = "roles"
+    __tablename__ = "shared_roles"
 
     id: Mapped[str] = uuid_pk()
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -53,21 +53,21 @@ class Role(Base, TimestampMixin):
 
 
 class UserRole(Base):
-    __tablename__ = "user_roles"
+    __tablename__ = "shared_user_roles"
     __table_args__ = (UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_role"),)
 
     id: Mapped[str] = uuid_pk()
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"), nullable=False)
-    granted_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("shared_users.id"), nullable=False)
+    role_id: Mapped[str] = mapped_column(ForeignKey("shared_roles.id"), nullable=False)
+    granted_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class Session(Base):
-    __tablename__ = "sessions"
+    __tablename__ = "shared_sessions"
 
     id: Mapped[str] = uuid_pk()
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("shared_users.id"), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -77,7 +77,7 @@ class Session(Base):
 
 
 class Jurisdiction(Base, TimestampMixin):
-    __tablename__ = "jurisdictions"
+    __tablename__ = "shared_jurisdictions"
 
     id: Mapped[str] = uuid_pk()
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -92,12 +92,12 @@ class Jurisdiction(Base, TimestampMixin):
 
 
 class TenantClient(Base, TimestampMixin):
-    __tablename__ = "tenant_clients"
+    __tablename__ = "shared_tenant_clients"
 
     id: Mapped[str] = uuid_pk()
     client_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     clerk_organization_id: Mapped[str | None] = mapped_column(String(255), unique=True)
-    jurisdiction_id: Mapped[str | None] = mapped_column(ForeignKey("jurisdictions.id"))
+    jurisdiction_id: Mapped[str | None] = mapped_column(ForeignKey("shared_jurisdictions.id"))
     city_name: Mapped[str] = mapped_column(String(255), nullable=False)
     department_name: Mapped[str] = mapped_column(String(255), nullable=False)
     standard_letter_fee_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -111,17 +111,17 @@ class TenantClient(Base, TimestampMixin):
 
 
 class TenantDomain(Base, TimestampMixin):
-    __tablename__ = "tenant_domains"
+    __tablename__ = "shared_tenant_domains"
     __table_args__ = (UniqueConstraint("hostname", name="uq_tenant_domains_hostname"),)
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("tenant_clients.id"), nullable=False)
+    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("shared_tenant_clients.id"), nullable=False)
     hostname: Mapped[str] = mapped_column(String(255), nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class PlatformSetting(Base, TimestampMixin):
-    __tablename__ = "platform_settings"
+    __tablename__ = "shared_platform_settings"
 
     id: Mapped[str] = uuid_pk()
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -129,7 +129,7 @@ class PlatformSetting(Base, TimestampMixin):
 
 
 class AssistantMessageFeedback(Base, TimestampMixin):
-    __tablename__ = "assistant_message_feedback"
+    __tablename__ = "agentic_assistant_message_feedback"
     __table_args__ = (
         UniqueConstraint(
             "tenant_client_id",
@@ -140,7 +140,7 @@ class AssistantMessageFeedback(Base, TimestampMixin):
     )
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("tenant_clients.id"), nullable=False)
+    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("shared_tenant_clients.id"), nullable=False)
     clerk_user_id: Mapped[str | None] = mapped_column(String(255))
     agent_id: Mapped[str] = mapped_column(String(100), nullable=False)
     surface: Mapped[str] = mapped_column(String(100), nullable=False, default="public-assistant")
@@ -153,10 +153,10 @@ class AssistantMessageFeedback(Base, TimestampMixin):
 
 
 class AssistantTurnEvent(Base, TimestampMixin):
-    __tablename__ = "assistant_turn_events"
+    __tablename__ = "agentic_assistant_turn_events"
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("tenant_clients.id"))
+    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("shared_tenant_clients.id"))
     conversation_id: Mapped[str | None] = mapped_column(String(255))
     message_id: Mapped[str | None] = mapped_column(String(255))
     run_id: Mapped[str | None] = mapped_column(String(255))
@@ -169,10 +169,10 @@ class AssistantTurnEvent(Base, TimestampMixin):
 
 
 class AssistantRunTelemetry(Base, TimestampMixin):
-    __tablename__ = "assistant_run_telemetry"
+    __tablename__ = "agentic_assistant_run_telemetry"
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("tenant_clients.id"))
+    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("shared_tenant_clients.id"))
     run_scope: Mapped[str] = mapped_column(String(50), nullable=False, default="team")
     agent_id: Mapped[str | None] = mapped_column(String(100))
     conversation_id: Mapped[str | None] = mapped_column(String(255))
@@ -192,10 +192,10 @@ class AssistantRunTelemetry(Base, TimestampMixin):
 
 
 class ZoningCodeIngestionRun(Base, TimestampMixin):
-    __tablename__ = "zoning_code_ingestion_runs"
+    __tablename__ = "agentic_zoning_code_ingestion_runs"
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("tenant_clients.id"), nullable=False)
+    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("shared_tenant_clients.id"), nullable=False)
     mode: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     source_url: Mapped[str] = mapped_column(String(2000), nullable=False)
@@ -209,12 +209,14 @@ class ZoningCodeIngestionRun(Base, TimestampMixin):
 
 
 class ZoningCodeDocument(Base, TimestampMixin):
-    __tablename__ = "zoning_code_documents"
-    __table_args__ = (UniqueConstraint("tenant_client_id", "source_url", name="uq_zoning_code_documents_source"),)
+    __tablename__ = "agentic_zoning_code_documents"
+    __table_args__ = (
+        UniqueConstraint("tenant_client_id", "source_url", name="uq_zoning_code_documents_source"),
+    )
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("tenant_clients.id"), nullable=False)
-    ingestion_run_id: Mapped[str | None] = mapped_column(ForeignKey("zoning_code_ingestion_runs.id"))
+    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("shared_tenant_clients.id"), nullable=False)
+    ingestion_run_id: Mapped[str | None] = mapped_column(ForeignKey("agentic_zoning_code_ingestion_runs.id"))
     source_url: Mapped[str] = mapped_column(String(2000), nullable=False)
     source_path: Mapped[str | None] = mapped_column(String(1000))
     source_title: Mapped[str | None] = mapped_column(String(500))
@@ -226,13 +228,15 @@ class ZoningCodeDocument(Base, TimestampMixin):
 
 
 class ZoningCodeSection(Base, TimestampMixin):
-    __tablename__ = "zoning_code_sections"
-    __table_args__ = (UniqueConstraint("tenant_client_id", "section_key", name="uq_zoning_code_sections_key"),)
+    __tablename__ = "agentic_zoning_code_sections"
+    __table_args__ = (
+        UniqueConstraint("tenant_client_id", "section_key", name="uq_zoning_code_sections_key"),
+    )
 
     id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("tenant_clients.id"), nullable=False)
-    ingestion_run_id: Mapped[str | None] = mapped_column(ForeignKey("zoning_code_ingestion_runs.id"))
-    document_id: Mapped[str] = mapped_column(ForeignKey("zoning_code_documents.id"), nullable=False)
+    tenant_client_id: Mapped[str] = mapped_column(ForeignKey("shared_tenant_clients.id"), nullable=False)
+    ingestion_run_id: Mapped[str | None] = mapped_column(ForeignKey("agentic_zoning_code_ingestion_runs.id"))
+    document_id: Mapped[str] = mapped_column(ForeignKey("agentic_zoning_code_documents.id"), nullable=False)
     section_key: Mapped[str] = mapped_column(String(500), nullable=False)
     section_title: Mapped[str] = mapped_column(String(500), nullable=False)
     section_level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -245,10 +249,10 @@ class ZoningCodeSection(Base, TimestampMixin):
 
 
 class Property(Base, TimestampMixin):
-    __tablename__ = "properties"
+    __tablename__ = "shared_properties"
 
     id: Mapped[str] = uuid_pk()
-    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("jurisdictions.id"), nullable=False)
+    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("shared_jurisdictions.id"), nullable=False)
     source_system: Mapped[str] = mapped_column(String(100), nullable=False)
     source_property_id: Mapped[str | None] = mapped_column(String(255))
     group_id: Mapped[str | None] = mapped_column(String(255))
@@ -263,11 +267,11 @@ class Property(Base, TimestampMixin):
 
 
 class PropertySnapshot(Base):
-    __tablename__ = "property_snapshots"
+    __tablename__ = "shared_property_snapshots"
 
     id: Mapped[str] = uuid_pk()
-    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), nullable=False)
-    captured_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    property_id: Mapped[str] = mapped_column(ForeignKey("shared_properties.id"), nullable=False)
+    captured_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     capture_reason: Mapped[str] = mapped_column(String(100), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
     apn: Mapped[str | None] = mapped_column(String(255))
@@ -285,22 +289,22 @@ class PropertySnapshot(Base):
 
 
 class Request(Base, TimestampMixin):
-    __tablename__ = "requests"
+    __tablename__ = "letters_requests"
 
     id: Mapped[str] = uuid_pk()
     public_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("jurisdictions.id"), nullable=False)
-    requester_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    property_id: Mapped[str] = mapped_column(ForeignKey("properties.id"), nullable=False)
+    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("shared_jurisdictions.id"), nullable=False)
+    requester_user_id: Mapped[str] = mapped_column(ForeignKey("shared_users.id"), nullable=False)
+    property_id: Mapped[str] = mapped_column(ForeignKey("shared_properties.id"), nullable=False)
     property_snapshot_id: Mapped[str] = mapped_column(
-        ForeignKey("property_snapshots.id"), nullable=False
+        ForeignKey("shared_property_snapshots.id"), nullable=False
     )
     letter_type: Mapped[str] = mapped_column(String(50), nullable=False)
     processing_type: Mapped[str] = mapped_column(String(50), nullable=False)
     delivery_method: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     payment_status: Mapped[str] = mapped_column(String(50), nullable=False)
-    assigned_to_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    assigned_to_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     requester_first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     requester_last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     requester_email: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -317,31 +321,31 @@ class Request(Base, TimestampMixin):
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime)
     total_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
-    current_quote_id: Mapped[str | None] = mapped_column(ForeignKey("quotes.id"))
-    current_draft_id: Mapped[str | None] = mapped_column(ForeignKey("letter_drafts.id"))
-    final_letter_version_id: Mapped[str | None] = mapped_column(ForeignKey("letter_versions.id"))
+    current_quote_id: Mapped[str | None] = mapped_column(ForeignKey("letters_quotes.id"))
+    current_draft_id: Mapped[str | None] = mapped_column(ForeignKey("letters_letter_drafts.id"))
+    final_letter_version_id: Mapped[str | None] = mapped_column(ForeignKey("letters_letter_versions.id"))
 
 
 class RequestStatusEvent(Base):
-    __tablename__ = "request_status_events"
+    __tablename__ = "letters_request_status_events"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
     from_status: Mapped[str | None] = mapped_column(String(50))
     to_status: Mapped[str] = mapped_column(String(50), nullable=False)
     reason_code: Mapped[str | None] = mapped_column(String(100))
     reason_text: Mapped[str | None] = mapped_column(Text)
-    acted_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    acted_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class RequestAssignment(Base):
-    __tablename__ = "request_assignments"
+    __tablename__ = "letters_request_assignments"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    assigned_to_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    assigned_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    assigned_to_user_id: Mapped[str] = mapped_column(ForeignKey("shared_users.id"), nullable=False)
+    assigned_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     assignment_reason: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -349,33 +353,33 @@ class RequestAssignment(Base):
 
 
 class RequestNote(Base, TimestampMixin):
-    __tablename__ = "request_notes"
+    __tablename__ = "letters_request_notes"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    author_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    author_user_id: Mapped[str] = mapped_column(ForeignKey("shared_users.id"), nullable=False)
     note_type: Mapped[str] = mapped_column(String(50), nullable=False)
     visibility: Mapped[str] = mapped_column(String(50), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class FeeSchedule(Base, TimestampMixin):
-    __tablename__ = "fee_schedules"
+    __tablename__ = "letters_fee_schedules"
 
     id: Mapped[str] = uuid_pk()
-    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("jurisdictions.id"), nullable=False)
+    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("shared_jurisdictions.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     effective_start_at: Mapped[datetime | None] = mapped_column(DateTime)
     effective_end_at: Mapped[datetime | None] = mapped_column(DateTime)
-    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
 
 
 class FeeScheduleItem(Base, TimestampMixin):
-    __tablename__ = "fee_schedule_items"
+    __tablename__ = "letters_fee_schedule_items"
 
     id: Mapped[str] = uuid_pk()
-    fee_schedule_id: Mapped[str] = mapped_column(ForeignKey("fee_schedules.id"), nullable=False)
+    fee_schedule_id: Mapped[str] = mapped_column(ForeignKey("letters_fee_schedules.id"), nullable=False)
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
@@ -394,11 +398,11 @@ class FeeScheduleItem(Base, TimestampMixin):
 
 
 class Quote(Base):
-    __tablename__ = "quotes"
+    __tablename__ = "letters_quotes"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    fee_schedule_id: Mapped[str] = mapped_column(ForeignKey("fee_schedules.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    fee_schedule_id: Mapped[str] = mapped_column(ForeignKey("letters_fee_schedules.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     line_items_json: Mapped[list | dict] = mapped_column(JSON, nullable=False)
     subtotal_cents: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -411,11 +415,11 @@ class Quote(Base):
 
 
 class Payment(Base, TimestampMixin):
-    __tablename__ = "payments"
+    __tablename__ = "letters_payments"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    quote_id: Mapped[str] = mapped_column(ForeignKey("quotes.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    quote_id: Mapped[str] = mapped_column(ForeignKey("letters_quotes.id"), nullable=False)
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     provider_payment_id: Mapped[str | None] = mapped_column(String(255))
     provider_checkout_id: Mapped[str | None] = mapped_column(String(255))
@@ -429,11 +433,11 @@ class Payment(Base, TimestampMixin):
 
 
 class PaymentEvent(Base):
-    __tablename__ = "payment_events"
+    __tablename__ = "letters_payment_events"
     __table_args__ = (UniqueConstraint("provider_event_id", name="uq_payment_events_provider_event_id"),)
 
     id: Mapped[str] = uuid_pk()
-    payment_id: Mapped[str] = mapped_column(ForeignKey("payments.id"), nullable=False)
+    payment_id: Mapped[str] = mapped_column(ForeignKey("letters_payments.id"), nullable=False)
     provider_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload_json: Mapped[dict | list] = mapped_column(JSON, nullable=False)
@@ -442,10 +446,10 @@ class PaymentEvent(Base):
 
 
 class LetterTemplate(Base, TimestampMixin):
-    __tablename__ = "letter_templates"
+    __tablename__ = "letters_letter_templates"
 
     id: Mapped[str] = uuid_pk()
-    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("jurisdictions.id"), nullable=False)
+    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("shared_jurisdictions.id"), nullable=False)
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     letter_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -453,47 +457,47 @@ class LetterTemplate(Base, TimestampMixin):
     template_body: Mapped[str] = mapped_column(Text, nullable=False)
     merge_variables_json: Mapped[list | dict | None] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
 
 
 class LetterDraft(Base, TimestampMixin):
-    __tablename__ = "letter_drafts"
+    __tablename__ = "letters_letter_drafts"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    template_id: Mapped[str] = mapped_column(ForeignKey("letter_templates.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    template_id: Mapped[str] = mapped_column(ForeignKey("letters_letter_templates.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     generated_body: Mapped[str] = mapped_column(Text, nullable=False)
     editable_sections_json: Mapped[list | dict | None] = mapped_column(JSON)
     generated_from_snapshot_id: Mapped[str | None] = mapped_column(
-        ForeignKey("property_snapshots.id")
+        ForeignKey("shared_property_snapshots.id")
     )
-    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
-    updated_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
+    updated_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
 
 
 class LetterVersion(Base):
-    __tablename__ = "letter_versions"
+    __tablename__ = "letters_letter_versions"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    draft_id: Mapped[str | None] = mapped_column(ForeignKey("letter_drafts.id"))
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    draft_id: Mapped[str | None] = mapped_column(ForeignKey("letters_letter_drafts.id"))
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     version_type: Mapped[str] = mapped_column(String(50), nullable=False)
     html_body: Mapped[str] = mapped_column(Text, nullable=False)
     pdf_storage_key: Mapped[str | None] = mapped_column(String(1000))
     pdf_sha256: Mapped[str | None] = mapped_column(String(64))
-    signed_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    signed_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     signed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class Delivery(Base, TimestampMixin):
-    __tablename__ = "deliveries"
+    __tablename__ = "letters_deliveries"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), nullable=False)
-    letter_version_id: Mapped[str] = mapped_column(ForeignKey("letter_versions.id"), nullable=False)
+    request_id: Mapped[str] = mapped_column(ForeignKey("letters_requests.id"), nullable=False)
+    letter_version_id: Mapped[str] = mapped_column(ForeignKey("letters_letter_versions.id"), nullable=False)
     delivery_method: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     destination: Mapped[str] = mapped_column(String(1000), nullable=False)
@@ -503,13 +507,13 @@ class Delivery(Base, TimestampMixin):
 
 
 class EmailTemplate(Base, TimestampMixin):
-    __tablename__ = "email_templates"
+    __tablename__ = "shared_email_templates"
 
     id: Mapped[str] = uuid_pk()
-    jurisdiction_id: Mapped[str | None] = mapped_column(ForeignKey("jurisdictions.id"))
-    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("tenant_clients.id"))
+    jurisdiction_id: Mapped[str | None] = mapped_column(ForeignKey("shared_jurisdictions.id"))
+    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("shared_tenant_clients.id"))
     owner_organization_id: Mapped[str | None] = mapped_column(String(255))
-    base_template_id: Mapped[str | None] = mapped_column(ForeignKey("email_templates.id"))
+    base_template_id: Mapped[str | None] = mapped_column(ForeignKey("shared_email_templates.id"))
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     trigger_state: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -519,15 +523,15 @@ class EmailTemplate(Base, TimestampMixin):
     body_template: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     is_system_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class JurisdictionHomePageContent(Base, TimestampMixin):
-    __tablename__ = "jurisdiction_home_page_content"
+    __tablename__ = "shared_jurisdiction_home_page_content"
 
     id: Mapped[str] = uuid_pk()
-    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("jurisdictions.id"), nullable=False, unique=True)
+    jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("shared_jurisdictions.id"), nullable=False, unique=True)
     hero_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     services_json: Mapped[list] = mapped_column(JSON, nullable=False)
     about_json: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -536,11 +540,11 @@ class JurisdictionHomePageContent(Base, TimestampMixin):
 
 
 class EmailEvent(Base):
-    __tablename__ = "email_events"
+    __tablename__ = "shared_email_events"
 
     id: Mapped[str] = uuid_pk()
-    request_id: Mapped[str | None] = mapped_column(ForeignKey("requests.id"))
-    template_id: Mapped[str | None] = mapped_column(ForeignKey("email_templates.id"))
+    request_id: Mapped[str | None] = mapped_column(ForeignKey("letters_requests.id"))
+    template_id: Mapped[str | None] = mapped_column(ForeignKey("shared_email_templates.id"))
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
     subject_rendered: Mapped[str] = mapped_column(Text, nullable=False)
     body_rendered: Mapped[str] = mapped_column(Text, nullable=False)
@@ -553,10 +557,10 @@ class EmailEvent(Base):
 
 
 class AuditLog(Base):
-    __tablename__ = "audit_log"
+    __tablename__ = "shared_audit_log"
 
     id: Mapped[str] = uuid_pk()
-    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))
     entity_type: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(36), nullable=False)
     action: Mapped[str] = mapped_column(String(100), nullable=False)

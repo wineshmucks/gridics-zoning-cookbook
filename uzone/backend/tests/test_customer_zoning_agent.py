@@ -29,6 +29,7 @@ def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> No
     module, kwargs = _reload_customer_zoning_agent_module(monkeypatch)
 
     assert module.customer_zoning_agent.id == "customer-zoning-agent"
+    assert module.customer_zoning_team.id == "customer_zoning_team"
     assert kwargs["session_state"] == {"active_property_context": None}
     assert kwargs["add_session_state_to_context"] is True
     assert kwargs["add_history_to_context"] is True
@@ -174,7 +175,7 @@ def test_apply_tenant_assistant_config_ignores_tenant_prompt_overrides(monkeypat
         lambda client_id: (
             {"gemini": "tenant-db-key"},
             {},
-            {"customer-zoning-agent": "Use a polished City of Miami voice."},
+            {"customer_zoning_team": "Use a polished City of Miami voice."},
         ),
     )
 
@@ -184,3 +185,54 @@ def test_apply_tenant_assistant_config_ignores_tenant_prompt_overrides(monkeypat
         "Lead core instruction.",
         "Treat a short 'yes' reply as confirmation when a pending address-confirmation state exists.",
     ]
+
+
+def test_apply_tenant_assistant_config_forces_gemini_provider(monkeypatch) -> None:
+    module = importlib.import_module("app.agents.customer_zoning_agent")
+    captured = {}
+    lead = types.SimpleNamespace(
+        id="customer_zoning_team",
+        model=types.SimpleNamespace(id="default-model"),
+        instructions=[],
+        members=[],
+    )
+    run_context = types.SimpleNamespace(
+        metadata={},
+        dependencies={"client_id": "miami"},
+        session_state={},
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_load_tenant_assistant_config",
+        lambda client_id: (
+            {"gemini": "tenant-gemini-key"},
+            {
+                "customer_zoning_team": {
+                    "provider": "openai",
+                    "model_id": "gpt-5",
+                    "base_url": "https://example.com",
+                }
+            },
+            {},
+        ),
+    )
+
+    def fake_build_agent_model(*, provider=None, model_id=None, api_key=None, base_url=None, **kwargs):
+        captured.update(
+            {
+                "provider": provider,
+                "model_id": model_id,
+                "api_key": api_key,
+                "base_url": base_url,
+            }
+        )
+        return types.SimpleNamespace(id=model_id)
+
+    monkeypatch.setattr(module, "build_agent_model", fake_build_agent_model)
+
+    module._apply_tenant_assistant_config(team=lead, run_context=run_context)
+
+    assert captured["provider"] == "gemini"
+    assert captured["api_key"] == "tenant-gemini-key"
+    assert captured["model_id"] == "gemini-2.5-flash-lite"

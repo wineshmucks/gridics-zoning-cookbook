@@ -12,7 +12,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
-        "assistant_message_feedback",
+        "agentic_assistant_message_feedback",
         sa.Column("id", sa.String(length=36), nullable=False),
         sa.Column("tenant_client_id", sa.String(length=36), nullable=False),
         sa.Column("clerk_user_id", sa.String(length=255), nullable=True),
@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("metadata_json", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["tenant_client_id"], ["tenant_clients.id"]),
+        sa.ForeignKeyConstraint(["tenant_client_id"], ["shared_tenant_clients.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "tenant_client_id",
@@ -38,4 +38,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("assistant_message_feedback")
+    op.drop_table("agentic_assistant_message_feedback")

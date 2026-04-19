@@ -15,9 +15,9 @@ def upgrade() -> None:
     op.execute("CREATE SCHEMA IF NOT EXISTS ai;")
 
     op.create_table(
-        "zoning_code_ingestion_runs",
+        "agentic_zoning_code_ingestion_runs",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("tenant_clients.id"), nullable=False),
+        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("shared_tenant_clients.id"), nullable=False),
         sa.Column("mode", sa.String(length=50), nullable=False),
         sa.Column("status", sa.String(length=50), nullable=False),
         sa.Column("source_url", sa.String(length=2000), nullable=False),
@@ -33,10 +33,10 @@ def upgrade() -> None:
     )
 
     op.create_table(
-        "zoning_code_documents",
+        "agentic_zoning_code_documents",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("tenant_clients.id"), nullable=False),
-        sa.Column("ingestion_run_id", sa.String(length=36), sa.ForeignKey("zoning_code_ingestion_runs.id")),
+        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("shared_tenant_clients.id"), nullable=False),
+        sa.Column("ingestion_run_id", sa.String(length=36), sa.ForeignKey("agentic_zoning_code_ingestion_runs.id")),
         sa.Column("source_url", sa.String(length=2000), nullable=False),
         sa.Column("source_path", sa.String(length=1000)),
         sa.Column("source_title", sa.String(length=500)),
@@ -51,11 +51,11 @@ def upgrade() -> None:
     )
 
     op.create_table(
-        "zoning_code_sections",
+        "agentic_zoning_code_sections",
         sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("tenant_clients.id"), nullable=False),
-        sa.Column("ingestion_run_id", sa.String(length=36), sa.ForeignKey("zoning_code_ingestion_runs.id")),
-        sa.Column("document_id", sa.String(length=36), sa.ForeignKey("zoning_code_documents.id"), nullable=False),
+        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("shared_tenant_clients.id"), nullable=False),
+        sa.Column("ingestion_run_id", sa.String(length=36), sa.ForeignKey("agentic_zoning_code_ingestion_runs.id")),
+        sa.Column("document_id", sa.String(length=36), sa.ForeignKey("agentic_zoning_code_documents.id"), nullable=False),
         sa.Column("section_key", sa.String(length=500), nullable=False),
         sa.Column("section_title", sa.String(length=500), nullable=False),
         sa.Column("section_level", sa.Integer(), nullable=False, server_default="1"),
@@ -72,7 +72,7 @@ def upgrade() -> None:
 
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS ai.customer_zoning_chunks (
+        CREATE TABLE IF NOT EXISTS ai.agentic_customer_zoning_chunks (
             id VARCHAR PRIMARY KEY,
             name VARCHAR,
             meta_data JSONB DEFAULT '{}'::jsonb,
@@ -87,25 +87,25 @@ def upgrade() -> None:
         )
         """
     )
-    op.execute("CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_id ON ai.customer_zoning_chunks (id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_name ON ai.customer_zoning_chunks (name)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_id ON ai.agentic_customer_zoning_chunks (id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_name ON ai.agentic_customer_zoning_chunks (name)")
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_content_hash ON ai.customer_zoning_chunks (content_hash)"
+        "CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_content_hash ON ai.agentic_customer_zoning_chunks (content_hash)"
     )
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_content_id ON ai.customer_zoning_chunks (content_id)"
+        "CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_content_id ON ai.agentic_customer_zoning_chunks (content_id)"
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_customer_zoning_chunks_embedding_hnsw
-        ON ai.customer_zoning_chunks
+        CREATE INDEX IF NOT EXISTS idx_agentic_customer_zoning_chunks_embedding_hnsw
+        ON ai.agentic_customer_zoning_chunks
         USING hnsw (embedding vector_cosine_ops)
         """
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS ai.customer_zoning_chunks")
-    op.drop_table("zoning_code_sections")
-    op.drop_table("zoning_code_documents")
-    op.drop_table("zoning_code_ingestion_runs")
+    op.execute("DROP TABLE IF EXISTS ai.agentic_customer_zoning_chunks")
+    op.drop_table("agentic_zoning_code_sections")
+    op.drop_table("agentic_zoning_code_documents")
+    op.drop_table("agentic_zoning_code_ingestion_runs")

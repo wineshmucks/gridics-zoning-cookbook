@@ -40,7 +40,7 @@ def test_get_assistant_metrics_returns_aggregates_without_client_filter() -> Non
 def test_get_assistant_metrics_raises_when_client_missing(monkeypatch) -> None:
     class FakeDb(_FakeDb):
         def scalar(self, stmt):
-            if "tenant_clients" in str(stmt):
+            if "shared_tenant_clients" in str(stmt):
                 return None
             return super().scalar(stmt)
 

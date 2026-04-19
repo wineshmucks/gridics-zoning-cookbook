@@ -23,7 +23,7 @@ def test_create_and_read_embed_session(monkeypatch) -> None:
     from app.api.v1 import public
 
     db = _db()
-    monkeypatch.setattr(public.settings, "embed_session_signing_secret", "signing-secret")
+    monkeypatch.setattr(public.settings, "embed_session_signing_secret", "signing-secret-0123456789abcdef0")
     tenant = TenantClient(
         client_id="dream-town",
         clerk_organization_id="org_dream_town",

@@ -33,21 +33,13 @@ export function PublicNav({
   currentProduct: UzoneProduct
 }) {
   const pathname = useHydratedPathname()
-  const isAssistantSurface =
-    pathname === '/ai-assistant' ||
-    pathname.startsWith('/ai-assistant/') ||
-    (scopePath
-      ? pathname === `${scopePath}/assistant` ||
-        pathname.startsWith(`${scopePath}/assistant/`) ||
-        (currentProduct === 'assistant' && pathname === scopePath)
-      : false)
   const isJurisdictionPicker = isAgenticPickerRoute({
     pathname,
     currentProduct,
     orgId,
   })
 
-  if (isAssistantSurface || isJurisdictionPicker) {
+  if (currentProduct !== 'letters' || isJurisdictionPicker) {
     return null
   }
 
@@ -63,18 +55,10 @@ export function PublicNav({
           normalizedHref === '/'
             ? currentProduct === 'letters' &&
               (pathname === '/' || (scopePath ? pathname === scopePath : pathname === `/${orgId}`))
-            : normalizedHref === '/ai-assistant'
-              ? currentProduct === 'assistant' &&
-                Boolean(scopePath) &&
-                (pathname === scopePath ||
-                  pathname === `${scopePath}/assistant` ||
-                  pathname.startsWith(`${scopePath}/assistant/`) ||
-                  pathname.startsWith('/ai-assistant/'))
-              : normalizedHref !== '' &&
-                currentProduct === 'letters' &&
-                (scopePath
-                  ? pathname === `${scopePath}${normalizedHref}` || pathname.startsWith(`${scopePath}${normalizedHref}/`)
-                  : pathname.startsWith(normalizedHref))
+            : normalizedHref !== '' &&
+              (scopePath
+                ? pathname === `${scopePath}${normalizedHref}` || pathname.startsWith(`${scopePath}${normalizedHref}/`)
+                : pathname.startsWith(normalizedHref))
         const isDisabled = item.requiresJurisdiction && !orgId
 
         if (isDisabled) {

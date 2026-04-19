@@ -7,6 +7,7 @@ import { AuthControls, ClerkShell } from '../components/ClerkShell'
 import { ClientErrorReporter } from '../components/ClientErrorReporter'
 import { HeaderBrand } from '../components/HeaderBrand'
 import { PublicNav } from '../components/PublicNav'
+import { fetchCustomerRecord } from './admin/actions'
 import { getCurrentHost, getCurrentOrgId, getCurrentPathname, getCurrentProduct, getCurrentScopePath } from '../lib/org-context'
 import { getPermissionContext } from '../lib/permissions'
 import { getTenantConfig } from '../lib/tenant'
@@ -28,8 +29,6 @@ export async function generateMetadata(): Promise<Metadata> {
       pathname: currentPathname,
       currentProduct,
       orgId,
-      publicSiteTitle: tenant.public_site_title,
-      cityName: tenant.city_name,
     }),
     description: 'Zoning verification workflow',
   }
@@ -44,10 +43,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const currentProduct = await getCurrentProduct()
   const isEmbedSurface = currentScopePath?.startsWith('/embed') ?? false
   const isSuperAdminScope = currentScopePath?.startsWith('/super-admin') ?? false
+  const superAdminCustomerMatch = currentPathname?.match(/^\/super-admin\/customers\/([^/]+)/) || null
+  const superAdminCustomerId = superAdminCustomerMatch?.[1] || null
+  const superAdminCustomerRecord =
+    isSuperAdminScope && superAdminCustomerId ? await fetchCustomerRecord(superAdminCustomerId) : null
   const tenant = await getTenantConfig()
   const permissions = await getPermissionContext(clerkEnabled)
   const displayCityName = orgId ? tenant.city_name : 'UZone'
-  const displayDepartmentName = orgId ? tenant.department_name : 'Choose a Jurisdiction'
+  const displayDepartmentName = isSuperAdminScope ? '' : orgId ? tenant.department_name : 'Choose a Jurisdiction'
   const isJurisdictionPickerRoute =
     currentPathname === '/select-jurisdiction' ||
     (currentPathname === '/' && currentProduct === 'assistant')
@@ -55,8 +58,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     pathname: currentPathname,
     currentProduct,
     orgId,
-    publicSiteTitle: tenant.public_site_title,
-    cityName: tenant.city_name,
   })
   const logoUrl = !isSuperAdminScope && !isJurisdictionPickerRoute && orgId ? tenant.logo_path || null : null
   const brandVariant = isSuperAdminScope || isJurisdictionPickerRoute ? 'gridics' : 'tenant'
@@ -87,7 +88,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           ) : (
             <main>
               <div className="shell shell-wide">
-                <header className="topbar topbar-public">
+                <header className={`topbar${isSuperAdminScope ? ' topbar-super-admin' : ' topbar-public'}`}>
                   <HeaderBrand
                     clerkEnabled={clerkEnabled}
                     cityName={displayCityName}
@@ -99,22 +100,27 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                     currentProduct={currentProduct}
                     currentOrgId={orgId}
                     currentCustomerName={permissions.currentClientMembership?.organizationName || null}
+                    superAdminCustomerName={superAdminCustomerRecord?.city_name || null}
+                    superAdminCustomerId={superAdminCustomerRecord?.clerk_organization_id || superAdminCustomerId}
                     adminMemberships={permissions.adminMemberships}
                     selectedAdminOrganizationId={permissions.selectedAdminMembership?.organizationId || null}
                   />
-                  <div className="topbar-actions">
-                    <PublicNav
-                      orgId={orgId}
-                      scopePath={currentScopePath}
-                      currentHost={currentHost}
-                      currentProduct={currentProduct}
-                    />
+                  <div className={`topbar-actions${isSuperAdminScope ? ' is-super-admin' : ''}`}>
+                    {currentProduct === 'letters' && !isSuperAdminScope ? (
+                      <PublicNav
+                        orgId={orgId}
+                        scopePath={currentScopePath}
+                        currentHost={currentHost}
+                        currentProduct={currentProduct}
+                      />
+                    ) : null}
                     <AuthControls
                       clerkEnabled={clerkEnabled}
                       canAccessAdminScreens={permissions.canAccessAdminScreens}
                       isSuperAdmin={permissions.isSuperAdmin}
                       currentOrgId={orgId}
                       currentScopePath={currentScopePath}
+                      compact={isSuperAdminScope}
                     />
                   </div>
                 </header>

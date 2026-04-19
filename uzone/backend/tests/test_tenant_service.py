@@ -11,6 +11,8 @@ from app.db.models import Jurisdiction, TenantClient, TenantDomain
 from app.services.tenant_service import (
     build_default_home_page_content,
     get_home_page_content_record,
+    get_tenant_assistant_settings,
+    get_tenant_assistant_agent_prompts,
     get_tenant_experience_settings,
     has_home_page_content_storage,
     invalidate_tenant_cache,
@@ -90,6 +92,49 @@ def test_merge_tenant_experience_settings_preserves_agent_url_when_updating_zoni
     )
 
 
+def test_get_tenant_assistant_settings_normalizes_legacy_customer_zoning_agent_keys() -> None:
+    provider_keys, model_targets = get_tenant_assistant_settings(
+        {
+            "assistant_provider_keys": {"gemini": " key "},
+            "assistant_model_targets": {
+                "customer-zoning-agent": {
+                    "provider": "openai",
+                    "model_id": " gpt-5 ",
+                    "base_url": " https://example.com ",
+                },
+                "customer_zoning_team": {
+                    "provider": "gemini",
+                    "model_id": " gemini-2.5-pro ",
+                    "base_url": " https://example.com ",
+                },
+            },
+            "assistant_agent_prompts": {
+                "customer-zoning-agent": " Legacy prompt ",
+                "customer-zoning-team": " Public prompt ",
+                "customer_zoning_team": " New prompt ",
+            },
+        }
+    )
+
+    assert provider_keys["gemini"] == "key"
+    assert model_targets["customer_zoning_team"]["provider"] == "gemini"
+    assert model_targets["customer_zoning_team"]["model_id"] == "gemini-2.5-pro"
+    assert model_targets["customer_zoning_team"]["base_url"] == "https://example.com"
+    assert model_targets["customer_zoning_team"] != model_targets.get("customer-zoning-agent")
+
+    prompts = get_tenant_assistant_agent_prompts(
+        {
+            "assistant_agent_prompts": {
+                "customer-zoning-agent": " Legacy prompt ",
+                "customer-zoning-team": " Public prompt ",
+                "customer_zoning_team": " New prompt ",
+            }
+        }
+    )
+
+    assert prompts["customer_zoning_team"] == "New prompt"
+
+
 def test_build_default_home_page_content_uses_tenant_specific_values() -> None:
     tenant = TenantClient(
         client_id="tenant-a",
@@ -115,7 +160,7 @@ def test_get_home_page_content_record_returns_none_when_table_is_missing() -> No
     db.scalar.side_effect = ProgrammingError(
         "SELECT ...",
         {},
-        Exception('relation "jurisdiction_home_page_content" does not exist'),
+        Exception('relation "shared_jurisdiction_home_page_content" does not exist'),
     )
 
     result = get_home_page_content_record(db, "jur-1")

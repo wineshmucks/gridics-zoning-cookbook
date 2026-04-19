@@ -8,6 +8,11 @@ import { DEFAULT_ASSISTANT_DISCLAIMER_TEXT } from '../../lib/assistant-disclaime
 import { getCurrentOrgId } from '../../lib/org-context'
 import { getClerkManagementClient } from '../../lib/clerk'
 import { getPermissionContext } from '../../lib/permissions'
+import {
+  CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+  normalizeAssistantModelProvider,
+  normalizeAssistantTargetId,
+} from '../../components/assistantTargetIds'
 
 export type ProvisionClientState = {
   error: string | null
@@ -112,6 +117,12 @@ export type CustomerZoningKnowledgeLatestRun = {
 export type CustomerZoningKnowledgeStatus = {
   client_id: string
   zoning_code_url: string | null
+  embedder_provider: string
+  embedder_model_id: string
+  embedder_dimensions: number
+  progress_percent: number
+  progress_message: string
+  is_complete: boolean
   documents: number
   sections: number
   chunks: number
@@ -387,6 +398,45 @@ export type AdminHomePagePayload = {
   }
 }
 
+export type DatabaseTableSummary = {
+  table_name: string
+  row_count: number
+  size_bytes: number | null
+  size_label: string | null
+}
+
+export type DanglingTableSummary = {
+  table_name: string
+  dangling_rows: number
+  sample_ids: string[]
+}
+
+export type DatabaseInfo = {
+  database_name: string | null
+  total_size_bytes: number | null
+  total_size_label: string | null
+  tables: DatabaseTableSummary[]
+  dangling_tables: DanglingTableSummary[]
+}
+
+export type DatabaseCleanupTableResult = {
+  table_name: string
+  deleted_rows: number
+}
+
+export type DatabaseCleanupResult = {
+  deleted_rows_total: number
+  deleted_by_table: DatabaseCleanupTableResult[]
+  database_info: DatabaseInfo
+}
+
+export type SuperAdminDatabaseState = {
+  error: string | null
+  success: string | null
+  databaseInfo: DatabaseInfo | null
+  cleanupResult: DatabaseCleanupResult | null
+}
+
 const initialProvisionState: ProvisionClientState = {
   error: null,
   success: null,
@@ -429,12 +479,25 @@ const initialSuperAdminGridicsDebugState: SuperAdminGridicsDebugState = {
   response: null,
 }
 
+const initialSuperAdminDatabaseState: SuperAdminDatabaseState = {
+  error: null,
+  success: null,
+  databaseInfo: null,
+  cleanupResult: null,
+}
+
 function buildEmptyCustomerZoningKnowledgeStatus(
   organizationId: string,
 ): CustomerZoningKnowledgeStatus {
   return {
     client_id: organizationId,
     zoning_code_url: null,
+    embedder_provider: 'gemini',
+    embedder_model_id: 'gemini-embedding-001',
+    embedder_dimensions: 1536,
+    progress_percent: 0,
+    progress_message: 'No knowledge ingestion run has started yet.',
+    is_complete: false,
     documents: 0,
     sections: 0,
     chunks: 0,
@@ -523,8 +586,15 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     }
 
     const target = rawTarget as Record<string, unknown>
-    assistant_model_targets[targetId] = {
-      provider: typeof target.provider === 'string' ? target.provider : null,
+    const normalizedProvider = normalizeAssistantModelProvider(
+      typeof target.provider === 'string' ? target.provider : null,
+    )
+    if (typeof target.provider === 'string' && target.provider.trim() && !normalizedProvider) {
+      continue
+    }
+
+    assistant_model_targets[normalizeAssistantTargetId(targetId)] = {
+      provider: normalizedProvider,
       model_id: typeof target.model_id === 'string' ? target.model_id : null,
       base_url: typeof target.base_url === 'string' ? target.base_url : null,
     }
@@ -537,7 +607,7 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     }
     const prompt = rawPrompt.trim()
     if (prompt) {
-      assistant_agent_prompts[targetId] = prompt
+      assistant_agent_prompts[normalizeAssistantTargetId(targetId)] = prompt
     }
   }
 
@@ -552,7 +622,7 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     }
 
     const target = rawTarget as Record<string, unknown>
-    code_default_assistant_model_targets[targetId] = {
+    code_default_assistant_model_targets[normalizeAssistantTargetId(targetId)] = {
       provider: typeof target.provider === 'string' ? target.provider : null,
       model_id: typeof target.model_id === 'string' ? target.model_id : null,
       base_url: typeof target.base_url === 'string' ? target.base_url : null,
@@ -602,6 +672,103 @@ function normalizeCustomerEmbedSettings(payload: unknown): CustomerEmbedSettings
     has_secret: typeof record.has_secret === 'boolean' ? record.has_secret : fallback.has_secret,
     created_at: typeof record.created_at === 'string' ? record.created_at : null,
     updated_at: typeof record.updated_at === 'string' ? record.updated_at : null,
+  }
+}
+
+function normalizeDatabaseTableSummary(payload: unknown): DatabaseTableSummary {
+  const fallback: DatabaseTableSummary = {
+    table_name: '',
+    row_count: 0,
+    size_bytes: null,
+    size_label: null,
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const record = payload as Record<string, unknown>
+  return {
+    table_name: typeof record.table_name === 'string' ? record.table_name : fallback.table_name,
+    row_count: typeof record.row_count === 'number' ? record.row_count : fallback.row_count,
+    size_bytes: typeof record.size_bytes === 'number' ? record.size_bytes : null,
+    size_label: typeof record.size_label === 'string' ? record.size_label : null,
+  }
+}
+
+function normalizeDanglingTableSummary(payload: unknown): DanglingTableSummary {
+  const fallback: DanglingTableSummary = {
+    table_name: '',
+    dangling_rows: 0,
+    sample_ids: [],
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const record = payload as Record<string, unknown>
+  return {
+    table_name: typeof record.table_name === 'string' ? record.table_name : fallback.table_name,
+    dangling_rows: typeof record.dangling_rows === 'number' ? record.dangling_rows : fallback.dangling_rows,
+    sample_ids: Array.isArray(record.sample_ids)
+      ? record.sample_ids.filter((item): item is string => typeof item === 'string')
+      : fallback.sample_ids,
+  }
+}
+
+function normalizeDatabaseInfo(payload: unknown): DatabaseInfo {
+  const fallback: DatabaseInfo = {
+    database_name: null,
+    total_size_bytes: null,
+    total_size_label: null,
+    tables: [],
+    dangling_tables: [],
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const record = payload as Record<string, unknown>
+  return {
+    database_name: typeof record.database_name === 'string' ? record.database_name : null,
+    total_size_bytes: typeof record.total_size_bytes === 'number' ? record.total_size_bytes : null,
+    total_size_label: typeof record.total_size_label === 'string' ? record.total_size_label : null,
+    tables: Array.isArray(record.tables) ? record.tables.map(normalizeDatabaseTableSummary) : [],
+    dangling_tables: Array.isArray(record.dangling_tables)
+      ? record.dangling_tables.map(normalizeDanglingTableSummary)
+      : [],
+  }
+}
+
+function normalizeDatabaseCleanupResult(payload: unknown): DatabaseCleanupResult {
+  const fallback: DatabaseCleanupResult = {
+    deleted_rows_total: 0,
+    deleted_by_table: [],
+    database_info: normalizeDatabaseInfo(null),
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return fallback
+  }
+
+  const record = payload as Record<string, unknown>
+  return {
+    deleted_rows_total:
+      typeof record.deleted_rows_total === 'number' ? record.deleted_rows_total : fallback.deleted_rows_total,
+    deleted_by_table: Array.isArray(record.deleted_by_table)
+      ? record.deleted_by_table.map((item) => ({
+          table_name: typeof item === 'object' && item !== null && typeof (item as Record<string, unknown>).table_name === 'string'
+            ? (item as Record<string, unknown>).table_name as string
+            : '',
+          deleted_rows:
+            typeof item === 'object' && item !== null && typeof (item as Record<string, unknown>).deleted_rows === 'number'
+              ? (item as Record<string, unknown>).deleted_rows as number
+              : 0,
+        }))
+      : [],
+    database_info: normalizeDatabaseInfo(record.database_info),
   }
 }
 
@@ -822,6 +989,67 @@ async function createTenantClientRecord(clientName: string, organizationId: stri
     throw new Error(
       typeof payload?.detail === 'string' ? payload.detail : 'Unable to create tenant client record.',
     )
+  }
+}
+
+export async function fetchDatabaseInfo(): Promise<DatabaseInfo> {
+  const response = await fetch(buildBackendApiUrl('/api/admin/database-info'), {
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error('Unable to load database info.')
+  }
+
+  return normalizeDatabaseInfo(await response.json())
+}
+
+export async function runSuperAdminDatabaseCleanupAction(
+  _previousState: SuperAdminDatabaseState,
+  _formData: FormData,
+): Promise<SuperAdminDatabaseState> {
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  const permissions = await getPermissionContext(clerkEnabled)
+
+  if (!permissions.isSuperAdmin) {
+    return {
+      ...initialSuperAdminDatabaseState,
+      error: 'Only super admins can clean up database records.',
+    }
+  }
+
+  try {
+    const response = await fetch(buildBackendApiUrl('/api/admin/database-info/cleanup-dangling'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      const detail =
+        typeof payload?.detail === 'string' ? payload.detail : 'Unable to clean dangling database records.'
+      return {
+        ...initialSuperAdminDatabaseState,
+        error: detail,
+        databaseInfo: null,
+        cleanupResult: null,
+      }
+    }
+
+    const cleanupResult = normalizeDatabaseCleanupResult(payload)
+    return {
+      error: null,
+      success: `Removed ${cleanupResult.deleted_rows_total} dangling records.`,
+      databaseInfo: cleanupResult.database_info,
+      cleanupResult,
+    }
+  } catch (error) {
+    return {
+      ...initialSuperAdminDatabaseState,
+      error: getErrorMessage(error, 'Unable to clean dangling database records.'),
+    }
   }
 }
 
@@ -1167,7 +1395,7 @@ export async function saveCustomerExperienceSettingsAction(
     groq: String(formData.get('providerKeyGroq') || '').trim() || null,
   }
   const assistantModelTargets = {
-    'customer-zoning-agent': {
+    [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]: {
       provider: String(formData.get('targetProviderCustomerZoningAgent') || '').trim() || null,
       model_id: String(formData.get('targetModelCustomerZoningAgent') || '').trim() || null,
       base_url: String(formData.get('targetBaseUrlCustomerZoningAgent') || '').trim() || null,
@@ -1184,7 +1412,8 @@ export async function saveCustomerExperienceSettingsAction(
     },
   }
   const assistantAgentPrompts = {
-    'customer-zoning-agent': String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
+    [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
+      String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
     'parcel-data-agent': String(formData.get('promptParcelDataAgent') || '').trim() || null,
     'code-researcher-agent': String(formData.get('promptCodeResearcherAgent') || '').trim() || null,
   }

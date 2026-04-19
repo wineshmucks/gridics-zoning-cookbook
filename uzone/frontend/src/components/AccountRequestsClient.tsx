@@ -5,6 +5,11 @@ import { useAuth } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 
 import { buildApiUrl, fetchJsonWithToken, postJsonWithToken } from '../lib/api'
+import {
+  buildAccountCheckoutPayload,
+  buildAccountPaymentReceivedPayload,
+  buildAccountSubmitPayload,
+} from '../lib/request-action-payloads'
 import { ErrorCard, LoadingCard } from './RemoteState'
 
 type RequestRow = {
@@ -171,7 +176,7 @@ function AccountRequestsTable({
       if (kind === 'submit') {
         await postJsonWithToken(
           `/api/requests/${requestId}/submit`,
-          clerkEnabled ? {} : { actor_user_id: localUserId },
+          buildAccountSubmitPayload(clerkEnabled, localUserId),
           getToken,
         )
       }
@@ -181,17 +186,14 @@ function AccountRequestsTable({
       if (kind === 'checkout') {
         await postJsonWithToken(
           `/api/requests/${requestId}/checkout`,
-          {
-            ...(clerkEnabled ? {} : { actor_user_id: localUserId }),
-            provider: 'manual',
-          },
+          buildAccountCheckoutPayload(clerkEnabled, localUserId),
           getToken,
         )
       }
       if (kind === 'pay') {
         await postJsonWithToken(
           `/api/requests/${requestId}/payment-received`,
-          clerkEnabled ? {} : { actor_user_id: localUserId },
+          buildAccountPaymentReceivedPayload(clerkEnabled, localUserId),
           getToken,
         )
       }

@@ -20,11 +20,13 @@ import { buildApiUrl } from '../lib/api'
 import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
 import { CustomerAssistantEmbedPreview } from './CustomerAssistantEmbedPreview'
 import {
+  assistantModelProviderOptions,
+  assistantProviderKeyFields,
   describeAssistantModelTarget,
   hasAssistantModelTarget,
   modelTargetFields,
-  providerFields,
 } from './agenticSetupConfig'
+import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 
 type SelectedCustomer = {
   id: string
@@ -126,6 +128,15 @@ export function CustomerAssistantSetupPanel({
       : 'general'
   const latestRun = liveZoningKnowledgeStatus.latest_run
   const zoningRunActive = latestRun?.status === 'queued' || latestRun?.status === 'running'
+  const zoningKnowledgeJobActive = ingestPending || reindexPending || zoningRunActive
+  const progressPercent = Math.max(0, Math.min(100, liveZoningKnowledgeStatus.progress_percent || 0))
+  const progressLabel =
+    liveZoningKnowledgeStatus.progress_message ||
+    (latestRun?.status === 'completed'
+      ? 'Ingestion complete.'
+      : latestRun?.status === 'failed'
+        ? 'Ingestion failed.'
+        : 'Waiting for progress updates.')
   const providerKeys = experienceSettings.assistant_provider_keys || {}
   const modelTargets = experienceSettings.assistant_model_targets || {}
   const currentExperienceSettings = experienceState.settings || experienceSettings
@@ -491,7 +502,7 @@ export function CustomerAssistantSetupPanel({
     }
 
     loadStatus()
-    if (zoningRunActive) {
+    if (zoningKnowledgeJobActive) {
       intervalId = setInterval(loadStatus, 3000)
     }
 
@@ -501,7 +512,7 @@ export function CustomerAssistantSetupPanel({
         clearInterval(intervalId)
       }
     }
-  }, [customer.id, zoningRunActive])
+  }, [customer.id, zoningKnowledgeJobActive])
 
   const handleExperienceSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -520,7 +531,7 @@ export function CustomerAssistantSetupPanel({
         groq: String(formData.get('providerKeyGroq') || '').trim() || null,
       },
       assistant_model_targets: {
-        'customer-zoning-agent': {
+        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]: {
           provider: String(formData.get('targetProviderCustomerZoningAgent') || '').trim() || null,
           model_id: String(formData.get('targetModelCustomerZoningAgent') || '').trim() || null,
           base_url: String(formData.get('targetBaseUrlCustomerZoningAgent') || '').trim() || null,
@@ -537,7 +548,8 @@ export function CustomerAssistantSetupPanel({
         },
       },
       assistant_agent_prompts: {
-        'customer-zoning-agent': currentAgentPrompts['customer-zoning-agent'] || null,
+        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
+          currentAgentPrompts[CUSTOMER_ZONING_ASSISTANT_TARGET_ID] || null,
         'parcel-data-agent': currentAgentPrompts['parcel-data-agent'] || null,
         'code-researcher-agent': currentAgentPrompts['code-researcher-agent'] || null,
       },
@@ -607,7 +619,7 @@ export function CustomerAssistantSetupPanel({
         <input type="hidden" name="assistantDisclaimerText" value={currentDisclaimer} />
       ) : null}
       {options.includeProviderKeys
-        ? providerFields.map((provider) => (
+        ? assistantProviderKeyFields.map((provider) => (
             <input
               key={provider.id}
               type="hidden"
@@ -652,7 +664,7 @@ export function CustomerAssistantSetupPanel({
               type="hidden"
               name={(() => {
                 switch (targetId) {
-                  case 'customer-zoning-agent':
+                  case CUSTOMER_ZONING_ASSISTANT_TARGET_ID:
                     return 'promptCustomerZoningAgent'
                   case 'parcel-data-agent':
                     return 'promptParcelDataAgent'
@@ -726,7 +738,7 @@ export function CustomerAssistantSetupPanel({
 
         {activeSection === 'api-keys' ? (
           <>
-            <FormSection title="API Keys" icon="assistant-setup" hideHeader>
+            <FormSection title="Gemini Key" icon="assistant-setup" hideHeader>
               <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
                 {hasBaselineDefaults ? (
                   <div className="admin-form-note">
@@ -755,7 +767,7 @@ export function CustomerAssistantSetupPanel({
                   </span>
                 </label>
                 <div className="admin-form-grid admin-form-grid-single">
-                  {providerFields.map((provider) => (
+                  {assistantProviderKeyFields.map((provider) => (
                     <label key={provider.id} className="field field-full">
                       <span>{provider.label}</span>
                       <input
@@ -772,14 +784,14 @@ export function CustomerAssistantSetupPanel({
                       <small>
                         {baselineProviderKeys[provider.id]
                           ? 'Leave blank to keep the platform key.'
-                          : 'Leave blank to use the code default provider wiring.'}
+                          : 'Leave blank to use the code default Gemini wiring.'}
                       </small>
                     </label>
                   ))}
                 </div>
                 <div className="admin-form-actions">
                   <button className="button button-fit" type="submit" disabled={experiencePending}>
-                    {experiencePending ? 'Saving…' : 'Save provider keys'}
+                    {experiencePending ? 'Saving…' : 'Save Gemini key'}
                   </button>
                 </div>
                 {experienceState.error ? <div className="status-banner status-banner-error">{experienceState.error}</div> : null}
@@ -823,13 +835,11 @@ export function CustomerAssistantSetupPanel({
                           <label className="field">
                             <span>Provider</span>
                             <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
-                              <option value="">
-                                {baselineModelTargets[target.id]?.provider ? 'Inherit platform default' : 'Use code default'}
-                              </option>
-                              <option value="gemini">Gemini</option>
-                              <option value="openrouter">OpenRouter</option>
-                              <option value="openai">OpenAI</option>
-                              <option value="groq">Groq</option>
+                              {assistantModelProviderOptions.map((option) => (
+                                <option key={option.value || 'default'} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
                             </select>
                             <small>
                               {baselineModelTargets[target.id]?.provider
@@ -968,6 +978,17 @@ export function CustomerAssistantSetupPanel({
                   <div>{liveZoningKnowledgeStatus.zoning_code_url || 'Not set.'}</div>
                 </div>
                 <div>
+                  <strong>Embedding model</strong>
+                  <div>
+                    {liveZoningKnowledgeStatus.embedder_provider} /{' '}
+                    {liveZoningKnowledgeStatus.embedder_model_id}
+                  </div>
+                </div>
+                <div>
+                  <strong>Embedding dimensions</strong>
+                  <div>{liveZoningKnowledgeStatus.embedder_dimensions}</div>
+                </div>
+                <div>
                   <strong>Client binding</strong>
                   <div>{liveZoningKnowledgeStatus.client_id}</div>
                 </div>
@@ -982,11 +1003,46 @@ export function CustomerAssistantSetupPanel({
                 </div>
               ) : null}
 
+              {liveZoningKnowledgeStatus.latest_run ? (
+                <div className="assistant-setup-progress">
+                  <div className="assistant-setup-progress-bar" aria-hidden="true">
+                    <span style={{ width: `${progressPercent}%` }} />
+                  </div>
+                  <div className="assistant-setup-progress-meta">
+                    <strong>{progressPercent.toFixed(1)}%</strong>
+                    <span>{progressLabel}</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {liveZoningKnowledgeStatus.latest_run ? (
+                <div className="assistant-setup-meta assistant-setup-meta-progress">
+                  <div>
+                    <strong>Pages crawled</strong>
+                    <div>{liveZoningKnowledgeStatus.latest_run.pages_crawled}</div>
+                  </div>
+                  <div>
+                    <strong>Documents</strong>
+                    <div>{liveZoningKnowledgeStatus.latest_run.documents_extracted}</div>
+                  </div>
+                  <div>
+                    <strong>Sections</strong>
+                    <div>{liveZoningKnowledgeStatus.latest_run.sections_extracted}</div>
+                  </div>
+                  <div>
+                    <strong>Chunks</strong>
+                    <div>{liveZoningKnowledgeStatus.latest_run.chunks_upserted}</div>
+                  </div>
+                </div>
+              ) : null}
+
               {latestRun?.status === 'failed' && latestRun.error_message ? (
                 <div className="status-banner status-banner-error">{latestRun.error_message}</div>
               ) : null}
 
-              {zoningRunActive ? (
+              {latestRun?.status === 'completed' ? (
+                <div className="status-banner status-banner-success">Ingestion complete.</div>
+              ) : zoningRunActive ? (
                 <div className="status-banner status-banner-success">
                   {latestRun?.status === 'queued' ? 'Queued.' : 'Running.'}
                 </div>
@@ -995,15 +1051,15 @@ export function CustomerAssistantSetupPanel({
               <div className="button-row">
                 <form action={ingestAction}>
                   <input type="hidden" name="organizationId" value={customer.id} />
-                  <button className="button" type="submit" disabled={ingestPending || zoningRunActive}>
-                    {ingestPending ? 'Starting…' : zoningRunActive ? 'Ingest Running…' : 'Ingest'}
+                  <button className="button" type="submit" disabled={ingestPending || zoningKnowledgeJobActive}>
+                    {ingestPending ? 'Starting…' : zoningKnowledgeJobActive ? 'Ingest Running…' : 'Ingest'}
                   </button>
                 </form>
 
                 <form action={reindexAction}>
                   <input type="hidden" name="organizationId" value={customer.id} />
-                  <button className="button secondary" type="submit" disabled={reindexPending || zoningRunActive}>
-                    {reindexPending ? 'Starting…' : zoningRunActive ? 'Run In Progress…' : 'Reindex'}
+                  <button className="button secondary" type="submit" disabled={reindexPending || zoningKnowledgeJobActive}>
+                    {reindexPending ? 'Starting…' : zoningKnowledgeJobActive ? 'Run In Progress…' : 'Reindex'}
                   </button>
                 </form>
               </div>

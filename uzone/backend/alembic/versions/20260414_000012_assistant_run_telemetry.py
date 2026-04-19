@@ -20,11 +20,11 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
-        "assistant_run_telemetry",
+        "agentic_assistant_run_telemetry",
         sa.Column("id", sa.String(length=36), primary_key=True, nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("tenant_clients.id"), nullable=True),
+        sa.Column("tenant_client_id", sa.String(length=36), sa.ForeignKey("shared_tenant_clients.id"), nullable=True),
         sa.Column("run_scope", sa.String(length=50), nullable=False),
         sa.Column("agent_id", sa.String(length=100), nullable=True),
         sa.Column("conversation_id", sa.String(length=255), nullable=True),
@@ -45,4 +45,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("assistant_run_telemetry")
+    op.drop_table("agentic_assistant_run_telemetry")

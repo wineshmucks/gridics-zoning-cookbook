@@ -158,6 +158,9 @@ The script will:
 - run smoke tests against the deployed environment
 - select a Terraform workspace scoped to the current AWS account, so state from another account is not reused accidentally
 
+If `TERRAFORM_WORKSPACE` is set in your shell, `deploy-from-env.sh` now refuses to run unless it exactly matches the derived workspace for the selected environment and AWS account. In normal use, leave it unset and let the script choose the workspace for you.
+If ECS services were deleted and are showing up as `INACTIVE`, the deploy script now skips importing them and lets Terraform recreate them instead of failing on a stale import.
+
 Make sure the `AWS_PROFILE` value inside the selected env file exists in your local AWS config. The deploy scripts refuse `AWS_PROFILE=default` so they cannot accidentally write to the wrong AWS account.
 Set `UZONE_TAG_ENV` and `UZONE_TAG_NAME` in `.env-deploy.staging` and your local `.env-deploy.prod` if you want provider-level default tags applied automatically to every AWS resource. In this setup, `Env` is `dev` for staging and `prod` for production, and `Name` is `gridics-zoning-suite`.
 Set `UZONE_DB_ENGINE_VERSION` if you need to pin the RDS Postgres version explicitly. The current deploy files use `16.13`.

@@ -325,7 +325,7 @@ def resolve_path_alias(
     try:
         normalized_path = normalize_tenant_path_alias(path)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
 
     resolved = resolve_tenant_public_config(db, path_alias=normalized_path)
     if resolved is None:
@@ -355,7 +355,7 @@ def create_embed_session(
     )
     normalized_origin = normalize_embed_origin(payload.origin)
     if not normalized_origin:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid origin")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid origin")
 
     if not embed_settings.is_active or not embed_settings.secret_hash:
         raise HTTPException(

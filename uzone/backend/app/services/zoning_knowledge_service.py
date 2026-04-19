@@ -33,7 +33,10 @@ from app.services.compat import build_with_supported_kwargs
 
 VECTOR_SCHEMA = "ai"
 VECTOR_TABLE = "agentic_customer_zoning_chunks"
-VECTOR_DIMENSIONS = settings.zoning_embedder_dimensions
+ZONING_EMBEDDER_PROVIDER = "gemini"
+ZONING_EMBEDDER_MODEL_ID = "gemini-embedding-001"
+ZONING_EMBEDDER_DIMENSIONS = 1536
+VECTOR_DIMENSIONS = ZONING_EMBEDDER_DIMENSIONS
 MAX_CRAWL_PAGES = 40
 MAX_CHUNK_CHARS = 1800
 CHUNK_OVERLAP_CHARS = 240
@@ -291,9 +294,9 @@ def build_zoning_knowledge_status(db: Session, tenant_client: TenantClient) -> d
     return {
         "client_id": tenant_client.client_id,
         "zoning_code_url": get_tenant_zoning_code_url(tenant_client),
-        "embedder_provider": settings.zoning_embedder_provider.strip().lower(),
-        "embedder_model_id": settings.zoning_embedder_model_id.strip(),
-        "embedder_dimensions": int(settings.zoning_embedder_dimensions),
+        "embedder_provider": ZONING_EMBEDDER_PROVIDER,
+        "embedder_model_id": ZONING_EMBEDDER_MODEL_ID,
+        "embedder_dimensions": ZONING_EMBEDDER_DIMENSIONS,
         "progress_percent": round(progress_percent, 1),
         "progress_message": progress_message,
         "is_complete": is_complete,
@@ -737,23 +740,14 @@ def chunk_normalized_section(
 
 
 def _require_embedder_dimensions() -> int:
-    dimensions = settings.zoning_embedder_dimensions
-    if dimensions <= 0:
-        raise ValueError("UZONE_ZONING_EMBEDDER_DIMENSIONS must be greater than zero.")
-    return dimensions
+    return ZONING_EMBEDDER_DIMENSIONS
 
 
-def _get_embedder_api_key(provider: str) -> str | None:
+def _get_embedder_api_key() -> str | None:
     if settings.zoning_embedder_api_key:
         return settings.zoning_embedder_api_key
 
-    if provider == "gemini":
-        return os.getenv("GOOGLE_API_KEY", "").strip() or None
-    if provider == "openai":
-        return os.getenv("OPENAI_API_KEY", "").strip() or None
-    if provider == "openrouter":
-        return os.getenv("OPENROUTER_API_KEY", "").strip() or None
-    return None
+    return os.getenv("GOOGLE_API_KEY", "").strip() or None
 
 
 def _rate_limit_key(provider: str, model_id: str) -> str:
@@ -865,93 +859,42 @@ def _maybe_rate_limit_embedder(embedder, *, provider: str, model_id: str):
 
 
 def _build_embedder_pair():
-    provider = settings.zoning_embedder_provider.strip().lower()
-    model_id = settings.zoning_embedder_model_id.strip()
     dimensions = _require_embedder_dimensions()
-    api_key = _get_embedder_api_key(provider)
-
-    if provider == "gemini":
-        if not api_key:
-            raise ValueError(
-                "Set UZONE_ZONING_EMBEDDER_API_KEY or GOOGLE_API_KEY for the Gemini zoning embedder."
-            )
-        # Use the direct google-genai adapter here because some Agno Gemini versions
-        # silently return empty vectors on response parsing failures.
-        query_embedder = _GeminiGenAIEmbedder(
-            dimensions=dimensions,
-            enable_batch=True,
-            batch_size=32,
-            id=model_id,
-            task_type="RETRIEVAL_QUERY",
-            api_key=api_key,
-        )
-        document_embedder = _GeminiGenAIEmbedder(
-            dimensions=dimensions,
-            enable_batch=True,
-            batch_size=32,
-            id=model_id,
-            task_type="RETRIEVAL_DOCUMENT",
-            api_key=api_key,
-        )
-        return (
-            _maybe_rate_limit_embedder(
-                ValidatingEmbedder(query_embedder, dimensions=dimensions, label=f"{provider} query embedder"),
-                provider=provider,
-                model_id=model_id,
-            ),
-            _maybe_rate_limit_embedder(
-                ValidatingEmbedder(document_embedder, dimensions=dimensions, label=f"{provider} document embedder"),
-                provider=provider,
-                model_id=model_id,
-            ),
+    api_key = _get_embedder_api_key()
+    if not api_key:
+        raise ValueError(
+            "Set UZONE_ZONING_EMBEDDER_API_KEY or GOOGLE_API_KEY for the Gemini zoning embedder."
         )
 
-    if provider in {"openai", "openrouter"}:
-        if not api_key:
-            env_name = "OPENAI_API_KEY" if provider == "openai" else "OPENROUTER_API_KEY"
-            raise ValueError(
-                f"Set UZONE_ZONING_EMBEDDER_API_KEY or {env_name} for the {provider} zoning embedder."
-            )
-        try:
-            from agno.knowledge.embedder.openai import OpenAIEmbedder
-        except ImportError as exc:  # pragma: no cover - dependency guard
-            try:
-                from agno.embedder.openai import OpenAIEmbedder
-            except ImportError:
-                raise RuntimeError(
-                    "OpenAI-compatible embedder support is not installed in the backend environment."
-                ) from exc
-
-        base_url = settings.zoning_embedder_base_url
-        if provider == "openrouter" and not base_url:
-            base_url = "https://openrouter.ai/api/v1"
-
-        common_kwargs = {
-            "dimensions": dimensions,
-            "enable_batch": True,
-            "batch_size": 32,
-            "id": model_id,
-            "api_key": api_key,
-            "base_url": base_url,
-        }
-        query_embedder = build_with_supported_kwargs(OpenAIEmbedder, **common_kwargs)
-        document_embedder = build_with_supported_kwargs(OpenAIEmbedder, **common_kwargs)
-        return (
-            _maybe_rate_limit_embedder(
-                ValidatingEmbedder(query_embedder, dimensions=dimensions, label=f"{provider} query embedder"),
-                provider=provider,
-                model_id=model_id,
-            ),
-            _maybe_rate_limit_embedder(
-                ValidatingEmbedder(document_embedder, dimensions=dimensions, label=f"{provider} document embedder"),
-                provider=provider,
-                model_id=model_id,
-            ),
-        )
-
-    raise ValueError(
-        f"Unsupported UZONE_ZONING_EMBEDDER_PROVIDER '{provider}'. "
-        "Supported providers: gemini, openai, openrouter."
+    # Use the direct google-genai adapter here because some Agno Gemini versions
+    # silently return empty vectors on response parsing failures.
+    query_embedder = _GeminiGenAIEmbedder(
+        dimensions=dimensions,
+        enable_batch=True,
+        batch_size=32,
+        id=ZONING_EMBEDDER_MODEL_ID,
+        task_type="RETRIEVAL_QUERY",
+        api_key=api_key,
+    )
+    document_embedder = _GeminiGenAIEmbedder(
+        dimensions=dimensions,
+        enable_batch=True,
+        batch_size=32,
+        id=ZONING_EMBEDDER_MODEL_ID,
+        task_type="RETRIEVAL_DOCUMENT",
+        api_key=api_key,
+    )
+    return (
+        _maybe_rate_limit_embedder(
+            ValidatingEmbedder(query_embedder, dimensions=dimensions, label="gemini query embedder"),
+            provider=ZONING_EMBEDDER_PROVIDER,
+            model_id=ZONING_EMBEDDER_MODEL_ID,
+        ),
+        _maybe_rate_limit_embedder(
+            ValidatingEmbedder(document_embedder, dimensions=dimensions, label="gemini document embedder"),
+            provider=ZONING_EMBEDDER_PROVIDER,
+            model_id=ZONING_EMBEDDER_MODEL_ID,
+        ),
     )
 
 

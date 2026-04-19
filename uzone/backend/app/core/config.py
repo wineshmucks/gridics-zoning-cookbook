@@ -58,16 +58,10 @@ class Settings(BaseSettings):
     embed_session_ttl_seconds: int = 3600
     enable_agent_os: bool = True
     require_agent_os: bool = False
-    zoning_embedder_provider: str = "gemini"
-    zoning_embedder_model_id: str = "gemini-embedding-001"
-    zoning_embedder_dimensions: int = 1536
     zoning_embedder_api_key: str | None = None
-    zoning_embedder_base_url: str | None = None
     zoning_embedder_requests_per_minute: float = 0.0
-    zoning_agent_llm_provider: str = "gemini"
     zoning_agent_llm_model_id: str = "gemini-2.0-flash-001"
     zoning_agent_llm_api_key: str | None = None
-    zoning_agent_llm_base_url: str | None = None
 
 
 settings = Settings()

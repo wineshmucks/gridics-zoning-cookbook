@@ -1,7 +1,6 @@
 """Unit tests for zoning knowledge normalization, chunking, and embedder config."""
 
 import asyncio
-import builtins
 import sys
 import types
 from types import SimpleNamespace
@@ -45,20 +44,8 @@ def test_get_tenant_zoning_code_url_reads_settings_json() -> None:
     assert get_tenant_zoning_code_url(tenant) == "https://example.com/code"
 
 
-def test_build_zoning_knowledge_status_includes_gemini_embedder_metadata(monkeypatch) -> None:
+def test_build_zoning_knowledge_status_includes_gemini_embedder_metadata() -> None:
     tenant = DummyTenant()
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_provider",
-        "gemini",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "gemini-embedding-001",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
     latest_run = SimpleNamespace(
         id="run-1",
         mode="ingest",
@@ -188,120 +175,7 @@ def test_chunk_normalized_section_splits_large_sections() -> None:
     assert all(chunk.metadata["section_title"] == "Section 1" for chunk in chunks)
 
 
-def test_build_embedder_pair_uses_openrouter_via_openai_embedder(monkeypatch) -> None:
-    calls: list[dict] = []
-
-    class FakeOpenAIEmbedder:
-        def __init__(self, **kwargs) -> None:
-            calls.append(kwargs)
-
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_provider", "openrouter")
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "openai/text-embedding-3-small",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_api_key", "test-key")
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_base_url", None)
-
-    module = types.ModuleType("agno.knowledge.embedder.openai")
-    module.OpenAIEmbedder = FakeOpenAIEmbedder
-    monkeypatch.setitem(sys.modules, "agno.knowledge.embedder.openai", module)
-
-    query_embedder, document_embedder = _build_embedder_pair()
-
-    assert query_embedder is not None
-    assert document_embedder is not None
-    assert len(calls) == 2
-    assert all(call["base_url"] == "https://openrouter.ai/api/v1" for call in calls)
-    assert all(call["api_key"] == "test-key" for call in calls)
-    assert all(call["dimensions"] == VECTOR_DIMENSIONS for call in calls)
-
-
-def test_build_embedder_pair_uses_openrouter_via_legacy_agno_embedder_path(monkeypatch) -> None:
-    calls: list[dict] = []
-
-    class FakeOpenAIEmbedder:
-        def __init__(self, **kwargs) -> None:
-            calls.append(kwargs)
-
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_provider", "openrouter")
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "nvidia/llama-nemotron-embed-vl-1b-v2:free",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_api_key", "test-key")
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_base_url", None)
-
-    module = types.ModuleType("agno.embedder.openai")
-    module.OpenAIEmbedder = FakeOpenAIEmbedder
-    monkeypatch.setitem(sys.modules, "agno.embedder.openai", module)
-
-    original_import = builtins.__import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "agno.knowledge.embedder.openai":
-            raise ImportError("forced for legacy path test")
-        return original_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
-    query_embedder, document_embedder = _build_embedder_pair()
-
-    assert query_embedder is not None
-    assert document_embedder is not None
-    assert len(calls) == 2
-    assert all(call["base_url"] == "https://openrouter.ai/api/v1" for call in calls)
-    assert all(call["api_key"] == "test-key" for call in calls)
-
-
-def test_build_embedder_pair_drops_unsupported_openai_embedder_kwargs(monkeypatch) -> None:
-    calls: list[dict] = []
-
-    class LegacyOpenAIEmbedder:
-        def __init__(self, *, dimensions: int, id: str, api_key: str, base_url: str | None = None) -> None:
-            calls.append(
-                {
-                    "dimensions": dimensions,
-                    "id": id,
-                    "api_key": api_key,
-                    "base_url": base_url,
-                }
-            )
-
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_provider", "openrouter")
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "nvidia/llama-nemotron-embed-vl-1b-v2:free",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_api_key", "test-key")
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_base_url", None)
-
-    module = types.ModuleType("agno.knowledge.embedder.openai")
-    module.OpenAIEmbedder = LegacyOpenAIEmbedder
-    monkeypatch.setitem(sys.modules, "agno.knowledge.embedder.openai", module)
-
-    query_embedder, document_embedder = _build_embedder_pair()
-
-    assert query_embedder is not None
-    assert document_embedder is not None
-    assert len(calls) == 2
-    assert all(call["base_url"] == "https://openrouter.ai/api/v1" for call in calls)
-    assert all(call["api_key"] == "test-key" for call in calls)
-
-
-def test_build_embedder_pair_falls_back_to_google_genai_for_gemini(monkeypatch) -> None:
+def test_build_embedder_pair_uses_fixed_gemini_embedder(monkeypatch) -> None:
     calls: list[dict] = []
 
     class FakeModels:
@@ -318,15 +192,6 @@ def test_build_embedder_pair_falls_back_to_google_genai_for_gemini(monkeypatch) 
         def __init__(self, *, api_key: str) -> None:
             self.models = FakeModels()
 
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_provider", "gemini")
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "gemini-embedding-001",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
     monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_api_key", "test-key")
     monkeypatch.delitem(sys.modules, "agno.knowledge.embedder.google", raising=False)
 

@@ -41,7 +41,6 @@ def get_model_trace(model: Any) -> dict[str, str | None]:
 
 
 def _get_agent_model_api_key(
-    provider: str,
     *,
     explicit_api_key: str | None = None,
     allow_env_fallback: bool = False,
@@ -58,16 +57,7 @@ def _get_agent_model_api_key(
     if settings.zoning_agent_llm_api_key:
         return settings.zoning_agent_llm_api_key, "env_generic"
 
-    if provider == "gemini":
-        return os.getenv("GOOGLE_API_KEY"), "env_provider"
-    if provider == "openrouter":
-        return os.getenv("OPENROUTER_API_KEY"), "env_provider"
-    if provider == "openai":
-        return os.getenv("OPENAI_API_KEY"), "env_provider"
-    if provider == "groq":
-        return os.getenv("GROQ_API_KEY"), "env_provider"
-
-    return None, "missing"
+    return os.getenv("GOOGLE_API_KEY"), "env_provider"
 
 
 def build_agent_model(
@@ -77,19 +67,17 @@ def build_agent_model(
     model_id_override: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
-    max_tokens: int = 4096,
     allow_env_fallback: bool = True,
     allow_missing_api_key: bool = False,
 ):
     """Construct the Agno chat model configured for zoning chat agents."""
-    
-    # 1. Determine actual provider and model (fallback to settings if None)
-    active_provider = (provider or settings.zoning_agent_llm_provider).strip().lower()
+
+    if provider is not None and provider.strip().lower() != "gemini":
+        raise RuntimeError("Assistant models are Gemini-only now.")
+
     active_model_id = (model_id_override or model_id or settings.zoning_agent_llm_model_id).strip()
-    
-    # 2. Fetch the safe API key
+
     api_key, api_key_source = _get_agent_model_api_key(
-        active_provider,
         explicit_api_key=api_key,
         allow_env_fallback=allow_env_fallback,
     )
@@ -98,80 +86,24 @@ def build_agent_model(
         api_key_source = "missing"
 
     if not active_model_id:
-        raise RuntimeError(f"Model ID must be specified for provider '{active_provider}'.")
+        raise RuntimeError("Model ID must be specified for Gemini assistant models.")
 
-    def missing_key_error(provider_label: str, env_name: str) -> RuntimeError:
+    def missing_key_error(env_name: str) -> RuntimeError:
         if allow_env_fallback:
-            return RuntimeError(f"Set {env_name} for the {provider_label} zoning agent.")
+            return RuntimeError(f"Set {env_name} for the Gemini zoning agent.")
         return RuntimeError(
-            f"Missing API key for tenant-configured provider '{active_provider}'. "
+            "Missing API key for the Gemini zoning agent. "
             "Save the provider key in super-admin assistant setup."
         )
 
-    if active_provider == "gemini":
-        if not api_key and not allow_missing_api_key:
-            raise missing_key_error("Gemini", "GOOGLE_API_KEY")
-        from agno.models.google import Gemini
-        return _attach_model_trace(
-            build_with_supported_kwargs(Gemini, id=active_model_id, api_key=api_key),
-            provider=active_provider,
-            model_id=active_model_id,
-            api_key_source=api_key_source,
-            api_key=api_key,
-        )
+    if not api_key and not allow_missing_api_key:
+        raise missing_key_error("GOOGLE_API_KEY")
 
-    if active_provider == "openrouter":
-        if not api_key and not allow_missing_api_key:
-            raise missing_key_error("OpenRouter", "OPENROUTER_API_KEY")
-        from agno.models.openrouter import OpenRouter
-        return _attach_model_trace(
-            build_with_supported_kwargs(
-                OpenRouter,
-                id=active_model_id,
-                api_key=api_key,
-                base_url=base_url or settings.zoning_agent_llm_base_url or "https://openrouter.ai/api/v1",
-                max_tokens=max_tokens,
-            ),
-            provider=active_provider,
-            model_id=active_model_id,
-            api_key_source=api_key_source,
-            api_key=api_key,
-        )
-
-    if active_provider == "openai":
-        if not api_key and not allow_missing_api_key:
-            raise missing_key_error("OpenAI", "OPENAI_API_KEY")
-        from agno.models.openai import OpenAIChat
-        return _attach_model_trace(
-            build_with_supported_kwargs(
-                OpenAIChat,
-                id=active_model_id,
-                api_key=api_key,
-                base_url=base_url or settings.zoning_agent_llm_base_url,
-            ),
-            provider=active_provider,
-            model_id=active_model_id,
-            api_key_source=api_key_source,
-            api_key=api_key,
-        )
-
-    if active_provider == "groq":
-        if not api_key and not allow_missing_api_key:
-            raise missing_key_error("Groq", "GROQ_API_KEY")
-        from agno.models.groq import Groq
-        return _attach_model_trace(
-            build_with_supported_kwargs(
-                Groq,
-                id=active_model_id,
-                api_key=api_key,
-            ),
-            provider=active_provider,
-            model_id=active_model_id,
-            api_key_source=api_key_source,
-            api_key=api_key,
-        )
-
-    raise RuntimeError(
-        f"Unsupported zoning agent LLM provider '{active_provider}'. "
-        "Supported providers: gemini, openrouter, openai, groq."
+    from agno.models.google import Gemini
+    return _attach_model_trace(
+        build_with_supported_kwargs(Gemini, id=active_model_id, api_key=api_key),
+        provider="gemini",
+        model_id=active_model_id,
+        api_key_source=api_key_source,
+        api_key=api_key,
     )

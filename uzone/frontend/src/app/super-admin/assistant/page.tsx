@@ -1,6 +1,6 @@
 import { AgentChatPanel } from '../../../components/AgentChatPanel'
-import { CUSTOMER_ZONING_ASSISTANT_ROUTE_ID } from '../../../components/assistantRouteIds'
 import { SuperAdminWorkspaceShell } from '../../../components/SuperAdminWorkspaceShell'
+import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from '../../../components/assistantTargetIds'
 import { getPermissionContext } from '../../../lib/permissions'
 import { getTenantConfig } from '../../../lib/tenant'
 
@@ -8,8 +8,7 @@ export default async function SuperAdminAssistantPage() {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
   const tenant = await getTenantConfig()
-  const backendBase =
-    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+  const backendBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
@@ -53,7 +52,7 @@ export default async function SuperAdminAssistantPage() {
         </div>
 
         <AgentChatPanel
-          agentId={CUSTOMER_ZONING_ASSISTANT_ROUTE_ID}
+          agentId={CUSTOMER_ZONING_ASSISTANT_TARGET_ID}
           backendBase={backendBase}
           customerName={tenant.city_name}
           clientId={tenant.client_id}

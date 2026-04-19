@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import { AgentChatPanel } from '../../../../../components/AgentChatPanel'
-import { CUSTOMER_ZONING_ASSISTANT_ROUTE_ID } from '../../../../../components/assistantRouteIds'
+import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from '../../../../../components/assistantTargetIds'
 import { SuperAdminCustomerHeader } from '../../../../../components/SuperAdminCustomerIcons'
 import { fetchCustomerZoningKnowledgeStatus } from '../../../../admin/actions'
 import { getClerkManagementClient } from '../../../../../lib/clerk'
@@ -16,8 +16,7 @@ type PageProps = {
 export default async function SuperAdminCustomerAssistantPage({ params }: PageProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
-  const backendBase =
-    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+  const backendBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
@@ -57,7 +56,7 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
       </section>
 
       <AgentChatPanel
-        agentId={CUSTOMER_ZONING_ASSISTANT_ROUTE_ID}
+        agentId={CUSTOMER_ZONING_ASSISTANT_TARGET_ID}
         backendBase={backendBase}
         customerName={displayName}
         clientId={zoningKnowledgeStatus.client_id}

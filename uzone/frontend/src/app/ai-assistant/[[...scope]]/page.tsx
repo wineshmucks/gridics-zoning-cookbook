@@ -24,8 +24,7 @@ export default async function PublicAssistantPage({ params }: PageProps) {
   }
 
   const tenant = await getTenantConfig()
-  const backendBase =
-    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+  const backendBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
   const disclaimerScopeId = tenant.path_alias || tenant.clerk_organization_id || tenant.client_id
   const normalizedDisclaimerScopeId = disclaimerScopeId
     ? buildAssistantDisclaimerScopeKey(disclaimerScopeId)

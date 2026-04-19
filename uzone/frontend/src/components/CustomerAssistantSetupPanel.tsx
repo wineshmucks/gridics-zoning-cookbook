@@ -111,7 +111,7 @@ export function CustomerAssistantSetupPanel({
   const [liveConversationReview, setLiveConversationReview] =
     useState<AssistantConversationReviewResponse>(conversationReview)
   const backendBase =
-    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
   const sectionParam = searchParams.get('section')
   const activeSection: AgenticSection =
     sectionParam === 'llm'

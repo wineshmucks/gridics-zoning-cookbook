@@ -1,7 +1,7 @@
 'use client'
 
 import { useClerk } from '@clerk/nextjs'
-import { startTransition, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import type { ClientMembership } from '../lib/permissions'
@@ -25,6 +25,13 @@ type Props = {
   currentCustomerName: string | null
   adminMemberships: ClientMembership[]
   selectedAdminOrganizationId: string | null
+}
+
+type AssistantToolbarState = {
+  title: string
+  subtitle: string | null
+  canCopy: boolean
+  canNewChat: boolean
 }
 
 export function HeaderBrand({
@@ -53,6 +60,7 @@ export function HeaderBrand({
         superAdminCustomerId={superAdminCustomerId}
         logoUrl={logoUrl}
         brandVariant={brandVariant}
+        currentProduct={currentProduct}
       />
     )
   }
@@ -84,6 +92,7 @@ function StaticHeaderBrand({
   superAdminCustomerId,
   logoUrl,
   brandVariant,
+  currentProduct,
 }: {
   cityName: string
   departmentName: string
@@ -97,8 +106,8 @@ function StaticHeaderBrand({
 }) {
   const showSubtitle = Boolean(departmentName.trim())
   const isGridicsBrand = brandVariant === 'gridics'
-  const resolvedTitle = title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
-  const subtitle = isGridicsBrand ? '' : departmentName
+  const resolvedTitle = currentProduct === 'assistant' ? cityName : title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
+  const subtitle = currentProduct === 'assistant' || isGridicsBrand ? '' : departmentName
 
   return (
     <div className="brand brand-header">
@@ -134,6 +143,7 @@ function ClerkHeaderBrand({
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(false)
   const [pendingOrganizationId, setPendingOrganizationId] = useState<string | null>(null)
+  const [assistantToolbarState, setAssistantToolbarState] = useState<AssistantToolbarState | null>(null)
 
   const currentScopedPathname =
     currentScopePath && pathname.startsWith(currentScopePath)
@@ -155,16 +165,52 @@ function ClerkHeaderBrand({
     ? 'SUPER ADMIN'
     : isJurisdictionPickerRoute
       ? title?.trim() || 'Gridics AI Assistant'
-    : isAdminRoute
-      ? selectedMembership?.organizationName || resolvedCustomerName
-      : title?.trim() || resolvedCustomerName
-  const subtitle = isSuperAdminRoute || isJurisdictionPickerRoute ? '' : departmentName
+      : isAdminRoute
+        ? selectedMembership?.organizationName || resolvedCustomerName
+        : resolvedCustomerName
+  const isAssistantRoute = currentProduct === 'assistant'
+  const subtitle = isSuperAdminRoute || isJurisdictionPickerRoute || isAssistantRoute ? '' : departmentName
   const superAdminSubtitle = isSuperAdminRoute
     ? {
         name: superAdminCustomerName || resolvedCustomerName,
         id: superAdminCustomerId || currentOrgId || null,
       }
     : null
+
+  useEffect(() => {
+    const handleToolbarState = (event: Event) => {
+      const detail = (event as CustomEvent<AssistantToolbarState | null>).detail
+      if (!detail || !detail.title?.trim()) {
+        setAssistantToolbarState(null)
+        return
+      }
+
+      setAssistantToolbarState({
+        title: detail.title.trim(),
+        subtitle: detail.subtitle?.trim() || null,
+        canCopy: Boolean(detail.canCopy),
+        canNewChat: Boolean(detail.canNewChat),
+      })
+    }
+
+    const windowWithToolbarState = window as Window & {
+      __uzoneAssistantToolbarState?: AssistantToolbarState | null
+    }
+    const initialState = windowWithToolbarState.__uzoneAssistantToolbarState
+    if (initialState?.title?.trim()) {
+      setAssistantToolbarState({
+        title: initialState.title.trim(),
+        subtitle: initialState.subtitle?.trim() || null,
+        canCopy: Boolean(initialState.canCopy),
+        canNewChat: Boolean(initialState.canNewChat),
+      })
+    }
+
+    window.addEventListener('uzone-assistant-toolbar-state', handleToolbarState as EventListener)
+    return () => {
+      window.removeEventListener('uzone-assistant-toolbar-state', handleToolbarState as EventListener)
+    }
+  }, [])
 
   async function switchOrganization(nextOrganizationId: string) {
     if (!nextOrganizationId || nextOrganizationId === selectedAdminOrganizationId) {
@@ -209,6 +255,13 @@ function ClerkHeaderBrand({
         <div className="brand-title-row">
           <div>
             <div className="brand-title">{resolvedTitle}</div>
+            {isAssistantRoute && assistantToolbarState ? (
+              <div className="brand-assistant-copy">
+                <div className="assistant-chat-toolbar-title brand-assistant-toolbar-title">
+                  {assistantToolbarState.title}
+                </div>
+              </div>
+            ) : null}
             {superAdminSubtitle ? (
               <div className="brand-super-admin-meta">
                 <div className="brand-subtitle brand-super-admin-name">{superAdminSubtitle.name}</div>

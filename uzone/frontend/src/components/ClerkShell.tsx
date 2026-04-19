@@ -22,6 +22,13 @@ type AuthControlsProps = {
 
 type AppTheme = 'light' | 'dark'
 
+type AssistantToolbarState = {
+  title: string
+  subtitle: string | null
+  canCopy: boolean
+  canNewChat: boolean
+}
+
 const THEME_STORAGE_KEY = 'uzone-theme'
 
 function applyTheme(theme: AppTheme) {
@@ -96,11 +103,75 @@ function AuthControls({
     : currentOrgId
       ? `/_internal/${encodeURIComponent(currentOrgId)}/admin`
       : '/admin'
+  const [assistantToolbarState, setAssistantToolbarState] = useState<AssistantToolbarState | null>(null)
+
+  useEffect(() => {
+    const handleToolbarState = (event: Event) => {
+      const detail = (event as CustomEvent<AssistantToolbarState | null>).detail
+      if (!detail || !detail.title?.trim()) {
+        setAssistantToolbarState(null)
+        return
+      }
+
+      setAssistantToolbarState({
+        title: detail.title.trim(),
+        subtitle: detail.subtitle?.trim() || null,
+        canCopy: Boolean(detail.canCopy),
+        canNewChat: Boolean(detail.canNewChat),
+      })
+    }
+
+    const windowWithToolbarState = window as Window & {
+      __uzoneAssistantToolbarState?: AssistantToolbarState | null
+    }
+    const initialState = windowWithToolbarState.__uzoneAssistantToolbarState
+    if (initialState?.title?.trim()) {
+      setAssistantToolbarState({
+        title: initialState.title.trim(),
+        subtitle: initialState.subtitle?.trim() || null,
+        canCopy: Boolean(initialState.canCopy),
+        canNewChat: Boolean(initialState.canNewChat),
+      })
+    }
+
+    window.addEventListener('uzone-assistant-toolbar-state', handleToolbarState as EventListener)
+    return () => {
+      window.removeEventListener('uzone-assistant-toolbar-state', handleToolbarState as EventListener)
+    }
+  }, [])
 
   if (!clerkEnabled) {
     return (
       <div className={`auth-controls-group${compact ? ' auth-controls-group-compact' : ''}`}>
         <ThemeToggleButton />
+        {assistantToolbarState ? (
+          <div className="assistant-header-controls">
+            <button
+              className="assistant-chat-toolbar-icon-button assistant-header-control-button"
+              type="button"
+              aria-label="Copy chat"
+              title={assistantToolbarState.canCopy ? 'Copy chat' : 'No conversation to copy yet'}
+              disabled={!assistantToolbarState.canCopy}
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('uzone-assistant-toolbar-action', { detail: { action: 'copy' } }))
+              }}
+            >
+              <span aria-hidden="true">⎘</span>
+            </button>
+            <button
+              className="assistant-chat-toolbar-button assistant-header-control-button"
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('uzone-assistant-toolbar-action', { detail: { action: 'new-chat' } }),
+                )
+              }}
+              disabled={!assistantToolbarState.canNewChat}
+            >
+              New Chat
+            </button>
+          </div>
+        ) : null}
         <a className="button button-signin" href="/account/requests">
           <span className="button-signin-icon">•</span>
           Sign In
@@ -112,6 +183,34 @@ function AuthControls({
   return (
     <div className={`auth-controls-group${compact ? ' auth-controls-group-compact' : ''}`}>
       <ThemeToggleButton />
+      {assistantToolbarState ? (
+        <div className="assistant-header-controls">
+          <button
+            className="assistant-chat-toolbar-icon-button assistant-header-control-button"
+            type="button"
+            aria-label="Copy chat"
+            title={assistantToolbarState.canCopy ? 'Copy chat' : 'No conversation to copy yet'}
+            disabled={!assistantToolbarState.canCopy}
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('uzone-assistant-toolbar-action', { detail: { action: 'copy' } }))
+            }}
+          >
+            <span aria-hidden="true">⎘</span>
+          </button>
+          <button
+            className="assistant-chat-toolbar-button assistant-header-control-button"
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('uzone-assistant-toolbar-action', { detail: { action: 'new-chat' } }),
+              )
+            }}
+            disabled={!assistantToolbarState.canNewChat}
+          >
+            New Chat
+          </button>
+        </div>
+      ) : null}
       <SignedOut>
         {compact ? (
           <Link className="button secondary button-signin button-signin-compact" href="/sign-in">

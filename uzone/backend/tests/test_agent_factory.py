@@ -32,7 +32,6 @@ def test_build_agent_model_uses_gemini(monkeypatch) -> None:
             captured["api_key"] = api_key
 
     monkeypatch.setattr("agno.models.google.Gemini", FakeGemini)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "gemini-key")
 
@@ -41,61 +40,10 @@ def test_build_agent_model_uses_gemini(monkeypatch) -> None:
     assert isinstance(model, FakeGemini)
     assert captured == {"id": "gemini-2.0-flash-001", "api_key": "gemini-key"}
     assert getattr(model, "_uzone_api_key_source") == "env_generic"
-    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
-
-
-def test_build_agent_model_uses_openrouter_default_base_url(monkeypatch) -> None:
-    captured = {}
-
-    class FakeOpenRouter:
-        def __init__(self, *, id=None, api_key=None, base_url=None):
-            captured["id"] = id
-            captured["api_key"] = api_key
-            captured["base_url"] = base_url
-
-    monkeypatch.setattr("agno.models.openrouter.OpenRouter", FakeOpenRouter)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "openrouter")
-    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "openai/gpt-4.1-mini")
-    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "openrouter-key")
-    monkeypatch.setattr(settings, "zoning_agent_llm_base_url", None)
-
-    model = build_agent_model()
-
-    assert isinstance(model, FakeOpenRouter)
-    assert captured == {
-        "id": "openai/gpt-4.1-mini",
-        "api_key": "openrouter-key",
-        "base_url": "https://openrouter.ai/api/v1",
-    }
-
-
-def test_build_agent_model_accepts_model_override(monkeypatch) -> None:
-    captured = {}
-
-    class FakeOpenRouter:
-        def __init__(self, *, id=None, api_key=None, base_url=None):
-            captured["id"] = id
-            captured["api_key"] = api_key
-            captured["base_url"] = base_url
-
-    monkeypatch.setattr("agno.models.openrouter.OpenRouter", FakeOpenRouter)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "openrouter")
-    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "default/model")
-    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "openrouter-key")
-    monkeypatch.setattr(settings, "zoning_agent_llm_base_url", None)
-
-    model = build_agent_model(model_id="override/model")
-
-    assert isinstance(model, FakeOpenRouter)
-    assert captured == {
-        "id": "override/model",
-        "api_key": "openrouter-key",
-        "base_url": "https://openrouter.ai/api/v1",
-    }
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"
 
 
 def test_build_agent_model_rejects_missing_api_key(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", None)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -104,45 +52,12 @@ def test_build_agent_model_rejects_missing_api_key(monkeypatch) -> None:
         build_agent_model()
 
 
-def test_build_agent_model_uses_groq(monkeypatch) -> None:
-    captured = {}
-
-    class FakeGroq:
-        def __init__(self, *, id=None, api_key=None):
-            captured["id"] = id
-            captured["api_key"] = api_key
-
-    monkeypatch.setattr("agno.models.groq.Groq", FakeGroq)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "groq")
-    monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "llama3-8b-8192")
-    monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "groq-key")
-
-    model = build_agent_model()
-
-    assert isinstance(model, FakeGroq)
-    assert captured == {"id": "llama3-8b-8192", "api_key": "groq-key"}
-
-
-def test_build_agent_model_uses_generic_key_for_hardcoded_groq_provider(monkeypatch) -> None:
-    captured = {}
-
-    class FakeGroq:
-        def __init__(self, *, id=None, api_key=None):
-            captured["id"] = id
-            captured["api_key"] = api_key
-
-    monkeypatch.setattr("agno.models.groq.Groq", FakeGroq)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
+def test_build_agent_model_rejects_non_gemini_provider(monkeypatch) -> None:
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "shared-llm-key")
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
 
-    model = build_agent_model(provider="groq", model_id="llama-3.1-8b-instant")
-
-    assert isinstance(model, FakeGroq)
-    assert captured == {"id": "llama-3.1-8b-instant", "api_key": "shared-llm-key"}
-    assert getattr(model, "_uzone_api_key_source") == "env_generic"
-    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
+    with pytest.raises(RuntimeError, match="Gemini-only"):
+        build_agent_model(provider="openrouter", model_id="nvidia/llama-nemotron-embed-vl-1b-v2:free")
 
 
 def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -> None:
@@ -154,7 +69,6 @@ def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -
             captured["api_key"] = api_key
 
     monkeypatch.setattr("agno.models.google.Gemini", FakeGemini)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "env-shared-key")
 
@@ -168,15 +82,14 @@ def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -
     assert isinstance(model, FakeGemini)
     assert captured == {"id": "gemini-3.1-flash-lite-preview", "api_key": "tenant-db-key"}
     assert getattr(model, "_uzone_api_key_source") == "tenant_db"
-    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"
 
 
 def test_build_agent_model_rejects_missing_explicit_key_when_env_fallback_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "env-shared-key")
 
-    with pytest.raises(RuntimeError, match="Missing API key for tenant-configured provider"):
+    with pytest.raises(RuntimeError, match="Missing API key for the Gemini zoning agent"):
         build_agent_model(
             provider="gemini",
             model_id="gemini-3.1-flash-lite-preview",

@@ -1,104 +1,289 @@
-# Gridics Zoning Cookbook
+# UZone
 
-This repository is organized around a single `agent_os` runtime, a Next.js `agent_ui`, and notebooks that test the API.
+UZone is a self-contained zoning verification workflow app under `uzone/`.
 
-## Getting Started
+## Stack
 
-1. Create/sign in to Gridics developer portal: https://developer.gridics.com/get-started
-2. Get your credentials from Gridics Apps.
-3. Create `agent_os/.env` (recommended) from `agent_os/.env.example` and set credentials:
+- `backend/`: FastAPI + SQLAlchemy + Alembic
+- `frontend/`: Next.js
+- `docker-compose.yml`: local full-stack runtime with PostgreSQL
 
-```bash
-GRIDICS_CONSUMER_KEY=your_consumer_key
-CEREBRAS_API_KEY=your_cerebras_api_key
-AGENT_OS_MODEL_PROVIDER=cerebras
-AGENT_OS_MODEL_ID=llama-4-scout-17b-16e-instruct
-# Gemini option:
-# GOOGLE_API_KEY=your_google_api_key
-# AGENT_OS_MODEL_PROVIDER=gemini
-# AGENT_OS_MODEL_ID=gemini-2.0-flash
-# Groq option:
-# GROQ_API_KEY=your_groq_api_key
-# AGENT_OS_MODEL_PROVIDER=groq
-# AGENT_OS_MODEL_ID=llama-3.3-70b-versatile
-# Optional compact format:
-# AGENT_OS_MODEL=cerebras:llama-4-scout-17b-16e-instruct
-GRIDICS_BASE_URL=https://api.gridics.com/v1
-GRIDICS_TIMEOUT_SECONDS=20
-AGENT_OS_MODEL_TEMPERATURE=0
-AGENT_OS_HOST=0.0.0.0
-AGENT_OS_PORT=7777
-```
+## Run Locally With Docker
 
-4. Install backend dependencies:
+From the `uzone/` directory:
 
 ```bash
-pip install -r requirements.txt
+cp .env.example .env
 ```
 
-5. Run AgentOS (from repo root):
+Then:
 
 ```bash
-python -m agent_os.app
+docker compose up --build
 ```
 
-Alternative command:
+Services:
+
+- Frontend: `http://localhost:3001`
+- Backend API: `http://localhost:8000`
+- Backend health: `http://localhost:8000/health`
+- Backend routes: `http://localhost:8000/routes`
+
+The backend container automatically:
+
+1. runs Alembic migrations
+2. seeds demo data
+3. starts the API server
+
+## AWS Deployment
+
+Production AWS deployment scaffolding is available under:
+
+- [uzone/deploy/aws/README.md](/workspaces/gridics-zoning-cookbook/uzone/deploy/aws/README.md)
+
+It includes:
+
+- production Dockerfiles for backend and frontend
+- Terraform for ECR, ECS Fargate, ALB, and RDS PostgreSQL
+- a build-and-push script for publishing images to ECR
+
+The shared deploy baseline lives in `uzone/.env-deploy`. If you need a production deploy file, create `uzone/.env-deploy.prod` locally and keep it untracked.
+
+## Seeded Demo Users
+
+- `admin@uzone.local` / `password123`
+- `staff@uzone.local` / `password123`
+- `customer@uzone.local` / `password123`
+
+## Local Backend Without Docker
 
 ```bash
-uvicorn agent_os.app:app --host 0.0.0.0 --port 7777 --reload
+cd backend
+pip install -e .
+alembic upgrade heads
+python -m app.scripts.seed_data
+uvicorn app.main:app --reload
 ```
 
-6. Verify backend:
+## Local Frontend Without Docker
 
 ```bash
-curl -sS "http://localhost:7777/health"
-curl -sS "http://localhost:7777/routes"
+cd frontend
+npm install
+UZONE_API_BASE=http://localhost:8000 NEXT_PUBLIC_UZONE_API_BASE=http://localhost:8000 npm run dev
 ```
 
-7. Run Agent UI (new terminal):
+For local testing of the split host routing model (`agentic` vs `zvl`) with Windows or Linux hosts files, see:
+
+- [routing-matrix.md](/home/ben/gprojects/gridics-zoning-cookbook/uzone/docs/routing-matrix.md)
+
+The canonical public URLs for the split app surfaces are set with:
+
+- `AGENTIC_PUBLIC_BASE_URL`
+- `LETTERS_PUBLIC_BASE_URL`
+
+`deploy-from-env.sh` mirrors those into `NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL` and
+`NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL` for the frontend build/runtime. Example:
 
 ```bash
-cd agent_ui
-pnpm install
-pnpm dev
+AGENTIC_PUBLIC_BASE_URL=https://st1-agentic.gridics.com
+LETTERS_PUBLIC_BASE_URL=https://st1-zvl.gridics.com
 ```
 
-Open `http://localhost:3000`.
+For local development, the frontend still supports the older
+`NEXT_PUBLIC_UZONE_PRODUCT_HOST_MAP` fallback, but the base URL variables are the preferred source
+of truth for staging and production.
 
-## AgentOS
+For AWS deploys, keep `uzone/.env-deploy` in git as the baseline and create `uzone/.env-deploy.prod`
+locally when you need a production-specific env file. Do not commit the prod file.
 
-- Runtime app: `agent_os/app.py`
-- Tools: `agent_os/tools/`
-- Agents: `agent_os/agents/registry.py`
-- Direct routes (for smoke testing):
-- `GET /api/gridics/markets`
-- `GET /api/gridics/property-record`
-- `GET /api/gridics/search`
-- `POST /api/instant-feasibility`
+Frontend host routing:
 
-### Markets Data Cache
+- `AGENTIC_PUBLIC_BASE_URL=...`
+- `LETTERS_PUBLIC_BASE_URL=...`
+- optional fallback: `NEXT_PUBLIC_UZONE_PRODUCT_HOST_MAP=...`
 
-Market availability data is now cached in `agent_os/data/markets.json` and served locally by `get_markets()`.
+## Current Scope
 
-Refresh the cache when needed:
+Implemented:
+
+- auth registration/login
+- optional Clerk-ready backend auth verification path
+- jurisdictions
+- properties and property snapshots
+- request creation, submission, quoting, checkout, payment confirmation
+- staff queue, assignment, start review, notes
+- draft generation, approval, delivery
+- PDF file generation and document download route
+- fee schedules and fee items
+- letter templates
+- report summary
+
+Still simplified:
+
+- payment provider defaults to `manual`; Stripe is adapter-ready but not fully wired through a frontend checkout flow
+- email provider defaults to `console`; Resend and Postmark adapters are included
+- digital signatures are represented as approval/version records rather than an external signature platform
+
+## Important Environment Variables
+
+Docker Compose loads `uzone/.env` via `env_file`, so the usual local flow is:
 
 ```bash
-python agent_os/scripts/refresh_markets_data.py
+cd uzone
+cp .env.example .env
 ```
 
-## Notebooks
+Backend:
 
-- `notebooks/00-health-check.ipynb`
-- `notebooks/01-gridics-tools.ipynb`
-- `notebooks/02-instant-feasibility-route.ipynb`
-- `notebooks/03-agentos-config.ipynb`
+- `UZONE_AUTH_PROVIDER=local|clerk`
+- `UZONE_CLERK_PEM_PUBLIC_KEY=...`
+- `UZONE_CLERK_JWKS_URL=...`
+- `UZONE_CLERK_AUTHORIZED_PARTIES=http://localhost:3001,http://st1-agentic.gridics.local:3001,http://st1-zvl.gridics.local:3001,...`
 
-## Repository Structure
+For host-based local testing, the backend also allows branded local origins such as:
+- `http://st1-agentic.gridics.local:3001`
+- `http://st1-zvl.gridics.local:3001`
+- `http://st1-agentic.gridics.test:3001`
+- `http://st1-zvl.gridics.test:3001`
+- `UZONE_EMBED_SESSION_SIGNING_SECRET=...`
+- `UZONE_EMBED_SESSION_ISSUER=uzone`
+- `UZONE_EMBED_SESSION_AUDIENCE=uzone-embed-widget`
+- `UZONE_EMBED_SESSION_TTL_SECONDS=3600`
 
-- `agent_os/`: AgentOS runtime, tools, and agents
-- `agent_ui/`: Next.js UI for interacting with AgentOS
-- `notebooks/`: notebook-based tests against AgentOS
-- `agent_os/common/`: shared Python logic
-- `api/specs/`: source-of-truth OpenAPI YAML specs
-- `cookbook/`: numbered use-case definitions (1 to 24)
-- `docs/`: supporting docs
+The embed signing secret is required for the live Super Admin embed preview and for minting widget tokens.
+- `UZONE_PAYMENT_PROVIDERS=manual,stripe`
+- `UZONE_DEFAULT_PAYMENT_PROVIDER=manual`
+- `UZONE_STRIPE_SECRET_KEY=...`
+- `UZONE_EMAIL_PROVIDER=console|resend|postmark|mandrill`
+- `UZONE_EMAIL_FROM=noreply@yourdomain.com`
+- `UZONE_RESEND_API_KEY=...`
+- `UZONE_POSTMARK_SERVER_TOKEN=...`
+- `UZONE_MANDRILL_API_KEY=...`
+- `UZONE_ARTIFACTS_DIR=/app/artifacts`
+
+## Clerk
+
+When `UZONE_AUTH_PROVIDER=clerk`:
+
+- backend local register/login endpoints are disabled
+- `GET /api/auth/me` expects a Clerk session token in `Authorization: Bearer ...`
+- backend validates the token against Clerk JWKS or a configured Clerk PEM public key
+
+This matches Clerk’s guidance for validating session tokens and checking `azp` against allowed origins:
+
+- https://clerk.com/docs/request-authentication/validate-session-tokens
+
+## Payment Providers
+
+The payment layer now uses provider adapters under:
+
+- [payment_service.py](/workspaces/gridics-zoning-cookbook/uzone/backend/app/services/payment_service.py)
+
+Current providers:
+
+- `manual`
+- `stripe`
+
+The manual provider is the local default.
+
+Stripe is the first production-oriented adapter because it has broad payment-method coverage and a stable Payment Intents API:
+
+- https://stripe.com/docs/payments/payment-intents
+
+Webhook route:
+
+- `POST /api/payments/webhook/stripe`
+
+Related env var:
+
+- `UZONE_STRIPE_WEBHOOK_SECRET=...`
+
+## Email Providers
+
+The email layer now uses provider adapters under:
+
+- [email_service.py](/workspaces/gridics-zoning-cookbook/uzone/backend/app/services/email_service.py)
+
+Current providers:
+
+- `console`
+- `resend`
+- `postmark`
+
+Email templates are stored in the database and rendered by template code first, with provider send fallback still available when no matching template exists.
+
+Recommended choices:
+
+- `Resend` for the fastest developer setup and a clean API: https://resend.com/docs
+- `Postmark` for high-confidence transactional delivery and message streams separation: https://postmarkapp.com/developer/api/overview
+- `Amazon SES` if cost and AWS integration matter more than developer ergonomics: https://docs.aws.amazon.com/ses/latest/dg/Welcome.html
+
+## Signatures Recommendation
+
+For external signature support, the best fit depends on the legal/compliance bar:
+
+- `DocuSign` if you need the most established enterprise eSignature platform and broad workflow coverage: https://www.docusign.com/products/apis
+- `Dropbox Sign` if you want a faster embedded signing implementation and simpler developer UX: https://developers.hellosign.com/docs/api/embedded
+
+For UZone specifically:
+
+- use internal approval + generated PDF for ordinary zoning letters that do not require external signer identity proofing
+- use DocuSign when you need formal external signature workflows, signer audit artifacts, or broader municipal/legal scrutiny
+- use Dropbox Sign if embedded in-app signing speed matters more than enterprise breadth
+
+## Embeddable Assistant Widget
+
+UZone now supports a secure third-party widget flow similar to the Placer County / Polimorphic pattern.
+
+How it works:
+
+1. A host site administrator provisions an embed secret for a tenant.
+2. The host backend exchanges that secret for a short-lived widget token from `POST /api/public/embed/sessions`.
+3. The host embeds `https://your-uzone-domain/embed#token=...` in an iframe.
+4. The widget validates the token with `GET /api/public/embed/session` and uses the token on chat run requests.
+
+The signed token is what protects the assistant. The host never gets direct access to the chat backend credentials.
+
+Provisioning example:
+
+```bash
+curl -X POST "https://your-uzone-domain/api/admin/clients/dream-town/assistant-embed" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "allowed_origins": ["https://partner.example.com"],
+    "widget_title": "Ask Dream Town",
+    "launcher_label": "Have a question?",
+    "accent_color": "#0b67c2",
+    "is_active": true
+  }'
+```
+
+That response returns the one-time secret. The host backend can then mint a widget token with:
+
+```bash
+curl -X POST "https://your-uzone-domain/api/public/embed/sessions" \
+  -H "Content-Type: application/json" \
+  -H "X-UZone-Embed-Secret: <one-time-secret>" \
+  -d '{
+    "client_id": "dream-town",
+    "origin": "https://partner.example.com"
+  }'
+```
+
+Use the returned `token` in the iframe fragment:
+
+```html
+<iframe
+  src="https://your-uzone-domain/embed#token=eyJ..."
+  style="position:fixed;right:20px;bottom:20px;width:420px;height:700px;border:0;z-index:2147483647;"
+></iframe>
+```
+
+For a live test page inside UZone, open:
+
+- `/super-admin/:organizationId/assistant-embed`
+- add `?secret=<one-time-secret>` after saving the embed settings
+- optionally add `?origin=https://partner.example.com` to preview a specific allowed origin
+
+That page mints a fresh token and renders the same iframe-backed widget the host site will use.

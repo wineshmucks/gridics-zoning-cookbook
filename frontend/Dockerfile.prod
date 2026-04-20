@@ -1,0 +1,46 @@
+FROM node:20-alpine AS deps
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY package.json package-lock.json /app/
+
+RUN npm ci
+
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+ARG NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+ARG NEXT_PUBLIC_CLERK_JWKS_URL=
+ARG NEXT_PUBLIC_APP_VERSION=dev
+
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+ENV NEXT_PUBLIC_CLERK_JWKS_URL=${NEXT_PUBLIC_CLERK_JWKS_URL}
+ENV NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=deps /app/node_modules /app/node_modules
+COPY . /app
+
+RUN npm run build
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=builder /app/package.json /app/package.json
+COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/.next /app/.next
+COPY --from=builder /app/next.config.js /app/next.config.js
+COPY --from=builder /app/public /app/public
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start", "--", "-H", "0.0.0.0", "-p", "3001"]

@@ -205,6 +205,28 @@ main {
   border-left: 1px solid color-mix(in srgb, var(--border-subtle) 84%, var(--ink) 16%);
 }
 
+.assistant-header-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.assistant-header-control-button {
+  flex: 0 0 auto;
+}
+
+.brand-assistant-copy {
+  margin-top: 4px;
+}
+
+.brand-assistant-toolbar-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .topbar-super-admin .auth-controls-group {
   gap: 8px;
 }
@@ -285,11 +307,12 @@ main {
 
 .brand-title-row {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-start;
+  gap: 14px;
 }
 
 .brand-title {
+  line-height: 1.1;
   font-weight: 700;
 }
 

@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getAssistantContent, getAssistantContentDebug, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent'
+import { buildAssistantApiUrl } from '../lib/assistant-api'
 
 type AgentRunResponse = {
   session_id?: string
@@ -12,6 +14,7 @@ type AgentRunResponse = {
   response?: unknown
   run_response?: unknown
   data?: unknown
+  debug?: unknown
   messages?: Array<{
     role?: string
     content?: unknown
@@ -139,6 +142,13 @@ type ConversationCopyContext = {
 type EmbedChatActions = {
   copyConversation: () => void
   newChat: () => void
+}
+
+type AssistantToolbarState = {
+  title: string
+  subtitle: string | null
+  canCopy: boolean
+  canNewChat: boolean
 }
 
 function summarizeToolResultForExport(rawResult: unknown): unknown {
@@ -784,10 +794,10 @@ function upsertToolCall(toolCalls: StreamToolCall[], next: StreamToolCall): Stre
 }
 
 async function fetchCompletedRun(
-  backendBase: string,
   agentId: string,
   runId: string,
   sessionId: string | null,
+  isDebugEnabled: boolean,
   requestHeaders?: Record<string, string>,
 ): Promise<CompletedRunFetchResult> {
   if (!sessionId) {
@@ -798,8 +808,9 @@ async function fetchCompletedRun(
   }
 
   try {
+    const debugQuery = isDebugEnabled ? '&debug=1' : ''
     const response = await fetch(
-      `${backendBase}/agents/${agentId}/runs/${runId}?session_id=${encodeURIComponent(sessionId)}`,
+      `${buildAssistantApiUrl(`/agents/${agentId}/runs/${runId}`)}?session_id=${encodeURIComponent(sessionId)}${debugQuery}`,
       {
         cache: "no-store",
         headers: requestHeaders,
@@ -831,10 +842,10 @@ async function fetchCompletedRun(
 }
 
 async function fetchCompletedRunWithRetry(
-  backendBase: string,
   agentId: string,
   runId: string,
   sessionId: string | null,
+  isDebugEnabled: boolean,
   requestHeaders?: Record<string, string>,
 ): Promise<CompletedRunFetchResult> {
   const attempts = 4
@@ -844,7 +855,7 @@ async function fetchCompletedRunWithRetry(
   }
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    lastResult = await fetchCompletedRun(backendBase, agentId, runId, sessionId, requestHeaders)
+    lastResult = await fetchCompletedRun(agentId, runId, sessionId, isDebugEnabled, requestHeaders)
     if (lastResult.payload || lastResult.debug !== null) {
       return lastResult
     }
@@ -1132,6 +1143,7 @@ export function AgentChatPanel({
   showEmptyStateHint = true,
   showBrandingFooter = true,
   showModelControls = true,
+  showToolbar = true,
 }: {
   agentId: string
   backendBase: string
@@ -1149,6 +1161,7 @@ export function AgentChatPanel({
   showEmptyStateHint?: boolean
   showBrandingFooter?: boolean
   showModelControls?: boolean
+  showToolbar?: boolean
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
@@ -1159,6 +1172,7 @@ export function AgentChatPanel({
   const [messageFeedback, setMessageFeedback] = useState<Record<string, MessageFeedback | undefined>>({})
   const [modelId, setModelId] = useState(defaultModelId)
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
+  const searchParams = useSearchParams()
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
   const modelPickerRef = useRef<HTMLDivElement | null>(null)
@@ -1172,7 +1186,8 @@ export function AgentChatPanel({
   const showPublicAssistantFooter = showBrandingFooter && surface === "public-assistant"
   const currentYear = new Date().getFullYear()
   const isPublicAssistantSurface = surface === "public-assistant"
-  const chatTitle = variant === "chatgpt" ? 'AI-assisted zoning guidance' : title
+  const isDebugEnabled = searchParams.get('debug') === '1'
+  const chatTitle = variant === "chatgpt" ? 'Zoning Assistant' : title
   const chatSubtitle = variant === "chatgpt" ? 'Planning & zoning guidance' : description
 
   const assistantMessageCount = useMemo(
@@ -1278,6 +1293,50 @@ export function AgentChatPanel({
       onEmbedChatActionsChange(null)
     }
   }, [embeddedLayout, messages, isStreaming, onEmbedChatActionsChange])
+
+  useEffect(() => {
+    if (surface !== 'public-assistant' || variant !== 'chatgpt' || typeof window === 'undefined') {
+      return
+    }
+
+    const publishToolbarState = () => {
+      const detail: AssistantToolbarState = {
+        title: chatTitle,
+        subtitle: null,
+        canCopy: messages.length > 0,
+        canNewChat: !(isStreaming && !messages.length),
+      }
+      ;(window as Window & { __uzoneAssistantToolbarState?: AssistantToolbarState | null }).__uzoneAssistantToolbarState =
+        detail
+      window.dispatchEvent(new CustomEvent('uzone-assistant-toolbar-state', { detail }))
+    }
+
+    const handleToolbarAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail
+      if (!detail?.action) {
+        return
+      }
+
+      if (detail.action === 'new-chat') {
+        handleNewChat()
+        return
+      }
+
+      if (detail.action === 'copy') {
+        void handleCopyConversation()
+      }
+    }
+
+    publishToolbarState()
+    window.addEventListener('uzone-assistant-toolbar-action', handleToolbarAction as EventListener)
+
+    return () => {
+      window.removeEventListener('uzone-assistant-toolbar-action', handleToolbarAction as EventListener)
+      ;(window as Window & { __uzoneAssistantToolbarState?: AssistantToolbarState | null }).__uzoneAssistantToolbarState =
+        null
+      window.dispatchEvent(new CustomEvent('uzone-assistant-toolbar-state', { detail: null }))
+    }
+  }, [surface, variant, chatTitle, messages, isStreaming])
 
   const updateAssistantMessage = (messageId: string, updater: (message: ChatMessage) => ChatMessage): void => {
     setMessages((prevMessages) =>
@@ -1534,10 +1593,10 @@ export function AgentChatPanel({
 
         if (!finalContent && runIdRef.current) {
           const completedRun = await fetchCompletedRunWithRetry(
-            backendBase,
             agentId,
             runIdRef.current,
             sessionIdRef.current,
+            isDebugEnabled,
             requestHeaders,
           )
           const completedRunDebug = completedRun.debug
@@ -1593,10 +1652,10 @@ export function AgentChatPanel({
 
         if ((!traceDetail || !traceDetail.includes("key:")) && runIdRef.current) {
           const completedRun = await fetchCompletedRunWithRetry(
-            backendBase,
             agentId,
             runIdRef.current,
             sessionIdRef.current,
+            isDebugEnabled,
             requestHeaders,
           )
           traceDetail = traceDetail || formatAssistantModelTrace((completedRun.payload || {}) as Record<string, unknown>)
@@ -1632,28 +1691,73 @@ export function AgentChatPanel({
     try {
       const runHeaders = embedSessionToken
         ? {
-            Accept: "text/event-stream",
+            Accept: "application/json",
           }
         : {
-            Accept: "text/event-stream",
+            Accept: "application/json",
             ...(requestHeaders || {}),
           }
+      const runDebugQuery = isDebugEnabled ? "?debug=1" : ""
+      const runUrl = `${buildAssistantApiUrl(`/agents/${agentId}/runs`)}${runDebugQuery}`
 
-      const response = await fetch(`${backendBase}/agents/${agentId}/runs`, {
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[assistant] submit run", {
+          backendBase,
+          agentId,
+          url: runUrl,
+          debug: isDebugEnabled,
+        })
+        if (isDebugEnabled && backendBase.trim()) {
+          console.warn('[assistant] browser assistant URL resolved for AgentOS run', {
+            runUrl,
+            agentId,
+          })
+        }
+      }
+
+      const response = await fetch(runUrl, {
         method: "POST",
         body,
         signal: controller.signal,
-        headers: runHeaders,
+        headers: {
+          ...runHeaders,
+          ...(isDebugEnabled ? { "X-UZone-Debug": "1" } : {}),
+        },
       })
 
+      const responseContentType = response.headers.get('content-type') || ''
+      const isJsonResponse = responseContentType.includes('application/json')
+
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { detail?: string } | null
-        throw new Error(payload?.detail || "Unable to reach the assistant.")
+        const responseText = await response.text().catch(() => "")
+        if (isDebugEnabled) {
+          console.error("[assistant] run request failed", {
+            url: runUrl,
+            status: response.status,
+            statusText: response.statusText,
+            responseText,
+            agentId,
+            backendBase,
+            surface,
+          })
+        }
+        let payload: { detail?: string } | null = null
+        if (responseText) {
+          try {
+            payload = JSON.parse(responseText) as { detail?: string }
+          } catch {
+            payload = null
+          }
+        }
+        throw new Error(payload?.detail || responseText || "Unable to reach the assistant.")
       }
 
-      if (!response.body) {
+      if (isJsonResponse) {
         const payload = (await response.json().catch(() => null)) as AgentRunResponse | null
         sessionIdRef.current = payload?.session_id ?? null
+        if (isDebugEnabled && payload?.debug) {
+          console.debug('[assistant] backend run debug bundle', payload.debug)
+        }
         const content = getAssistantContent(payload || {})
         const debugDetail = content ? null : getAssistantContentDebug(payload || {})
         handleStreamUpdate({
@@ -1671,6 +1775,11 @@ export function AgentChatPanel({
           toolCalls,
         })
         return
+      }
+
+      if (!response.body) {
+        const responseText = await response.text().catch(() => '')
+        throw new Error(responseText || 'The assistant returned an empty response body.')
       }
 
       const reader = response.body.getReader()
@@ -1721,10 +1830,10 @@ export function AgentChatPanel({
 
         if (!fallbackContent && runIdRef.current) {
           const completedRun = await fetchCompletedRunWithRetry(
-            backendBase,
             agentId,
             runIdRef.current,
             sessionIdRef.current,
+            isDebugEnabled,
             requestHeaders,
           )
           const completedRunDebug = completedRun.debug
@@ -1746,6 +1855,15 @@ export function AgentChatPanel({
         })
       }
     } catch (error) {
+      if (isDebugEnabled) {
+        console.error("[assistant] run fetch threw", {
+          backendBase,
+          agentId,
+          surface,
+          debug: isDebugEnabled,
+          error,
+        })
+      }
       const errorMessage = error instanceof Error ? error.message : "Unable to reach the assistant."
       setComposerError(errorMessage)
       updateAssistantMessage(assistantMessageId, (message) => ({
@@ -1838,7 +1956,7 @@ export function AgentChatPanel({
     }))
 
     try {
-      const response = await fetch(`${backendBase}/public/assistant-feedback`, {
+      const response = await fetch(buildAssistantApiUrl('/public/assistant-feedback'), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1889,7 +2007,7 @@ export function AgentChatPanel({
       )}
 
       <div className={`agent-chat-shell agent-chat-shell-${variant}`}>
-        {variant === "chatgpt" && !embeddedLayout ? (
+        {variant === "chatgpt" && !embeddedLayout && showToolbar ? (
           <div className="assistant-chat-toolbar">
             <div className="assistant-chat-toolbar-copy">
               <div className="assistant-chat-toolbar-title">{chatTitle}</div>

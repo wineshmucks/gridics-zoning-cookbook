@@ -32,7 +32,6 @@ def test_build_agent_model_uses_gemini(monkeypatch) -> None:
             captured["api_key"] = api_key
 
     monkeypatch.setattr("agno.models.google.Gemini", FakeGemini)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "gemini-key")
 
@@ -41,11 +40,10 @@ def test_build_agent_model_uses_gemini(monkeypatch) -> None:
     assert isinstance(model, FakeGemini)
     assert captured == {"id": "gemini-2.0-flash-001", "api_key": "gemini-key"}
     assert getattr(model, "_uzone_api_key_source") == "env_generic"
-    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"
 
 
 def test_build_agent_model_rejects_missing_api_key(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", None)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -55,12 +53,11 @@ def test_build_agent_model_rejects_missing_api_key(monkeypatch) -> None:
 
 
 def test_build_agent_model_rejects_non_gemini_provider(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "shared-llm-key")
 
-    with pytest.raises(RuntimeError, match="Supported providers: gemini"):
-        build_agent_model(provider="unsupported", model_id="gemini-2.0-flash-001")
+    with pytest.raises(RuntimeError, match="Gemini-only"):
+        build_agent_model(provider="openrouter", model_id="nvidia/llama-nemotron-embed-vl-1b-v2:free")
 
 
 def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -> None:
@@ -72,7 +69,6 @@ def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -
             captured["api_key"] = api_key
 
     monkeypatch.setattr("agno.models.google.Gemini", FakeGemini)
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "env-shared-key")
 
@@ -86,15 +82,14 @@ def test_build_agent_model_uses_explicit_key_without_env_fallback(monkeypatch) -
     assert isinstance(model, FakeGemini)
     assert captured == {"id": "gemini-3.1-flash-lite-preview", "api_key": "tenant-db-key"}
     assert getattr(model, "_uzone_api_key_source") == "tenant_db"
-    assert getattr(model, "_uzone_api_key_suffix") == "-key"[-4:]
+    assert getattr(model, "_uzone_api_key_suffix") == "-key"
 
 
 def test_build_agent_model_rejects_missing_explicit_key_when_env_fallback_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "zoning_agent_llm_provider", "gemini")
     monkeypatch.setattr(settings, "zoning_agent_llm_model_id", "gemini-2.0-flash-001")
     monkeypatch.setattr(settings, "zoning_agent_llm_api_key", "env-shared-key")
 
-    with pytest.raises(RuntimeError, match="Missing API key for tenant-configured provider"):
+    with pytest.raises(RuntimeError, match="Missing API key for the Gemini zoning agent"):
         build_agent_model(
             provider="gemini",
             model_id="gemini-3.1-flash-lite-preview",

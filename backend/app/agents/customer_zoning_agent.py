@@ -1,23 +1,18 @@
 from __future__ import annotations
 
-from typing import Any
+from agno.team.team import Team
+from agno.team.mode import TeamMode
 from types import SimpleNamespace
+from typing import Any
 
-from agno.team import Team, TeamMode
-
-from app.agents.factory import build_agent_model, create_agent
-from app.agents.assistant_defaults import (
-    CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
-    CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
-)
-from app.agents.hooks import _load_tenant_assistant_config as _hooks_load_tenant_assistant_config
+from app.agents.factory import create_agent
+from app.agents.agent_hooks import _load_tenant_assistant_config as _hooks_load_tenant_assistant_config
 from app.agents.tools import (
     analyze_customer_zoning_request,
     confirm_pending_address,
     query_customer_zoning_code,
     standardize_address,
 )
-from app.services.assistant_telemetry_service import record_assistant_run_telemetry
 
 _MODEL_OVERRIDE_METADATA_KEY = "assistant_model_id"
 _MODEL_OVERRIDE_STATE_KEY = "_assistant_model_override_active"
@@ -394,8 +389,6 @@ def analyze_customer_zoning_request(
         client_id=client_id,
         run_context=run_context,
     )
-
-
 from app.agents.tools_backup import (  # noqa: E402
     _ANALYZE_RETRY_ATTEMPTS,
     _ANALYZE_RETRY_DELAY_SECONDS,
@@ -403,6 +396,10 @@ from app.agents.tools_backup import (  # noqa: E402
     _extract_gridics_zoning_summary,
     _load_tenant_client,
 )
+
+# ------------------------------------------------------------------------
+# Agent Definitions
+# ------------------------------------------------------------------------
 
 code_researcher_agent = create_agent(
     id="code-researcher-agent",

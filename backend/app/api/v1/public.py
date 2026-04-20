@@ -1,5 +1,6 @@
 """Public tenant configuration routes."""
 
+import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -31,6 +32,15 @@ from app.services.tenant_service import (
 )
 
 router = APIRouter()
+
+
+def _parse_json_form_field(value: object, fallback: object) -> object:
+    if not isinstance(value, str) or not value.strip():
+        return fallback
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return fallback
 
 
 class EmbedSessionCreateRequest(BaseModel):

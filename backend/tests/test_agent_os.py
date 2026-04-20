@@ -83,6 +83,33 @@ def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_re
     assert response.json()["path"] == "/teams/customer_zoning_team/runs"
 
 
+def test_build_agent_os_app_rewrites_canonical_customer_zoning_team_path_to_registered_team(monkeypatch) -> None:
+    class FakeAgentOS:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def get_app(self):
+            app = FastAPI()
+
+            @app.get("/teams/customer_zoning_team/runs")
+            def team_runs(request: Request):
+                return {"path": request.scope["path"]}
+
+            return app
+
+    monkeypatch.setitem(sys.modules, "agno.os", types.SimpleNamespace(AgentOS=FakeAgentOS))
+    monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=[], ALL_TEAMS=[]))
+    monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+
+    app = agent_os.build_agent_os_app(FastAPI())
+    client = TestClient(app)
+
+    response = client.get("/api/agents/customer_zoning_team/runs")
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "/teams/customer_zoning_team/runs"
+
+
 def test_build_agent_os_app_keeps_legacy_customer_zoning_agent_alias_working(monkeypatch) -> None:
     class FakeAgentOS:
         def __init__(self, **kwargs):
@@ -108,3 +135,30 @@ def test_build_agent_os_app_keeps_legacy_customer_zoning_agent_alias_working(mon
 
     assert response.status_code == 200
     assert response.json()["path"] == "/teams/customer_zoning_team/runs"
+
+
+def test_build_agent_os_app_preserves_non_agent_routes(monkeypatch) -> None:
+    class FakeAgentOS:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def get_app(self):
+            app = FastAPI()
+
+            @app.get("/api/health")
+            def health():
+                return {"status": "ok"}
+
+            return app
+
+    monkeypatch.setitem(sys.modules, "agno.os", types.SimpleNamespace(AgentOS=FakeAgentOS))
+    monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=[], ALL_TEAMS=[]))
+    monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+
+    app = agent_os.build_agent_os_app(FastAPI())
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

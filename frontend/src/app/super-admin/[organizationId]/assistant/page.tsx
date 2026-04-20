@@ -16,8 +16,7 @@ type PageProps = {
 export default async function SuperAdminCustomerAssistantPage({ params }: PageProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
-  const backendBase =
-    process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || 'http://localhost:8000'
+  const backendBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (

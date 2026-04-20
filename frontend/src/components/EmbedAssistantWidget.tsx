@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { BuildingLogo } from './BuildingLogo'
 import { PublicAssistantExperience } from './PublicAssistantExperience'
+import { buildAssistantApiUrl } from '../lib/assistant-api'
 
 type EmbedSession = {
   client_id: string
@@ -48,10 +49,6 @@ function readTokenFromLocation(): string {
   return (hashParams.get('token') || '').trim()
 }
 
-function normalizeBackendBase(base: string): string {
-  return base.replace(/\/+$/, '').replace(/\/api$/, '')
-}
-
 function dispatchEmbedChatAction(action: 'copy' | 'new-chat') {
   if (typeof window === 'undefined') {
     return
@@ -86,7 +83,7 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
 
     void (async () => {
       try {
-        const response = await fetch(`${normalizeBackendBase(backendBase)}/api/public/embed/session`, {
+        const response = await fetch(buildAssistantApiUrl('/public/embed/session'), {
           cache: 'no-store',
           headers: {
             'X-UZone-Embed-Token': token,

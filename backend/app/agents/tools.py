@@ -3,15 +3,16 @@
 The backend tests still monkeypatch a handful of private helper names directly
 off `app.agents.tools`, so this module keeps those names available while
 delegating the heavy lifting to the richer legacy implementation in
-`tools_backup`.
+`legacy_tools`.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from app.agents import tools_backup as _legacy
+from app.agents import legacy_tools as _legacy
 from app.services.assistant_observability import append_policy_trace
+from app.services.assistant_observability import append_run_trace
 from app.services.confirmation_service import (
     build_pending_confirmation_prompt,
     classify_pending_property_confirmation_response,
@@ -95,6 +96,10 @@ def _prefer_recent_standardized_address(address: str | None, run_context: Any = 
     return normalized_address
 
 
+def _append_tool_trace(run_context: Any, event: dict[str, Any]) -> None:
+    append_run_trace(run_context, {"category": "tool", **event})
+
+
 def _sync_legacy_helpers() -> None:
     _legacy.query_customer_zoning_code = query_customer_zoning_code
     _legacy._build_gridics_client = _build_gridics_client
@@ -115,7 +120,6 @@ def _sync_legacy_helpers() -> None:
     _legacy.jurisdiction_lock_message = jurisdiction_lock_message
     _legacy.missing_address_details_message = missing_address_details_message
 
-
 def standardize_address(address: str, **kwargs: Any) -> dict[str, Any]:
     normalized = str(address or "").strip()
     standardized = _standardize_address(normalized)
@@ -130,7 +134,7 @@ def standardize_address(address: str, **kwargs: Any) -> dict[str, Any]:
 
 
 def confirm_pending_address(*, query: str | None = None, run_context: Any = None, **kwargs: Any) -> dict[str, Any]:
-    from app.agents.tools_backup import _clear_pending_property_confirmation, _get_pending_property_confirmation
+    from app.agents.legacy_tools import _clear_pending_property_confirmation, _get_pending_property_confirmation
     from app.services.confirmation_service import (
         build_pending_confirmation_prompt,
         classify_pending_property_confirmation_response,
@@ -138,6 +142,13 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
 
     pending_context = _get_pending_property_confirmation(run_context or kwargs.get("run_context"))
     if not pending_context:
+        _append_tool_trace(
+            run_context or kwargs.get("run_context"),
+            {
+                "event": "tool.confirm_pending_address",
+                "status": "no_pending_context",
+            },
+        )
         return {
             "confirmed": False,
             "needs_confirmation": False,
@@ -151,6 +162,14 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
     )
     if response.get("decision") == "confirm_pending":
         _clear_pending_property_confirmation(run_context or kwargs.get("run_context"))
+        _append_tool_trace(
+            run_context or kwargs.get("run_context"),
+            {
+                "event": "tool.confirm_pending_address",
+                "status": "confirmed",
+                "decision": response,
+            },
+        )
         return {
             "confirmed": True,
             "decision": response,
@@ -158,6 +177,14 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
         }
 
     if response.get("decision") == "clarify":
+        _append_tool_trace(
+            run_context or kwargs.get("run_context"),
+            {
+                "event": "tool.confirm_pending_address",
+                "status": "clarify",
+                "decision": response,
+            },
+        )
         return {
             "confirmed": False,
             "needs_confirmation": True,
@@ -169,6 +196,14 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
             "decision": response,
         }
 
+    _append_tool_trace(
+        run_context or kwargs.get("run_context"),
+        {
+            "event": "tool.confirm_pending_address",
+            "status": "not_confirmed",
+            "decision": response,
+        },
+    )
     return {
         "confirmed": False,
         "decision": response,
@@ -183,6 +218,15 @@ def query_customer_zoning_code(
     run_context: Any = None,
     **kwargs: Any,
 ) -> dict:
+    _append_tool_trace(
+        run_context,
+        {
+            "event": "tool.query_customer_zoning_code",
+            "query": query,
+            "limit": limit,
+            "client_id": client_id,
+        },
+    )
     return _legacy_query_customer_zoning_code(
         query=query,
         limit=limit,
@@ -201,6 +245,18 @@ def analyze_customer_zoning_request(
     run_context: Any = None,
     **kwargs: Any,
 ) -> dict:
+    _append_tool_trace(
+        run_context,
+        {
+            "event": "tool.analyze_customer_zoning_request",
+            "query": query,
+            "address": address,
+            "state_env": state_env,
+            "zip_code": zip_code,
+            "knowledge_limit": knowledge_limit,
+            "client_id": client_id,
+        },
+    )
     _sync_legacy_helpers()
     effective_query = str(query or "").strip()
     preferred_address = _prefer_recent_standardized_address(address, run_context, **kwargs)
@@ -219,6 +275,15 @@ def analyze_customer_zoning_request(
         client_id=client_id,
         run_context=run_context,
     )
+    _append_tool_trace(
+        run_context,
+        {
+            "event": "tool.analyze_customer_zoning_request.complete",
+            "client_id": client_id,
+            "result_keys": sorted(result.keys()) if isinstance(result, dict) else None,
+        },
+    )
+    return result
 
 
 __all__ = [

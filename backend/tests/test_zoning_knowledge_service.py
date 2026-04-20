@@ -46,20 +46,8 @@ def test_get_tenant_zoning_code_url_reads_settings_json() -> None:
     assert get_tenant_zoning_code_url(tenant) == "https://example.com/code"
 
 
-def test_build_zoning_knowledge_status_includes_gemini_embedder_metadata(monkeypatch) -> None:
+def test_build_zoning_knowledge_status_includes_gemini_embedder_metadata() -> None:
     tenant = DummyTenant()
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_provider",
-        "gemini",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "gemini-embedding-001",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
     latest_run = SimpleNamespace(
         id="run-1",
         mode="ingest",
@@ -203,23 +191,7 @@ def test_chunk_normalized_section_splits_large_sections() -> None:
     assert all(chunk.metadata["section_title"] == "Section 1" for chunk in chunks)
 
 
-def test_build_embedder_pair_rejects_non_gemini_provider(monkeypatch) -> None:
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_provider", "unsupported")
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "gemini-embedding-001",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_api_key", "test-key")
-
-    with pytest.raises(ValueError, match="Supported providers: gemini"):
-        _build_embedder_pair()
-
-
-def test_build_embedder_pair_falls_back_to_google_genai_for_gemini(monkeypatch) -> None:
+def test_build_embedder_pair_uses_fixed_gemini_embedder(monkeypatch) -> None:
     calls: list[dict] = []
 
     class FakeModels:
@@ -236,15 +208,6 @@ def test_build_embedder_pair_falls_back_to_google_genai_for_gemini(monkeypatch) 
         def __init__(self, *, api_key: str) -> None:
             self.models = FakeModels()
 
-    monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_provider", "gemini")
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_model_id",
-        "gemini-embedding-001",
-    )
-    monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.settings.zoning_embedder_dimensions",
-        VECTOR_DIMENSIONS,
-    )
     monkeypatch.setattr("app.services.zoning_knowledge_service.settings.zoning_embedder_api_key", "test-key")
     monkeypatch.delitem(sys.modules, "agno.knowledge.embedder.google", raising=False)
 

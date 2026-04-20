@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from fastapi import HTTPException
 
 from app.api.v1 import public

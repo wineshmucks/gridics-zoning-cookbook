@@ -12,9 +12,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
+from agno.os.schema import AgentSessionDetailSchema, SessionSchema, TeamSessionDetailSchema
+from agno.session import AgentSession, TeamSession
 
 from app.api.dependencies import get_db
-from app.agents.assistant_defaults import CODE_DEFAULT_ASSISTANT_MODEL_TARGETS
 from app.db.models import (
     EmailTemplate,
     FeeSchedule,
@@ -63,7 +64,6 @@ from app.schemas import (
     ZoningKnowledgeStatusRead,
 )
 from app.core.config import settings
-from app.services.assistant_conversation_review_service import list_assistant_conversation_reviews
 from app.services.database_maintenance_service import cleanup_dangling_records, get_database_info
 from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
 from app.services.cache_service import get_cache_service
@@ -83,9 +83,10 @@ from app.services.logo_storage import (
     is_asset_storage_enabled,
     upload_asset,
 )
-from app.services.assistant_telemetry_service import list_assistant_run_telemetry
 from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
 from app.services.clerk_service import delete_clerk_organization, update_clerk_organization
+from app.agents.storage import get_agno_db, get_agno_storage_config, get_session_usage_totals
+from app.agents.storage import get_tenant_conversation_session, list_tenant_conversation_sessions
 from app.services.platform_settings_service import get_platform_assistant_settings_json, set_platform_assistant_settings_json
 from app.services.tenant_service import (
     DEFAULT_ASSISTANT_DISCLAIMER_TEXT,
@@ -124,6 +125,30 @@ LOGO_FILE_EXTENSION_BY_CONTENT_TYPE = {
     "image/svg+xml": ".svg",
 }
 MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024
+
+
+def _tenant_client_read_payload(tenant_client: TenantClient) -> dict:
+    logo_path = get_tenant_logo_path(tenant_client.settings_json)
+    return {
+        "id": tenant_client.id,
+        "client_id": tenant_client.client_id,
+        "clerk_organization_id": tenant_client.clerk_organization_id,
+        "jurisdiction_id": tenant_client.jurisdiction_id,
+        "city_name": tenant_client.city_name,
+        "department_name": tenant_client.department_name,
+        "standard_letter_fee_cents": tenant_client.standard_letter_fee_cents,
+        "comprehensive_letter_fee_cents": tenant_client.comprehensive_letter_fee_cents,
+        "expedited_fee_cents": tenant_client.expedited_fee_cents,
+        "support_phone": tenant_client.support_phone,
+        "support_email": tenant_client.support_email,
+        "contact_address": tenant_client.contact_address,
+        "is_active": tenant_client.is_active,
+        "settings_json": tenant_client.settings_json,
+        "logo_path": logo_path,
+        "logo_source": "jurisdiction" if logo_path else None,
+        "created_at": tenant_client.created_at,
+        "updated_at": tenant_client.updated_at,
+    }
 
 
 class TenantEmbedSettingsRead(BaseModel):
@@ -171,102 +196,43 @@ class TenantEmbedPreviewSessionResponse(BaseModel):
     origin: str | None = None
 
 
-class AssistantTelemetryRunRead(BaseModel):
-    id: str
-    run_scope: str
-    agent_id: str | None = None
-    conversation_id: str | None = None
-    message_id: str | None = None
-    run_id: str | None = None
-    session_id: str | None = None
-    model_provider: str | None = None
-    model_name: str | None = None
+class AgnoSessionUsageModelRead(BaseModel):
+    kind: str | None = None
+    provider: str | None = None
     model_id: str | None = None
-    input_tokens: int
-    output_tokens: int
-    total_tokens: int
-    cost: float | None = None
-    time_to_first_token: float | None = None
-    duration_seconds: float | None = None
-    created_at: str
-    metrics_json: dict | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    cost: float = 0.0
 
 
-class AssistantTelemetrySummaryRead(BaseModel):
-    total_runs: int
-    input_tokens: int
-    output_tokens: int
-    total_tokens: int
-    cost: float
+class AgnoSessionUsageTotalsRead(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    cost: float = 0.0
+    duration: float = 0.0
+    time_to_first_token_max: float | None = None
 
 
-class AssistantTelemetryResponse(BaseModel):
-    summary: AssistantTelemetrySummaryRead
-    runs: list[AssistantTelemetryRunRead]
-    pagination: dict[str, int | bool | str | None]
+class AgnoSessionUsageRead(BaseModel):
+    session_id: str
+    session_type: str | None = None
+    run_count: int = 0
+    totals: AgnoSessionUsageTotalsRead
+    model_usage: list[AgnoSessionUsageModelRead] = Field(default_factory=list)
 
 
-class AssistantConversationReviewTurnRead(BaseModel):
-    id: str
-    created_at: str
-    message_id: str | None = None
-    run_id: str | None = None
-    agent_id: str | None = None
-    intent_type: str | None = None
-    jurisdiction_status: str | None = None
-    policy_decision: str | None = None
-    reason_code: str | None = None
-    payload_json: dict | list | str | int | float | bool | None = None
-
-
-class AssistantConversationReviewRunRead(AssistantTelemetryRunRead):
-    pass
-
-
-class AssistantConversationReviewFeedbackRead(BaseModel):
-    id: str
-    clerk_user_id: str | None = None
-    agent_id: str
-    surface: str
-    conversation_id: str
-    message_id: str
-    run_id: str | None = None
-    feedback_value: str
-    message_excerpt: str | None = None
-    metadata_json: dict | None = None
-    created_at: str
-
-
-class AssistantConversationReviewRead(BaseModel):
-    conversation_id: str
-    latest_at: str | None = None
-    turn_count: int
-    run_count: int
-    feedback_count: int
-    input_tokens: int
-    output_tokens: int
-    total_tokens: int
-    cost: float
-    turns: list[AssistantConversationReviewTurnRead]
-    runs: list[AssistantConversationReviewRunRead]
-    feedback: list[AssistantConversationReviewFeedbackRead]
-
-
-class AssistantConversationReviewSummaryRead(BaseModel):
-    total_conversations: int
-    total_turns: int
-    total_runs: int
-    total_feedback: int
-    input_tokens: int
-    output_tokens: int
-    total_tokens: int
-    cost: float
-
-
-class AssistantConversationReviewResponse(BaseModel):
-    summary: AssistantConversationReviewSummaryRead
-    conversations: list[AssistantConversationReviewRead]
-    pagination: dict[str, int | bool | str | None]
+class AgnoConversationListRead(BaseModel):
+    client_id: str
+    total_count: int
+    items: list[SessionSchema] = Field(default_factory=list)
 
 
 def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
@@ -501,7 +467,7 @@ def create_tenant_client(
     db.commit()
     db.refresh(tenant_client)
     invalidate_tenant_cache()
-    return TenantClientRead.model_validate(tenant_client)
+    return TenantClientRead.model_validate(_tenant_client_read_payload(tenant_client))
 
 
 @router.get("/clients", response_model=list[TenantClientRead])
@@ -516,7 +482,7 @@ def get_tenant_client(
     db: Session = Depends(get_db),
 ) -> TenantClientRead:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
-    return TenantClientRead.model_validate(tenant_client)
+    return TenantClientRead.model_validate(_tenant_client_read_payload(tenant_client))
 
 
 @router.patch("/clients/{organization_id}", response_model=TenantClientRead)
@@ -645,7 +611,7 @@ def update_tenant_client(
             update_slug=payload.clerk_slug is not None,
         )
     invalidate_tenant_cache()
-    return TenantClientRead.model_validate(tenant_client)
+    return TenantClientRead.model_validate(_tenant_client_read_payload(tenant_client))
 
 
 @router.post("/clients/{organization_id}/logo", response_model=TenantClientRead)
@@ -694,7 +660,7 @@ async def upload_tenant_client_logo(
         if is_asset_storage_enabled():
             delete_asset(previous_namespace, previous_asset_type, previous_filename)
         _safe_remove_asset_file(previous_logo_path)
-    return TenantClientRead.model_validate(tenant_client)
+    return TenantClientRead.model_validate(_tenant_client_read_payload(tenant_client))
 
 
 @router.delete("/clients/{organization_id}/logo", response_model=TenantClientRead)
@@ -717,7 +683,7 @@ def delete_tenant_client_logo(
         if is_asset_storage_enabled():
             delete_asset(previous_namespace, previous_asset_type, previous_filename)
         _safe_remove_asset_file(previous_logo_path)
-    return TenantClientRead.model_validate(tenant_client)
+    return TenantClientRead.model_validate(_tenant_client_read_payload(tenant_client))
 
 
 def _serve_tenant_asset(namespace: str, asset_type: str, filename: str) -> Response | FileResponse:
@@ -805,15 +771,13 @@ def get_tenant_experience_settings_route(
 ) -> TenantExperienceSettingsRead:
     tenant_client = _get_tenant_client_by_org_id(db, organization_id)
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
-    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    assistant_provider_keys, _assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
     assistant_agent_prompts = get_tenant_assistant_agent_prompts(tenant_client.settings_json)
     assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
     return TenantExperienceSettingsRead(
         zoning_code_url=zoning_code_url,
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
-        assistant_model_targets=assistant_model_targets,
-        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
     )
@@ -824,7 +788,7 @@ def get_platform_assistant_settings_route(
     db: Session = Depends(get_db),
 ) -> PlatformAssistantSettingsRead:
     settings_json = get_platform_assistant_settings_json(db)
-    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(settings_json)
+    assistant_provider_keys, _assistant_model_targets = get_tenant_assistant_settings(settings_json)
     assistant_agent_prompts = get_tenant_assistant_agent_prompts(settings_json)
     assistant_disclaimer_text = (
         get_tenant_assistant_disclaimer_text(settings_json)
@@ -834,8 +798,6 @@ def get_platform_assistant_settings_route(
     return PlatformAssistantSettingsRead(
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
-        assistant_model_targets=assistant_model_targets,
-        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=settings_json,
     )
@@ -854,11 +816,10 @@ def update_platform_assistant_settings_route(
         if payload.assistant_disclaimer_text
         else None,
         assistant_provider_keys=payload.assistant_provider_keys,
-        assistant_model_targets=payload.assistant_model_targets,
         assistant_agent_prompts=payload.assistant_agent_prompts,
     )
     set_platform_assistant_settings_json(db, merged_settings)
-    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(merged_settings)
+    assistant_provider_keys, _assistant_model_targets = get_tenant_assistant_settings(merged_settings)
     assistant_agent_prompts = get_tenant_assistant_agent_prompts(merged_settings)
     assistant_disclaimer_text = (
         get_tenant_assistant_disclaimer_text(merged_settings)
@@ -868,8 +829,6 @@ def update_platform_assistant_settings_route(
     return PlatformAssistantSettingsRead(
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
-        assistant_model_targets=assistant_model_targets,
-        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=merged_settings,
     )
@@ -891,7 +850,6 @@ def update_tenant_experience_settings(
         if payload.assistant_disclaimer_text
         else None,
         assistant_provider_keys=payload.assistant_provider_keys,
-        assistant_model_targets=payload.assistant_model_targets,
         assistant_agent_prompts=payload.assistant_agent_prompts,
     )
     tenant_client.settings_json = merged_settings
@@ -899,76 +857,18 @@ def update_tenant_experience_settings(
     db.refresh(tenant_client)
     invalidate_tenant_cache()
     _, zoning_code_url = get_tenant_experience_settings(tenant_client.settings_json)
-    assistant_provider_keys, assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
+    assistant_provider_keys, _assistant_model_targets = get_tenant_assistant_settings(tenant_client.settings_json)
     assistant_agent_prompts = get_tenant_assistant_agent_prompts(tenant_client.settings_json)
     assistant_disclaimer_text = get_tenant_assistant_disclaimer_text(tenant_client.settings_json)
     return TenantExperienceSettingsRead(
         zoning_code_url=zoning_code_url,
         assistant_disclaimer_text=assistant_disclaimer_text,
         assistant_provider_keys=assistant_provider_keys,
-        assistant_model_targets=assistant_model_targets,
-        code_default_assistant_model_targets=CODE_DEFAULT_ASSISTANT_MODEL_TARGETS,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=tenant_client.settings_json if isinstance(tenant_client.settings_json, dict) else None,
         debug_received_assistant_provider_keys=payload.assistant_provider_keys,
-        debug_received_assistant_model_targets=payload.assistant_model_targets,
         debug_received_assistant_agent_prompts=payload.assistant_agent_prompts,
         debug_merged_settings_json=merged_settings,
-    )
-
-
-@router.get("/clients/{organization_id}/assistant-telemetry", response_model=AssistantTelemetryResponse)
-def get_tenant_assistant_telemetry_route(
-    organization_id: str,
-    page: int = Query(1, ge=1),
-    search: str | None = Query(default=None, max_length=255),
-    db: Session = Depends(get_db),
-) -> AssistantTelemetryResponse:
-    _get_tenant_client_by_org_id(db, organization_id)
-    telemetry = list_assistant_run_telemetry(client_id=organization_id, page=page, search=search)
-    return AssistantTelemetryResponse(
-        summary=AssistantTelemetrySummaryRead.model_validate(telemetry.get("summary") or {}),
-        runs=[AssistantTelemetryRunRead.model_validate(run) for run in telemetry.get("runs") or []],
-        pagination=telemetry.get("pagination") or {
-            "page": 1,
-            "page_size": 50,
-            "total_runs": 0,
-            "total_pages": 0,
-            "has_previous": False,
-            "has_next": False,
-            "search": None,
-        },
-    )
-
-
-@router.get("/clients/{organization_id}/assistant-conversations", response_model=AssistantConversationReviewResponse)
-def get_tenant_assistant_conversation_review_route(
-    organization_id: str,
-    page: int = Query(1, ge=1),
-    search: str | None = Query(default=None, max_length=255),
-    conversation_id: str | None = Query(default=None, max_length=255),
-    db: Session = Depends(get_db),
-) -> AssistantConversationReviewResponse:
-    _get_tenant_client_by_org_id(db, organization_id)
-    review = list_assistant_conversation_reviews(
-        client_id=organization_id,
-        page=page,
-        search=search,
-        conversation_id=conversation_id,
-    )
-    return AssistantConversationReviewResponse(
-        summary=AssistantConversationReviewSummaryRead.model_validate(review.get("summary") or {}),
-        conversations=[AssistantConversationReviewRead.model_validate(conversation) for conversation in review.get("conversations") or []],
-        pagination=review.get("pagination") or {
-            "page": 1,
-            "page_size": 20,
-            "total_conversations": 0,
-            "total_pages": 0,
-            "has_previous": False,
-            "has_next": False,
-            "search": None,
-            "conversation_id": None,
-        },
     )
 
 
@@ -1512,3 +1412,87 @@ def get_database_info_route(db: Session = Depends(get_db)) -> DatabaseInfoRead:
 @router.post("/database-info/cleanup-dangling", response_model=DatabaseCleanupResultRead)
 def cleanup_database_dangling_records_route(db: Session = Depends(get_db)) -> DatabaseCleanupResultRead:
     return DatabaseCleanupResultRead.model_validate(cleanup_dangling_records(db))
+
+
+@router.get("/agno/sessions/{session_id}/usage", response_model=AgnoSessionUsageRead)
+def get_agno_session_usage_route(
+    session_id: str,
+    session_type: str | None = None,
+) -> AgnoSessionUsageRead:
+    config = get_agno_storage_config()
+    if not config.enabled:
+        logger.info(
+            "Agno session usage requested while persistence is disabled session_id=%s session_type=%s",
+            session_id,
+            session_type,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Agno session persistence is disabled",
+        )
+
+    session_db = get_agno_db(config)
+    if session_db is None:
+        logger.warning(
+            "Agno session usage requested but PostgreSQL session storage is unavailable session_id=%s session_table=%s",
+            session_id,
+            config.session_table,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Agno session storage is unavailable",
+        )
+
+    summary = get_session_usage_totals(session_id, session_type=session_type, db=session_db)
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agno session not found")
+
+    return AgnoSessionUsageRead.model_validate(summary)
+
+
+@router.get("/clients/{organization_id}/conversations", response_model=AgnoConversationListRead)
+def list_tenant_conversations_route(
+    organization_id: str,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> AgnoConversationListRead:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    sessions, total_count = list_tenant_conversation_sessions(
+        tenant_client.client_id,
+        limit=limit,
+        offset=offset,
+    )
+    return AgnoConversationListRead(
+        client_id=tenant_client.client_id,
+        total_count=total_count,
+        items=[SessionSchema.from_dict(session) for session in sessions],
+    )
+
+
+@router.get(
+    "/clients/{organization_id}/conversations/{session_id}",
+    response_model=TeamSessionDetailSchema | AgentSessionDetailSchema,
+)
+def get_tenant_conversation_route(
+    organization_id: str,
+    session_id: str,
+    db: Session = Depends(get_db),
+) -> TeamSessionDetailSchema | AgentSessionDetailSchema:
+    tenant_client = _get_tenant_client_by_org_id(db, organization_id)
+    session = get_tenant_conversation_session(tenant_client.client_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    session_type = str(session.get("session_type") or "").strip()
+    if session_type == "agent":
+        agent_session = AgentSession.from_dict(session)
+        if agent_session is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+        return AgentSessionDetailSchema.from_session(agent_session)
+
+    team_session = TeamSession.from_dict(session)
+    if team_session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    return TeamSessionDetailSchema.from_session(team_session)

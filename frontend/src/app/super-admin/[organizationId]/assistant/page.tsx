@@ -4,6 +4,7 @@ import { AgentChatPanel } from '../../../../components/AgentChatPanel'
 import { CUSTOMER_ZONING_ASSISTANT_ROUTE_ID } from '../../../../components/assistantRouteIds'
 import { SuperAdminCustomerHeader } from '../../../../components/SuperAdminCustomerIcons'
 import { fetchCustomerZoningKnowledgeStatus } from '../../../admin/actions'
+import { getServerBackendOrigin } from '../../../../lib/backend'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
 
@@ -16,7 +17,7 @@ type PageProps = {
 export default async function SuperAdminCustomerAssistantPage({ params }: PageProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
-  const backendBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
+  const backendBase = getServerBackendOrigin()
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (

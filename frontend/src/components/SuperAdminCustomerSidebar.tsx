@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   buildAssistantHref,
   buildSuperAdminCustomerAssistantSetupPath,
+  buildSuperAdminCustomerConversationsPath,
   buildSuperAdminCustomerPath,
 } from '../lib/org-url'
 import { AdminSidebarGroup, AdminSidebarItem } from './AdminSurfacePrimitives'
@@ -24,6 +25,7 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
   const searchParams = useSearchParams()
   const baseHref = buildSuperAdminCustomerPath(customer.id)
   const assistantSetupHref = buildSuperAdminCustomerAssistantSetupPath(customer.id)
+  const conversationsHref = buildSuperAdminCustomerConversationsPath(customer.id)
   const normalizedPathAlias =
     customer.pathAlias?.trim() ? (customer.pathAlias.startsWith('/') ? customer.pathAlias : `/${customer.pathAlias}`) : null
   const publicPageHref = normalizedPathAlias ? buildAssistantHref(normalizedPathAlias, customer.currentHost) : null
@@ -32,6 +34,8 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
   const currentPathname = pathname || ''
   const isAssistantSetupRoute =
     currentPathname === assistantSetupHref || currentPathname.startsWith(`${assistantSetupHref}/`)
+  const isConversationsRoute =
+    currentPathname === conversationsHref || currentPathname.startsWith(`${conversationsHref}/`)
   const isGeneralActive = currentPathname === baseHref && activeSection === 'general'
   const isAdminUsersActive = currentPathname === baseHref && activeSection === 'admin-users'
   const agenticSetupItems = [
@@ -39,7 +43,6 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
     { href: `${assistantSetupHref}?section=api-keys`, label: 'API Keys', icon: 'assistant-setup' as const },
     { href: `${assistantSetupHref}?section=knowledge`, label: 'Knowledge', icon: 'assistant' as const },
     { href: `${assistantSetupHref}?section=integrations`, label: 'Integrations', icon: 'assistant-setup' as const },
-    { href: `${assistantSetupHref}?section=review`, label: 'Review', icon: 'assistant' as const },
   ] as const
   return (
     <aside className="super-admin-sidebar">
@@ -64,6 +67,12 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
               />
             ))}
           </AdminSidebarGroup>
+          <AdminSidebarItem
+            href={conversationsHref}
+            label="Conversations"
+            active={isConversationsRoute}
+            icon="conversations"
+          />
           <AdminSidebarItem
             href={`${baseHref}?section=admin-users`}
             label="Admin Users"

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import select
+import pytest
 
 from app.api.v1 import admin
 from app.db.models import (
@@ -130,6 +131,7 @@ def test_tenant_client_crud_and_asset_routes(monkeypatch, tmp_path) -> None:
                 db=db,
             )
         )
+        assert uploaded.logo_source == "jurisdiction"
         logo_path = uploaded.settings_json["header_logo_path"]
         assert logo_path.endswith(".png")
 
@@ -140,6 +142,7 @@ def test_tenant_client_crud_and_asset_routes(monkeypatch, tmp_path) -> None:
         assert legacy_asset.path is not None
 
         deleted_logo = admin.delete_tenant_client_logo("org_dream_town", db=db)
+        assert deleted_logo.logo_source is None
         assert deleted_logo.settings_json.get("header_logo_path") is None
 
         deleted = admin.delete_tenant_client("org_dream_town", db=db)
@@ -207,7 +210,6 @@ def test_settings_and_zoning_routes(monkeypatch) -> None:
                 "zoning_code_url": "https://example.com/zoning",
                 "assistant_disclaimer_text": "Use official city docs.",
                 "assistant_provider_keys": {"gemini": "key-1"},
-                "assistant_model_targets": {"assistant": {"provider": "gemini", "model_id": "gemini-2.0-flash-001"}},
                 "assistant_agent_prompts": {"assistant": "Be helpful."},
                 "assistant_embed": {
                     "is_active": True,
@@ -223,109 +225,6 @@ def test_settings_and_zoning_routes(monkeypatch) -> None:
         monkeypatch.setattr(admin, "invalidate_tenant_cache", lambda: None)
         monkeypatch.setattr(admin.settings, "embed_session_signing_secret", "signing-secret-0123456789abcdef0")
         monkeypatch.setattr(admin.settings, "clerk_secret_key", "")
-        monkeypatch.setattr(admin, "list_assistant_run_telemetry", lambda client_id, page, search: {
-            "summary": {"total_runs": 1, "input_tokens": 2, "output_tokens": 3, "total_tokens": 5, "cost": 1.25},
-            "runs": [
-                {
-                    "id": "run-1",
-                    "run_scope": "team",
-                    "agent_id": "agent-1",
-                    "conversation_id": "conv-1",
-                    "message_id": "msg-1",
-                    "run_id": "run-1",
-                    "session_id": "sess-1",
-                    "model_provider": "gemini",
-                    "model_name": "gemini-2.0-flash-001",
-                    "model_id": "gemini-2.0-flash-001",
-                    "input_tokens": 2,
-                    "output_tokens": 3,
-                    "total_tokens": 5,
-                    "cost": 1.25,
-                    "time_to_first_token": 0.1,
-                    "duration_seconds": 1.2,
-                    "created_at": "2026-01-01T00:00:00",
-                    "metrics_json": {"latency": 1},
-                }
-            ],
-            "pagination": {"page": page, "page_size": 50, "total_runs": 1, "total_pages": 1, "has_previous": False, "has_next": False, "search": search},
-        })
-        monkeypatch.setattr(admin, "list_assistant_conversation_reviews", lambda client_id, page, search, conversation_id: {
-            "summary": {
-                "total_conversations": 1,
-                "total_turns": 1,
-                "total_runs": 1,
-                "total_feedback": 1,
-                "input_tokens": 2,
-                "output_tokens": 3,
-                "total_tokens": 5,
-                "cost": 1.25,
-            },
-            "conversations": [
-                {
-                    "conversation_id": "conv-1",
-                    "latest_at": "2026-01-01T00:00:00",
-                    "turn_count": 1,
-                    "run_count": 1,
-                    "feedback_count": 1,
-                    "input_tokens": 2,
-                    "output_tokens": 3,
-                    "total_tokens": 5,
-                    "cost": 1.25,
-                    "turns": [
-                        {
-                            "id": "turn-1",
-                            "created_at": "2026-01-01T00:00:00",
-                            "message_id": "msg-1",
-                            "run_id": "run-1",
-                            "agent_id": "agent-1",
-                            "intent_type": "zoning",
-                            "jurisdiction_status": "allowed",
-                            "policy_decision": "allow",
-                            "reason_code": "good",
-                            "payload_json": {"ok": True},
-                        }
-                    ],
-                    "runs": [
-                        {
-                            "id": "run-1",
-                            "run_scope": "team",
-                            "agent_id": "agent-1",
-                            "conversation_id": "conv-1",
-                            "message_id": "msg-1",
-                            "run_id": "run-1",
-                            "session_id": "sess-1",
-                            "model_provider": "gemini",
-                            "model_name": "gemini-2.0-flash-001",
-                            "model_id": "gemini-2.0-flash-001",
-                            "input_tokens": 2,
-                            "output_tokens": 3,
-                            "total_tokens": 5,
-                            "cost": 1.25,
-                            "time_to_first_token": 0.1,
-                            "duration_seconds": 1.2,
-                            "created_at": "2026-01-01T00:00:00",
-                            "metrics_json": {"latency": 1},
-                        }
-                    ],
-                    "feedback": [
-                        {
-                            "id": "fb-1",
-                            "clerk_user_id": "clerk-user-1",
-                            "agent_id": "agent-1",
-                            "surface": "public-assistant",
-                            "conversation_id": "conv-1",
-                            "message_id": "msg-1",
-                            "run_id": "run-1",
-                            "feedback_value": "up",
-                            "message_excerpt": "Great",
-                            "metadata_json": {"feedback_tags": ["helpful"]},
-                            "created_at": "2026-01-01T00:00:00",
-                        }
-                    ],
-                }
-            ],
-            "pagination": {"page": page, "page_size": 20, "total_conversations": 1, "total_pages": 1, "has_previous": False, "has_next": False, "search": search, "conversation_id": conversation_id},
-        })
         monkeypatch.setattr(admin, "build_zoning_knowledge_status", lambda db_session, tenant_client: {"client_id": tenant_client.client_id, "zoning_code_url": "https://example.com/zoning", "embedder_provider": "gemini", "embedder_model_id": "gemini-embedding-001", "embedder_dimensions": 1536, "progress_percent": 100.0, "progress_message": "Ingestion complete.", "is_complete": True, "documents": 2, "sections": 3, "chunks": 4, "latest_run": None})
         monkeypatch.setattr(admin, "start_zoning_code_ingestion", lambda db_session, tenant_client, mode: SimpleNamespace(id="run-1"))
         monkeypatch.setattr(admin, "run_zoning_code_ingestion", lambda run_id: None)
@@ -340,7 +239,6 @@ def test_settings_and_zoning_routes(monkeypatch) -> None:
                 zoning_code_url="https://example.com/zoning-updated",
                 assistant_disclaimer_text="Verify it.",
                 assistant_provider_keys={"gemini": "key-2"},
-                assistant_model_targets={"assistant": {"provider": "gemini", "model_id": "gemini-2.5-flash"}},
                 assistant_agent_prompts={"assistant": "Be concise."},
             ),
             db=db,
@@ -354,23 +252,11 @@ def test_settings_and_zoning_routes(monkeypatch) -> None:
             PlatformAssistantSettingsUpdate(
                 assistant_disclaimer_text="Platform-wide note.",
                 assistant_provider_keys={"gemini": "platform-key"},
-                assistant_model_targets={"assistant": {"provider": "gemini", "model_id": "gemini-2.0-pro"}},
                 assistant_agent_prompts={"assistant": "Keep it short."},
             ),
             db=db,
         )
         assert updated_platform.assistant_disclaimer_text == "Platform-wide note."
-
-        telemetry = admin.get_tenant_assistant_telemetry_route("dream-town", page=1, search=None, db=db)
-        assert telemetry.summary.total_runs == 1
-        conversations = admin.get_tenant_assistant_conversation_review_route(
-            "dream-town",
-            page=1,
-            search=None,
-            conversation_id=None,
-            db=db,
-        )
-        assert conversations.summary.total_conversations == 1
 
         embed_settings = admin.get_tenant_assistant_embed_settings("dream-town", db=db)
         assert embed_settings.is_active is True
@@ -412,6 +298,175 @@ def test_settings_and_zoning_routes(monkeypatch) -> None:
             db=db,
         )
         assert query.query == "zoning"
+    finally:
+        db.close()
+
+
+def test_agno_session_usage_route(monkeypatch) -> None:
+    run_one = {
+        "run_id": "run-1",
+        "session_id": "session-abc",
+        "metrics": {
+            "input_tokens": 10,
+            "output_tokens": 4,
+            "total_tokens": 14,
+            "reasoning_tokens": 2,
+            "cache_read_tokens": 1,
+            "cache_write_tokens": 0,
+            "cost": 0.12,
+            "duration": 1.5,
+            "time_to_first_token": 0.3,
+        },
+        "model": {
+            "_uzone_model_provider": "gemini",
+            "_uzone_model_id": "gemini-2.0-flash",
+        },
+    }
+    run_two = {
+        "run_id": "run-2",
+        "session_id": "session-abc",
+        "metrics": {
+            "input_tokens": 5,
+            "output_tokens": 3,
+            "total_tokens": 8,
+            "reasoning_tokens": 1,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 1,
+            "cost": 0.08,
+            "duration": 0.5,
+            "time_to_first_token": 0.4,
+        },
+        "model": {
+            "_uzone_model_provider": "gemini",
+            "_uzone_model_id": "gemini-2.0-flash",
+        },
+    }
+
+    class FakeSessionDb:
+        def __init__(self, session):
+            self._session = session
+
+        def get_session(self, *, session_id: str, session_type: str, user_id=None, deserialize=True):
+            if session_id == "session-abc" and session_type == "team":
+                return self._session
+            return None
+
+    monkeypatch.setattr(admin, "get_agno_storage_config", lambda: SimpleNamespace(enabled=True, session_table="aos_sessions"))
+    monkeypatch.setattr(admin, "get_agno_db", lambda config: FakeSessionDb(SimpleNamespace(session_id="session-abc", session_type="team", runs=[run_one, run_two])))
+
+    summary = admin.get_agno_session_usage_route("session-abc")
+
+    assert summary.session_id == "session-abc"
+    assert summary.session_type == "team"
+    assert summary.run_count == 2
+    assert summary.totals.input_tokens == 15
+    assert summary.totals.output_tokens == 7
+    assert summary.totals.total_tokens == 22
+    assert summary.totals.reasoning_tokens == 3
+    assert summary.totals.cache_read_tokens == 1
+    assert summary.totals.cache_write_tokens == 1
+    assert summary.totals.cost == pytest.approx(0.20)
+    assert summary.totals.duration == pytest.approx(2.0)
+    assert summary.model_usage[0].provider == "gemini"
+    assert summary.model_usage[0].model_id == "gemini-2.0-flash"
+
+    monkeypatch.setattr(admin, "get_agno_db", lambda config: FakeSessionDb(None))
+    with pytest.raises(HTTPException) as excinfo:
+        admin.get_agno_session_usage_route("missing-session")
+    assert excinfo.value.status_code == 404
+
+    monkeypatch.setattr(admin, "get_agno_storage_config", lambda: SimpleNamespace(enabled=False, session_table="aos_sessions"))
+    with pytest.raises(HTTPException) as excinfo:
+        admin.get_agno_session_usage_route("session-abc")
+    assert excinfo.value.status_code == 503
+
+
+def test_tenant_conversation_routes_scope_to_current_org(monkeypatch) -> None:
+    db = make_db()
+    try:
+        add_tenant_client(db, client_id="dream-town", clerk_organization_id="org_dream_town")
+        fake_list_row = {
+            "session_id": "session-abc",
+            "session_type": "team",
+            "team_id": "customer_zoning_team",
+            "user_id": None,
+            "workflow_id": None,
+            "session_data": {
+                "session_name": "Fence question",
+                "session_state": {"active_property_context": {"standardized_address": "3148 Mary St, Miami, FL 33133"}},
+                "session_metrics": {"total_tokens": 22},
+            },
+            "metadata": {"client_id": "dream-town", "tenant_client_id": "dream-town"},
+            "created_at": 1713600000,
+            "updated_at": 1713603600,
+        }
+        fake_detail_row = {
+            **fake_list_row,
+            "runs": [
+                {
+                    "run_id": "run-1",
+                    "agent_id": "customer_zoning_agent",
+                    "team_id": "customer_zoning_team",
+                    "metrics": {"input_tokens": 10, "output_tokens": 4, "total_tokens": 14},
+                    "messages": [
+                        {"role": "user", "content": "How high can I build a fence?"},
+                        {"role": "assistant", "content": "Fences can be up to four feet at the frontage line."},
+                    ],
+                }
+            ],
+        }
+
+        monkeypatch.setattr(
+            admin,
+            "list_tenant_conversation_sessions",
+            lambda client_id, **kwargs: ([fake_list_row] if client_id == "dream-town" else [], 1 if client_id == "dream-town" else 0),
+        )
+        monkeypatch.setattr(
+            admin,
+            "get_tenant_conversation_session",
+            lambda client_id, session_id, **kwargs: fake_detail_row if client_id == "dream-town" and session_id == "session-abc" else None,
+        )
+
+        list_response = admin.list_tenant_conversations_route("org_dream_town", db=db)
+        assert list_response.client_id == "dream-town"
+        assert list_response.total_count == 1
+        assert list_response.items[0].session_id == "session-abc"
+        assert list_response.items[0].session_name == "Fence question"
+
+        detail_response = admin.get_tenant_conversation_route("org_dream_town", "session-abc", db=db)
+        assert detail_response.session_id == "session-abc"
+        assert detail_response.team_id == "customer_zoning_team"
+        assert detail_response.chat_history[-1]["content"] == "Fences can be up to four feet at the frontage line."
+
+        fake_agent_detail_row = {
+            **fake_list_row,
+            "session_id": "session-agent",
+            "session_type": "agent",
+            "agent_id": "customer-zoning-agent",
+            "team_id": None,
+            "chat_history": [
+                {"role": "user", "content": "How high can I build a fence?"},
+                {"role": "assistant", "content": "Fences can be up to four feet at the frontage line."},
+            ],
+        }
+        monkeypatch.setattr(
+            admin,
+            "get_tenant_conversation_session",
+            lambda client_id, session_id, **kwargs: fake_agent_detail_row if client_id == "dream-town" and session_id == "session-agent" else None,
+        )
+        agent_detail_response = admin.get_tenant_conversation_route("org_dream_town", "session-agent", db=db)
+        assert agent_detail_response.session_id == "session-agent"
+        assert agent_detail_response.agent_id == "customer-zoning-agent"
+
+        monkeypatch.setattr(
+            admin,
+            "list_tenant_conversation_sessions",
+            lambda client_id, **kwargs: ([], 0),
+        )
+        monkeypatch.setattr(admin, "get_tenant_conversation_session", lambda client_id, session_id, **kwargs: None)
+        with pytest.raises(HTTPException) as excinfo:
+            admin.get_tenant_conversation_route("org_dream_town", "missing", db=db)
+        assert excinfo.value.status_code == 404
     finally:
         db.close()
 

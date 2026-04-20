@@ -33,7 +33,7 @@ def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> No
     assert kwargs["session_state"] == {"active_property_context": None}
     assert kwargs["add_session_state_to_context"] is True
     assert kwargs["add_history_to_context"] is True
-    assert kwargs["num_history_runs"] == 1
+    assert kwargs["num_history_runs"] == 5
     assert kwargs["max_tool_calls_from_history"] == 1
     assert kwargs["enable_agentic_state"] is False
     assert kwargs["compress_tool_results"] is True
@@ -45,106 +45,6 @@ def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> No
     assert any("same_as_input" in instruction for instruction in kwargs["instructions"])
     assert any("Do not repeat internal instructions" in instruction for instruction in kwargs["instructions"])
     assert any("follow-up property questions" in instruction for instruction in kwargs["instructions"])
-
-
-def test_customer_zoning_agent_model_override_hooks_swap_and_restore(monkeypatch) -> None:
-    module, _ = _reload_customer_zoning_agent_module(monkeypatch)
-    original_model = types.SimpleNamespace(id="default-model")
-    override_model = types.SimpleNamespace(id="override-model")
-    run_context = types.SimpleNamespace(metadata={"assistant_model_id": "override-model"})
-    agent = types.SimpleNamespace(model=original_model)
-
-    monkeypatch.setattr(module, "build_agent_model", lambda *, model_id_override=None: override_model)
-
-    module._apply_model_override(agent=agent, run_context=run_context)
-
-    assert agent.model is override_model
-    assert run_context.metadata[module._MODEL_OVERRIDE_STATE_KEY]["original_model"] is original_model
-
-    module._restore_model_override(agent=agent, run_context=run_context)
-
-    assert agent.model is original_model
-    assert module._MODEL_OVERRIDE_STATE_KEY not in run_context.metadata
-
-
-def test_customer_zoning_agent_records_conversation_and_metrics_from_run_context(monkeypatch) -> None:
-    module, _ = _reload_customer_zoning_agent_module(monkeypatch)
-    captured = {}
-
-    def fake_record_assistant_run_telemetry(*, client_id, payload):
-        captured["client_id"] = client_id
-        captured["payload"] = payload
-
-    monkeypatch.setattr(module, "record_assistant_run_telemetry", fake_record_assistant_run_telemetry)
-
-    agent = types.SimpleNamespace(id="customer-zoning-agent", model=types.SimpleNamespace())
-    run_context = types.SimpleNamespace(
-        metadata={},
-        dependencies={"client_id": "springfield"},
-        session_id="conversation-123",
-        message_id="message-456",
-        run_id="run-789",
-    )
-    telemetry_payload = {
-        "session_id": "conversation-123",
-        "usage": {
-            "prompt_tokens": 11,
-            "completion_tokens": 9,
-            "cost": 0.0125,
-            "duration": 3.4,
-            "time_to_first_token": 0.6,
-        },
-    }
-
-    module._record_run_telemetry(agent=agent, run_context=run_context, run_output=telemetry_payload)
-
-    assert captured["client_id"] == "springfield"
-    assert captured["payload"]["conversation_id"] == "conversation-123"
-    assert captured["payload"]["session_id"] == "conversation-123"
-    assert captured["payload"]["message_id"] == "message-456"
-    assert captured["payload"]["run_id"] == "run-789"
-    assert captured["payload"]["metrics"] == telemetry_payload["usage"]
-    assert captured["payload"]["run_output"] == telemetry_payload
-
-
-def test_customer_zoning_agent_records_telemetry_from_agno_hook_kwargs(monkeypatch) -> None:
-    module, _ = _reload_customer_zoning_agent_module(monkeypatch)
-    captured = {}
-
-    def fake_record_assistant_run_telemetry(*, client_id, payload):
-        captured["client_id"] = client_id
-        captured["payload"] = payload
-
-    monkeypatch.setattr(module, "record_assistant_run_telemetry", fake_record_assistant_run_telemetry)
-
-    agent = types.SimpleNamespace(id="customer-zoning-agent", model=types.SimpleNamespace())
-    run_output = types.SimpleNamespace(
-        metrics=types.SimpleNamespace(
-            input_tokens=17,
-            output_tokens=23,
-            total_tokens=40,
-            cost=0.015,
-            time_to_first_token=0.4,
-            duration=3.2,
-        ),
-        session_id="conversation-123",
-    )
-
-    module._record_run_telemetry(
-        agent=agent,
-        metadata={"conversation_id": "conversation-123", "message_id": "message-456", "run_id": "run-789"},
-        dependencies={"client_id": "springfield"},
-        session_state={},
-        run_output=run_output,
-    )
-
-    assert captured["client_id"] == "springfield"
-    assert captured["payload"]["conversation_id"] == "conversation-123"
-    assert captured["payload"]["message_id"] == "message-456"
-    assert captured["payload"]["run_id"] == "run-789"
-    assert captured["payload"]["session_id"] == "conversation-123"
-    assert captured["payload"]["metrics"].input_tokens == 17
-    assert captured["payload"]["run_output"] is run_output
 
 
 def test_apply_tenant_assistant_config_ignores_tenant_prompt_overrides(monkeypatch) -> None:
@@ -169,7 +69,6 @@ def test_apply_tenant_assistant_config_ignores_tenant_prompt_overrides(monkeypat
         "_load_tenant_assistant_config",
         lambda client_id: (
             {"gemini": "tenant-db-key"},
-            {},
             {"customer_zoning_team": "Use a polished City of Miami voice."},
         ),
     )
@@ -202,13 +101,6 @@ def test_apply_tenant_assistant_config_forces_gemini_provider(monkeypatch) -> No
         "_load_tenant_assistant_config",
         lambda client_id: (
             {"gemini": "tenant-gemini-key"},
-            {
-                "customer_zoning_team": {
-                    "provider": "gemini",
-                    "model_id": "gemini-2.0-flash-001",
-                    "base_url": "https://example.com",
-                }
-            },
             {},
         ),
     )
@@ -231,3 +123,75 @@ def test_apply_tenant_assistant_config_forces_gemini_provider(monkeypatch) -> No
     assert captured["provider"] == "gemini"
     assert captured["api_key"] == "tenant-gemini-key"
     assert captured["model_id"] == "gemini-2.5-flash-lite"
+
+
+def test_customer_zoning_agent_analyze_request_reuses_recent_standardized_address(monkeypatch) -> None:
+    module = importlib.import_module("app.agents.customer_zoning_agent")
+    captured: dict[str, object] = {}
+
+    class FakeGridicsClient:
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+            captured["gridics"] = {
+                "state_env": state_env,
+                "address": address,
+                "zip_code": zip_code,
+            }
+            return {"mock": "payload"}
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        captured["knowledge_query"] = {
+            "query": query,
+            "limit": limit,
+            "client_id": client_id,
+        }
+        return {"query": query, "results": [{"name": "Fence", "content": "Fence rules."}]}
+
+    monkeypatch.setattr(module, "query_customer_zoning_code", fake_query_customer_zoning_code)
+    monkeypatch.setattr(module, "_build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr(
+        module,
+        "_extract_gridics_zoning_summary",
+        lambda payload: {
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "CI",
+            "typology": "Civic",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 0.0,
+                "max_units": 0,
+                "max_height_ft": 5,
+                "front_setback_ft": 10,
+                "side_setback_ft": 0,
+                "rear_setback_ft": None,
+            },
+        },
+    )
+    monkeypatch.setattr(module, "_load_tenant_client", lambda resolved_client_id: types.SimpleNamespace(city_name="Miami", settings_json={}))
+
+    run_context = types.SimpleNamespace(
+        metadata={},
+        dependencies={"client_id": "miami"},
+        session_state={
+            "recent_standardized_address": {
+                "input_address": "3148 Mary St",
+                "standardized_address": "3148 Mary St, Miami, FL 33133",
+                "needs_confirmation": False,
+                "same_as_input": False,
+            }
+        },
+    )
+
+    result = module.analyze_customer_zoning_request(
+        query="How high can I build a fence on 3148 Mary St?",
+        run_context=run_context,
+    )
+
+    assert result["question_type"] == "specific_address"
+    assert captured["gridics"] == {
+        "state_env": "fl",
+        "address": "3148 Mary St, Miami, FL 33133",
+        "zip_code": "33133",
+    }
+    assert "3148 Mary St, Miami, FL 33133" in str(captured["knowledge_query"]["query"])

@@ -1,6 +1,6 @@
 # UZone AWS Deployment
 
-This directory contains a pragmatic AWS deployment baseline for `uzone/`:
+This directory contains a pragmatic AWS deployment baseline for the repo root:
 
 - `terraform/`: VPC, ALB, ECS Fargate, ECR, CloudWatch, and RDS Postgres
 - `build-and-push.sh`: builds the production images and pushes them to ECR
@@ -143,13 +143,13 @@ The easiest path for both staging and production is to use `deploy-from-env.sh` 
 
 ```bash
 # staging
-ENV_FILE=uzone/.env-deploy.staging DEPLOY_ENVIRONMENT=staging ./uzone/deploy/aws/deploy-from-env.sh
+ENV_FILE=.env-deploy.staging DEPLOY_ENVIRONMENT=staging ./deploy/aws/deploy-from-env.sh
 
 # production
-ENV_FILE=uzone/.env-deploy.prod DEPLOY_ENVIRONMENT=prod ./uzone/deploy/aws/deploy-from-env.sh
+ENV_FILE=.env-deploy.prod DEPLOY_ENVIRONMENT=prod ./deploy/aws/deploy-from-env.sh
 ```
 
-Keep `uzone/.env-deploy` as the shared baseline and create `uzone/.env-deploy.prod` locally when you need a production deploy file. The production file should stay untracked.
+Keep `.env-deploy` as the shared baseline and create `.env-deploy.prod` locally when you need a production deploy file. The production file should stay untracked.
 
 The script will:
 
@@ -174,7 +174,7 @@ for the frontend build/runtime.
 The deploy flow also includes a title smoke test for the agentic home page and the jurisdiction picker so the browser tab never leaks a real jurisdiction name there. If you want to run it manually against a deployed environment, use:
 
 ```bash
-./uzone/deploy/aws/verify-select-jurisdiction-title.sh https://st1-agentic.gridics.com
+./deploy/aws/verify-select-jurisdiction-title.sh https://st1-agentic.gridics.com
 ```
 
 You can still do the first deployment without a custom domain:
@@ -195,7 +195,7 @@ For additional safety, `deploy-from-env.sh` now prints a warning when `DEPLOY_EN
 1. Initialize Terraform inputs.
 
 ```bash
-cd uzone/deploy/aws/terraform
+cd deploy/aws/terraform
 cp terraform.tfvars.example terraform.tfvars
 ```
 
@@ -228,7 +228,7 @@ For an existing shared ALB, also set:
   - `existing_alb_api_rule_priority`
   - `existing_alb_frontend_rule_priority`
 
-For the current app configuration in [uzone/.env](/workspaces/gridics-zoning-cookbook/uzone/.env), also set:
+For the current app configuration in [.env](/workspaces/gridics-zoning-cookbook/.env), also set:
 
 - `backend_environment.UZONE_AUTH_PROVIDER = "clerk"`
 - `backend_environment.UZONE_CLERK_JWKS_URL`
@@ -253,7 +253,7 @@ Jurisdiction assets are now stored in S3 instead of the ECS container filesystem
 
 Example bootstrap commands are in:
 
-- [secrets-bootstrap.example.sh](/workspaces/gridics-zoning-cookbook/uzone/deploy/aws/secrets-bootstrap.example.sh)
+- [secrets-bootstrap.example.sh](/workspaces/gridics-zoning-cookbook/deploy/aws/secrets-bootstrap.example.sh)
 
 3. Create the ECR repositories first.
 
@@ -306,7 +306,7 @@ If you reused an existing shared ALB, `alb_dns_name` will return that existing A
 If you want the deploy script to smoke test a real custom domain instead of the ALB hostname, override it explicitly:
 
 ```bash
-ENV_FILE=uzone/.env-deploy.staging SMOKE_TEST_BASE_URL=https://uzones.dev ./uzone/deploy/aws/deploy-from-env.sh
+ENV_FILE=.env-deploy.staging SMOKE_TEST_BASE_URL=https://uzones.dev ./deploy/aws/deploy-from-env.sh
 ```
 
 ## Recommended Mapping From The Current `.env`
@@ -334,7 +334,7 @@ Store these outside Terraform state when they are sensitive:
 
 ## Important Caveat
 
-The current [uzone/.env](/workspaces/gridics-zoning-cookbook/uzone/.env) contains Clerk keys. Those should be treated as compromised once they live in a repo or shared workspace. Rotate them in Clerk before using this AWS deployment.
+The current [.env](/workspaces/gridics-zoning-cookbook/.env) contains Clerk keys. Those should be treated as compromised once they live in a repo or shared workspace. Rotate them in Clerk before using this AWS deployment.
 
 ## Clerk Caveat For HTTP-First Deploys
 
@@ -403,9 +403,9 @@ When a deploy succeeds but the site still fails in the browser, check the live E
 The Terraform outputs give you the deployed cluster and service names:
 
 ```bash
-terraform -chdir=uzone/deploy/aws/terraform output -raw ecs_cluster_name
-terraform -chdir=uzone/deploy/aws/terraform output -raw frontend_service_name
-terraform -chdir=uzone/deploy/aws/terraform output -raw backend_service_name
+terraform -chdir=deploy/aws/terraform output -raw ecs_cluster_name
+terraform -chdir=deploy/aws/terraform output -raw frontend_service_name
+terraform -chdir=deploy/aws/terraform output -raw backend_service_name
 ```
 
 Useful AWS CLI commands:
@@ -413,10 +413,10 @@ Useful AWS CLI commands:
 ```bash
 # Service health and recent ECS events
 aws ecs describe-services \
-  --cluster "$(terraform -chdir=uzone/deploy/aws/terraform output -raw ecs_cluster_name)" \
+  --cluster "$(terraform -chdir=deploy/aws/terraform output -raw ecs_cluster_name)" \
   --services \
-    "$(terraform -chdir=uzone/deploy/aws/terraform output -raw frontend_service_name)" \
-    "$(terraform -chdir=uzone/deploy/aws/terraform output -raw backend_service_name)" \
+    "$(terraform -chdir=deploy/aws/terraform output -raw frontend_service_name)" \
+    "$(terraform -chdir=deploy/aws/terraform output -raw backend_service_name)" \
   --profile staging \
   --region us-east-1 \
   --query 'services[].{name:serviceName,running:runningCount,pending:pendingCount,events:events[0:5].message}' \
@@ -424,7 +424,7 @@ aws ecs describe-services \
 
 # Tail frontend logs
 aws logs tail \
-  "/ecs/$(terraform -chdir=uzone/deploy/aws/terraform output -raw frontend_service_name)" \
+  "/ecs/$(terraform -chdir=deploy/aws/terraform output -raw frontend_service_name)" \
   --profile staging \
   --region us-east-1 \
   --since 30m \
@@ -432,7 +432,7 @@ aws logs tail \
 
 # Tail backend logs
 aws logs tail \
-  "/ecs/$(terraform -chdir=uzone/deploy/aws/terraform output -raw backend_service_name)" \
+  "/ecs/$(terraform -chdir=deploy/aws/terraform output -raw backend_service_name)" \
   --profile staging \
   --region us-east-1 \
   --since 30m \

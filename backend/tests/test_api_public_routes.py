@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import HTTPException
 
 from app.api.v1 import public
 from app.core.security import AuthContext
-from app.db.models import AssistantMessageFeedback, AssistantTurnEvent, TenantClient
+from app.db.models import AssistantMessageFeedback, TenantClient
 from app.services.embed_service import hash_embed_secret
 
 from .helpers import add_jurisdiction, add_tenant_client, make_db
@@ -74,63 +76,6 @@ def test_assistant_feedback_can_create_update_and_delete(monkeypatch) -> None:
         db.close()
 
 
-def test_assistant_metrics_requires_auth_and_aggregates_by_tenant() -> None:
-    db = make_db()
-    try:
-        tenant = add_tenant_client(db)
-        other_tenant = add_tenant_client(db, id="tenant-2", client_id="other-town", clerk_organization_id="org_other")
-        db.add_all(
-            [
-                AssistantTurnEvent(
-                    tenant_client_id=tenant.id,
-                    conversation_id="conv-1",
-                    message_id="msg-1",
-                    run_id="run-1",
-                    agent_id="agent-1",
-                    intent_type="zoning",
-                    jurisdiction_status="allowed",
-                    policy_decision="allow",
-                    reason_code="good",
-                ),
-                AssistantTurnEvent(
-                    tenant_client_id=other_tenant.id,
-                    conversation_id="conv-2",
-                    message_id="msg-2",
-                    run_id="run-2",
-                    agent_id="agent-2",
-                    intent_type="zoning",
-                    jurisdiction_status="blocked",
-                    policy_decision="deny",
-                    reason_code="bad",
-                ),
-                AssistantMessageFeedback(
-                    tenant_client_id=tenant.id,
-                    clerk_user_id="clerk-user-1",
-                    agent_id="agent-1",
-                    surface="public-assistant",
-                    conversation_id="conv-1",
-                    message_id="msg-1",
-                    feedback_value="up",
-                ),
-            ]
-        )
-        db.commit()
-
-        try:
-            public.get_assistant_metrics(db=db, auth=None)
-        except HTTPException as exc:
-            assert exc.status_code == 401
-        else:
-            raise AssertionError("Assistant metrics should require auth.")
-
-        response = public.get_assistant_metrics(client_id=tenant.client_id, db=db, auth=AuthContext(provider="clerk", user_id="clerk-user-1", session_id="sess-1"))
-        assert response["total_turns"] == 1
-        assert response["total_feedback"] == 1
-        assert response["decisions"] == {"allow": 1}
-    finally:
-        db.close()
-
-
 def test_client_config_path_alias_and_customer_listing(monkeypatch) -> None:
     db = make_db()
     try:
@@ -139,6 +84,7 @@ def test_client_config_path_alias_and_customer_listing(monkeypatch) -> None:
             db,
             settings_json={
                 "path_alias": "/dream-town",
+                "header_logo_path": "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png",
                 "assistant_embed": {
                     "secret_hash": hash_embed_secret("embed-secret"),
                     "allowed_origins": ["https://example.com"],
@@ -179,7 +125,8 @@ def test_client_config_path_alias_and_customer_listing(monkeypatch) -> None:
                     department_name="Planning",
                     public_site_title=None,
                     path_alias="/dream-town",
-                    logo_path=None,
+                    logo_path="/api/admin/assets/jurisdictions/tenant-a/logos/logo.png",
+                    logo_source="jurisdiction",
                     standard_letter_fee_cents=7500,
                     comprehensive_letter_fee_cents=15000,
                     expedited_fee_cents=5000,
@@ -197,7 +144,17 @@ def test_client_config_path_alias_and_customer_listing(monkeypatch) -> None:
             return None
 
         monkeypatch.setattr(public, "resolve_tenant_public_config", fake_resolve)
-        monkeypatch.setattr(public, "tenant_public_config_to_dict", lambda config: {"client_id": config.client_id, "city_name": config.city_name, "path_alias": config.path_alias})
+        monkeypatch.setattr(
+            public,
+            "tenant_public_config_to_dict",
+            lambda config: {
+                "client_id": config.client_id,
+                "city_name": config.city_name,
+                "path_alias": config.path_alias,
+                "logo_path": config.logo_path,
+                "logo_source": config.logo_source,
+            },
+        )
 
         config = public.get_client_config(
             request=SimpleNamespace(headers={"host": "agentic.gridics.com"}),
@@ -211,14 +168,15 @@ def test_client_config_path_alias_and_customer_listing(monkeypatch) -> None:
 
         customers = public.list_public_customers(db=db)
         assert customers == [
-            {
-                "orgid": "org_dream_town",
-                "client_id": "dream-town",
-                "path_alias": "/dream-town",
-                "logo_path": None,
-                "city_name": "Dream Town",
-                "department_name": "Planning",
-            }
+                {
+                    "orgid": "org_dream_town",
+                    "client_id": "dream-town",
+                    "path_alias": "/dream-town",
+                    "logo_path": "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png",
+                    "logo_source": "jurisdiction",
+                    "city_name": "Dream Town",
+                    "department_name": "Planning",
+                }
         ]
 
         alias = public.resolve_path_alias(path="/dream-town", db=db)

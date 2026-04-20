@@ -111,7 +111,7 @@ sudo nano /etc/hosts
 Frontend:
 
 ```bash
-cd /home/ben/gprojects/gridics-zoning-cookbook/uzone/frontend
+cd /workspaces/gridics-zoning-cookbook/frontend
 npm run dev
 ```
 
@@ -153,7 +153,7 @@ C:\Windows\System32\drivers\etc\hosts
 Frontend:
 
 ```powershell
-cd C:\path\to\gridics-zoning-cookbook\uzone\frontend
+cd C:\path\to\gridics-zoning-cookbook\frontend
 npm run dev
 ```
 
@@ -178,7 +178,7 @@ npm run dev
 If you want a fast code-level check before opening the browser:
 
 ```bash
-cd /home/ben/gprojects/gridics-zoning-cookbook/uzone/frontend
+cd /workspaces/gridics-zoning-cookbook/frontend
 npm test
 ```
 

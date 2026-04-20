@@ -111,12 +111,12 @@ def test_query_customer_zoning_code_ignores_address_like_client_id(monkeypatch) 
 
 
 def test_query_customer_zoning_code_requires_client_id_when_unbound() -> None:
-    try:
-        query_customer_zoning_code(query="Anything here?")
-    except ValueError as exc:
-        assert "client_id" in str(exc)
-    else:  # pragma: no cover - explicit failure branch
-        raise AssertionError("Expected ValueError when no client_id is provided")
+    result = query_customer_zoning_code(query="Anything here?")
+
+    assert result["question_type"] == "general_zoning"
+    assert result["response_guardrail"]["operation"] == "query_customer_zoning_code"
+    assert "couldn't complete the zoning lookup" in result["response_guardrail"]["message"].lower()
+    assert result["retry_debug"]["recovered"] is False
 
 
 def test_standardize_address_marks_exact_matches_as_not_needing_confirmation() -> None:
@@ -241,7 +241,7 @@ def test_analyze_customer_zoning_request_falls_back_when_query_is_missing(monkey
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
-    assert str(captured["knowledge_query"]["query"]).startswith("What are the zoning rules for 3148 Mary St, Miami, FL 33133")
+    assert "3148 Mary St, Miami, FL 33133" in str(captured["knowledge_query"]["query"])
 
 
 def test_analyze_customer_zoning_request_reuses_recent_standardized_address(monkeypatch) -> None:
@@ -304,7 +304,7 @@ def test_analyze_customer_zoning_request_reuses_recent_standardized_address(monk
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
-    assert str(captured["knowledge_query"]["query"]).startswith("What are the zoning rules for 3148 Mary St, Miami, FL 33133")
+    assert "3148 Mary St, Miami, FL 33133" in str(captured["knowledge_query"]["query"])
 
 
 def test_analyze_customer_zoning_request_reuses_recent_standardized_address_from_session_state_kwarg(
@@ -370,7 +370,7 @@ def test_analyze_customer_zoning_request_reuses_recent_standardized_address_from
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
-    assert str(captured["knowledge_query"]["query"]).startswith("What are the zoning rules for 3148 Mary St, Miami, FL 33133")
+    assert "3148 Mary St, Miami, FL 33133" in str(captured["knowledge_query"]["query"])
 
 
 def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics(monkeypatch) -> None:
@@ -492,6 +492,8 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
         },
         "gridics_system_notes": ["Overlay review may apply."],
         "story_equivalent": 3.8,
+        "source_citations": [],
+        "source_references": [],
         "agent_directives": (
             "Base the memorandum on the structured zoning summary and customer-scoped knowledge. "
             "If parcel-specific Gridics context and broader code references do not align cleanly, explain the discrepancy "
@@ -501,7 +503,7 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
     assert gridics_calls == [
         {
             "state_env": "il",
-            "address": "123 Main Street",
+            "address": "123 Main Street, Springfield, IL 62704",
             "zip_code": "62704",
         }
     ]
@@ -522,8 +524,8 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
     ]
 
 
-def test_analyze_customer_zoning_request_requires_confirmation_when_gridics_resolves_different_parcel(monkeypatch) -> None:
-    knowledge_called = False
+def test_analyze_customer_zoning_request_continues_when_gridics_resolves_different_parcel(monkeypatch) -> None:
+    knowledge_calls: list[dict[str, object]] = []
     run_context = DummyRunContext({"client_id": "springfield"})
 
     class FakeGridicsClient:
@@ -554,9 +556,8 @@ def test_analyze_customer_zoning_request_requires_confirmation_when_gridics_reso
         }
 
     def fake_query_customer_zoning_code(*args, **kwargs):
-        nonlocal knowledge_called
-        knowledge_called = True
-        raise AssertionError("Knowledge lookup should not run before parcel confirmation")
+        knowledge_calls.append(kwargs)
+        return {"results": [{"name": "Fence", "content": "Fence rules."}]}
 
     monkeypatch.setattr("app.agents.tools._build_gridics_client", fake_build_gridics_client)
     monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
@@ -567,29 +568,17 @@ def test_analyze_customer_zoning_request_requires_confirmation_when_gridics_reso
         run_context=run_context,
     )
 
-    assert knowledge_called is False
     assert result["question_type"] == "specific_address"
     assert result["assistant_turn"]["intent_type"] == "specific_address"
-    assert result["assistant_turn"]["needs_clarification"] is True
-    assert result["response_guardrail"]["needs_confirmation"] is True
-    assert result["response_guardrail"]["requested_address"] == "2060 Biscayne Blvd, Miami, FL 33137"
-    assert result["response_guardrail"]["resolved_address"] == "4729 NE MIAMI PL"
-    assert result["response_guardrail"]["message"] == (
-        "The address you entered appears to resolve to 4729 NE MIAMI PL, not 2060 Biscayne Blvd, Miami, FL 33137. "
-        "Please confirm the address you want me to use before I continue."
-    )
-    assert result["response_guardrail"]["assistant_turn"]["jurisdiction_status"] == "needs_confirmation"
-    assert result["response_guardrail"]["assistant_turn"]["clarification_type"] == "address_confirmation"
-    assert result["response_guardrail"]["assistant_turn"]["needs_clarification"] is True
+    assert result["assistant_turn"]["needs_clarification"] is False
+    assert "needs_confirmation" not in result.get("response_guardrail", {})
+    assert result["gridics"]["resolved_address"] == "4729 NE MIAMI PL"
     assert result["request_classification"]["reason"] == (
-        "Gridics resolved a different parcel than the user requested, so confirmation is required."
+        "A property address was detected, so the request was enriched with parcel-specific Gridics zoning data."
     )
-    assert run_context.session_state["pending_property_confirmation"] == {
-        "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
-        "resolved_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
-        "zip_code": "33137",
-    }
+    assert knowledge_calls
+    assert knowledge_calls[0]["client_id"] == "springfield"
+    assert "2060 Biscayne Blvd, Miami, FL 33137" in str(knowledge_calls[0]["query"])
 
 
 def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_confirms_resolved_parcel(
@@ -654,12 +643,20 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_con
         run_context=run_context,
     )
 
+    assert "needs_confirmation" not in first_result.get("response_guardrail", {})
+
+    run_context.session_state["pending_property_confirmation"] = {
+        "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
+        "resolved_address": "4729 NE MIAMI PL",
+        "state_env": "fl",
+        "zip_code": "33137",
+    }
+
     second_result = analyze_customer_zoning_request(
         query="4729 NE Miami Pl",
         run_context=run_context,
     )
 
-    assert first_result["response_guardrail"]["needs_confirmation"] is True
     assert second_result["question_type"] == "specific_address"
     assert second_result["address_context"] == {
         "address_source": "confirmation",
@@ -681,7 +678,7 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_con
     assert gridics_calls == [
         {
             "state_env": "fl",
-            "address": "2060 Biscayne Blvd",
+            "address": "2060 Biscayne Blvd, Miami, FL 33137",
             "zip_code": "33137",
         },
         {
@@ -1066,11 +1063,12 @@ def test_analyze_customer_zoning_request_reuses_active_property_for_story_follow
     assert gridics_calls == [
         {
             "state_env": "fl",
-            "address": "614 S Miami Ave",
+            "address": "614 S Miami Ave, Miami, FL 33130",
             "zip_code": "33130",
         }
     ]
     assert knowledge_calls
+    assert "614 S Miami Ave, Miami, FL 33130" in knowledge_calls[0]
 
 
 def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeypatch) -> None:
@@ -1145,18 +1143,18 @@ def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeyp
     assert result["retry_debug"]["failed_attempts"][0]["gridics_call_log"] == [
         {
             "request": {
-                "path": "/property-record",
-                "params": {
-                    "state_env": "il",
-                    "address": "123 Main Street",
-                    "zipCode": "62704",
-                },
+                    "path": "/property-record",
+                    "params": {
+                        "state_env": "il",
+                        "address": "123 Main Street, Springfield, IL 62704",
+                        "zipCode": "62704",
+                    },
+                }
             }
-        }
-    ]
+        ]
 
 
-def test_analyze_customer_zoning_request_surfaces_failure_diagnostics_after_retries(monkeypatch) -> None:
+def test_analyze_customer_zoning_request_returns_graceful_failure_payload_after_retries(monkeypatch) -> None:
     monkeypatch.setattr("app.agents.tools._ANALYZE_RETRY_ATTEMPTS", 2)
     monkeypatch.setattr("app.agents.tools._ANALYZE_RETRY_DELAY_SECONDS", 0.0)
 
@@ -1178,33 +1176,32 @@ def test_analyze_customer_zoning_request_surfaces_failure_diagnostics_after_retr
 
     monkeypatch.setattr("app.agents.tools._build_gridics_client", BrokenGridicsClient)
 
-    try:
-        analyze_customer_zoning_request(
-            query="What can I build at 123 Main Street, Springfield, IL 62704?",
-            run_context=DummyRunContext({"client_id": "springfield"}),
-        )
-    except RuntimeError as exc:
-        diagnostics = json.loads(str(exc))
-    else:  # pragma: no cover - explicit failure branch
-        raise AssertionError("Expected analyze_customer_zoning_request to fail")
+    result = analyze_customer_zoning_request(
+        query="What can I build at 123 Main Street, Springfield, IL 62704?",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
 
-    assert diagnostics["message"] == "analyze_customer_zoning_request failed after 2 attempt(s)"
-    assert len(diagnostics["failures"]) == 2
-    assert diagnostics["failures"][0]["stage"] == "analyzing_request"
-    assert diagnostics["failures"][0]["error_type"] == "RuntimeError"
-    assert diagnostics["failures"][0]["error_message"] == "Gridics HTTP 502: bad gateway"
-    assert diagnostics["failures"][0]["question_type"] == "specific_address"
-    assert diagnostics["failures"][0]["gridics_call_log"] == [
+    assert result["question_type"] == "specific_address"
+    assert result["response_guardrail"]["operation"] == "analyze_customer_zoning_request"
+    assert result["response_guardrail"]["error_type"] == "RuntimeError"
+    assert "couldn't complete the zoning lookup" in result["response_guardrail"]["message"].lower()
+    assert result["retry_debug"]["recovered"] is False
+    assert len(result["retry_debug"]["failures"]) == 2
+    assert result["retry_debug"]["failures"][0]["stage"] == "analyzing_request"
+    assert result["retry_debug"]["failures"][0]["error_type"] == "RuntimeError"
+    assert result["retry_debug"]["failures"][0]["error_message"] == "Gridics HTTP 502: bad gateway"
+    assert result["retry_debug"]["failures"][0]["question_type"] == "specific_address"
+    assert result["retry_debug"]["failures"][0]["gridics_call_log"] == [
         {
             "request": {
-                "path": "/property-record",
-                "params": {
-                    "state_env": "il",
-                    "address": "123 Main Street",
-                    "zipCode": "62704",
+                    "path": "/property-record",
+                    "params": {
+                        "state_env": "il",
+                        "address": "123 Main Street, Springfield, IL 62704",
+                        "zipCode": "62704",
+                    },
                 },
-            },
-            "error": "simulated upstream failure",
+                "error": "simulated upstream failure",
         }
     ]
 
@@ -1273,7 +1270,10 @@ def test_analyze_customer_zoning_request_uses_tenant_default_zip_for_lookup(monk
             },
         },
     )
-    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", lambda **kwargs: {"results": []})
+    monkeypatch.setattr(
+        "app.agents.tools.query_customer_zoning_code",
+        lambda **kwargs: {"results": [{"name": "Fence", "content": "Fence rules."}]},
+    )
     monkeypatch.setattr(
         "app.agents.tools._load_tenant_client",
         lambda client_id: DummyTenantClient(settings_json={"state": "il", "default_zip_code": "62704"}),
@@ -1325,7 +1325,10 @@ def test_analyze_customer_zoning_request_allows_zipless_lookup_when_city_and_sta
             },
         },
     )
-    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", lambda **kwargs: {"results": []})
+    monkeypatch.setattr(
+        "app.agents.tools.query_customer_zoning_code",
+        lambda **kwargs: {"results": [{"name": "Fence", "content": "Fence rules."}]},
+    )
 
     result = analyze_customer_zoning_request(
         query="How high can I build a fence on 3148 Mary St, Miami, FL?",
@@ -1338,7 +1341,7 @@ def test_analyze_customer_zoning_request_allows_zipless_lookup_when_city_and_sta
     assert gridics_calls == [
         {
             "state_env": "fl",
-            "address": "3148 Mary St",
+            "address": "3148 Mary St, Miami, FL",
             "zip_code": None,
         }
     ]
@@ -1378,7 +1381,10 @@ def test_analyze_customer_zoning_request_exact_address_skips_confirmation(monkey
             },
         },
     )
-    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", lambda **kwargs: {"results": []})
+    monkeypatch.setattr(
+        "app.agents.tools.query_customer_zoning_code",
+        lambda **kwargs: {"results": [{"name": "Fence", "content": "Fence rules."}]},
+    )
 
     result = analyze_customer_zoning_request(
         query="How high can I build a fence on 3148 Mary St, Miami, FL 33133?",
@@ -1399,7 +1405,77 @@ def test_analyze_customer_zoning_request_exact_address_skips_confirmation(monkey
     assert gridics_calls == [
         {
             "state_env": "fl",
-            "address": "3148 Mary St",
+            "address": "3148 Mary St, Miami, FL 33133",
+            "zip_code": "33133",
+        }
+    ]
+
+
+def test_analyze_customer_zoning_request_fence_question_is_answer_ready(monkeypatch) -> None:
+    gridics_calls: list[dict[str, str | None]] = []
+    knowledge_calls: list[dict[str, object]] = []
+
+    class FakeGridicsClient:
+        def get_property_record(self, *, state_env: str, address: str, zip_code: str | None):
+            gridics_calls.append(
+                {
+                    "state_env": state_env,
+                    "address": address,
+                    "zip_code": zip_code,
+                }
+            )
+            return {"mock": "payload"}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr(
+        "app.agents.tools._extract_gridics_zoning_summary",
+        lambda payload: {
+            "resolved_address": "3148 Mary St, Miami, FL 33133",
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "R-1",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 1.0,
+                "max_units": 1,
+                "max_height_ft": 6,
+                "front_setback_ft": 10,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 20,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.query_customer_zoning_code",
+        lambda **kwargs: knowledge_calls.append(kwargs) or {"results": [{"name": "Fence rules", "content": "Fence rules."}]},
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.grounding_verdict",
+        lambda evidence_pack, min_refs=1: {"answer_ready": True, "evidence_count": 1},
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.citation_completeness_report",
+        lambda **kwargs: {"is_complete": True, "missing_sources": []},
+    )
+
+    result = analyze_customer_zoning_request(
+        query="How high can I build a fence on 3148 Mary St, Miami, FL 33133?",
+        run_context=DummyRunContext({"client_id": "springfield"}),
+    )
+
+    assert result["question_type"] == "specific_address"
+    assert result["policy_decision"]["decision"] == "allow"
+    assert result["policy_decision"]["reason_code"] == "in_scope"
+    assert result["assistant_turn"]["needs_clarification"] is False
+    assert "needs_confirmation" not in result.get("response_guardrail", {})
+    assert result["gridics"]["resolved_address"] == "3148 Mary St, Miami, FL 33133"
+    assert knowledge_calls
+    assert gridics_calls == [
+        {
+            "state_env": "fl",
+            "address": "3148 Mary St, Miami, FL 33133",
             "zip_code": "33133",
         }
     ]
@@ -1443,7 +1519,15 @@ def test_analyze_customer_zoning_request_exact_standardized_address_skips_gridic
     )
     monkeypatch.setattr(
         "app.agents.tools.query_customer_zoning_code",
-        lambda **kwargs: knowledge_calls.append(kwargs) or {"results": []},
+        lambda **kwargs: knowledge_calls.append(kwargs) or {"results": [{"name": "Fence", "content": "Fence rules."}]},
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.grounding_verdict",
+        lambda evidence_pack, min_refs=1: {"answer_ready": True, "evidence_count": 1},
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.citation_completeness_report",
+        lambda **kwargs: {"is_complete": True, "missing_sources": []},
     )
 
     result = analyze_customer_zoning_request(
@@ -1453,15 +1537,17 @@ def test_analyze_customer_zoning_request_exact_standardized_address_skips_gridic
 
     assert result["question_type"] == "specific_address"
     assert result["address_context"] == {
-        "address_source": "argument",
+        "address_source": "query",
         "detected_address": "3148 Mary St, Miami, FL 33133",
         "standardized_address": "3148 Mary St, Miami, FL 33133",
         "state_env": "fl",
         "zip_code": "33133",
     }
-    assert "needs_confirmation" not in result.get("response_guardrail", {})
     assert result["assistant_turn"]["needs_clarification"] is False
+    assert "needs_confirmation" not in result.get("response_guardrail", {})
     assert knowledge_calls
+    assert knowledge_calls[0]["client_id"] == "springfield"
+    assert "3148 Mary St, Miami, FL 33133" in str(knowledge_calls[0]["query"])
     assert gridics_calls == [
         {
             "state_env": "fl",

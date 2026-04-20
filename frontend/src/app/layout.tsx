@@ -77,10 +77,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     orgId,
   })
   const superAdminCustomerLogoUrl =
-    superAdminCustomerRecord?.settings_json &&
+    superAdminCustomerRecord?.logo_path ||
+    (superAdminCustomerRecord?.settings_json &&
     typeof superAdminCustomerRecord.settings_json.header_logo_path === 'string'
       ? superAdminCustomerRecord.settings_json.header_logo_path
-      : null
+      : null)
   const logoUrl = isJurisdictionPickerRoute
     ? null
     : isSuperAdminScope
@@ -93,9 +94,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   logJurisdictionBrandingResolution({
     pathname: currentPathname,
     scopePath: currentScopePath,
-    orgId,
+    orgId: effectiveBrandOrgId,
     cityName: tenant?.city_name || null,
     logoUrl,
+    logoSource: isSuperAdminScope ? superAdminCustomerRecord?.logo_source || null : tenant?.logo_source || null,
   })
 
   return (

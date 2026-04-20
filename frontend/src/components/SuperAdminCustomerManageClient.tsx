@@ -40,6 +40,7 @@ type SelectedCustomer = {
   pathAlias: string | null
   market: string | null
   logoPath: string | null
+  logoSource: 'jurisdiction' | null
   clerkOrganizationId: string
   slug: string | null
   customerId: string | null
@@ -148,6 +149,7 @@ export function SuperAdminCustomerManageClient({
   const previewLogoUrl = selectedLogoPreviewUrl || currentLogoUrl
   const summaryTitle = activeSection === 'admin-users' ? 'Admin Users' : 'General'
   const summaryIcon = activeSection === 'admin-users' ? 'admin-users' : 'jurisdiction-details'
+  const hasJurisdictionLogo = customer.logoSource === 'jurisdiction' && Boolean(customer.logoPath)
 
   return (
     <div className="panel-stack super-admin-panel-stack">
@@ -244,7 +246,13 @@ export function SuperAdminCustomerManageClient({
                 </label>
                 <div className="settings-logo-preview">
                   {previewLogoUrl ? (
-                    <BuildingLogo logoUrl={previewLogoUrl} alt={`${customer.name} logo preview`} />
+                    <div className="settings-logo-preview-inner">
+                      <BuildingLogo logoUrl={previewLogoUrl} alt={`${customer.name} logo preview`} />
+                      <div className="settings-logo-preview-meta">
+                        <strong>{hasJurisdictionLogo ? 'Jurisdiction logo' : 'Uploaded logo'}</strong>
+                        <span>{customer.logoPath || 'No saved path'}</span>
+                      </div>
+                    </div>
                   ) : (
                     <span>No logo selected.</span>
                   )}

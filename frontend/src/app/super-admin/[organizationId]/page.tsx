@@ -107,6 +107,7 @@ export default async function SuperAdminCustomerPage({ params }: PageProps) {
           typeof tenantRecord.settings_json.header_logo_path === 'string'
             ? tenantRecord.settings_json.header_logo_path
             : null),
+        logoSource: tenantRecord?.logo_source || (tenantRecord?.logo_path ? 'jurisdiction' : null),
         clerkOrganizationId: tenantRecord?.clerk_organization_id || organization?.id || organizationId,
         slug: organization?.slug || null,
         customerId: organization?.id || tenantRecord?.clerk_organization_id || null,

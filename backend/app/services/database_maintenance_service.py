@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import and_, delete, exists, func, select
+from sqlalchemy import and_, delete, exists, func, inspect, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     AssistantMessageFeedback,
-    AssistantRunTelemetry,
-    AssistantTurnEvent,
     Base,
     Delivery,
     EmailEvent,
@@ -66,6 +64,7 @@ class DatabaseInfo:
     total_size_bytes: int | None
     total_size_label: str | None
     tables: list[DatabaseTableSummary]
+    agno_tables: list[DatabaseTableSummary]
     dangling_tables: list[DanglingTableSummary]
 
 
@@ -120,6 +119,49 @@ def _database_total_size_bytes(db: Session) -> int | None:
     return int(size) if size is not None else None
 
 
+def _schema_table_names(db: Session, schema: str) -> list[str]:
+    if not _is_postgres(db):
+        return []
+
+    bind = db.get_bind()
+    if bind is None:
+        return []
+
+    try:
+        inspector = inspect(bind)
+        return list(inspector.get_table_names(schema=schema))
+    except Exception:
+        return []
+
+
+def _schema_table_summary(db: Session, schema: str, table_name: str) -> DatabaseTableSummary:
+    table = Base.metadata.tables.get(f"{schema}.{table_name}")
+    if table is None:
+        from sqlalchemy import MetaData, Table
+
+        table = Table(table_name, MetaData(schema=schema), schema=schema, autoload_with=db.get_bind())
+
+    size_bytes = _table_size_bytes(db, table)
+    return DatabaseTableSummary(
+        table_name=table_name,
+        row_count=_table_row_count(db, table),
+        size_bytes=size_bytes,
+        size_label=_humanize_size(size_bytes),
+    )
+
+
+def _schema_table_summaries(db: Session, schema: str) -> list[DatabaseTableSummary]:
+    table_names = sorted(_schema_table_names(db, schema))
+    summaries: list[DatabaseTableSummary] = []
+    for table_name in table_names:
+        try:
+            summaries.append(_schema_table_summary(db, schema, table_name))
+        except Exception:
+            continue
+    summaries.sort(key=lambda item: ((item.size_bytes or 0) * -1, item.table_name))
+    return summaries
+
+
 def _dangling_jurisdiction_condition(table):
     return and_(
         table.c.jurisdiction_id.is_not(None),
@@ -170,6 +212,8 @@ def get_database_info(db: Session) -> DatabaseInfo:
         )
     tables.sort(key=lambda item: ((item.size_bytes or 0) * -1, item.table_name))
 
+    agno_tables = _schema_table_summaries(db, "agent_os")
+
     dangling_tables = [
         summary
         for table in (
@@ -192,6 +236,7 @@ def get_database_info(db: Session) -> DatabaseInfo:
         total_size_bytes=_database_total_size_bytes(db),
         total_size_label=_humanize_size(_database_total_size_bytes(db)),
         tables=tables,
+        agno_tables=agno_tables,
         dangling_tables=dangling_tables,
     )
 
@@ -278,17 +323,6 @@ def cleanup_dangling_records(db: Session) -> DatabaseCleanupResult:
         AssistantMessageFeedback.__table__,
         AssistantMessageFeedback.__table__.c.tenant_client_id.in_(tenant_ids),
     )
-    assistant_turn_event_ids = _collect_ids(
-        db,
-        AssistantTurnEvent.__table__,
-        AssistantTurnEvent.__table__.c.tenant_client_id.in_(tenant_ids),
-    )
-    assistant_run_ids = _collect_ids(
-        db,
-        AssistantRunTelemetry.__table__,
-        AssistantRunTelemetry.__table__.c.tenant_client_id.in_(tenant_ids),
-    )
-
     fee_item_ids = _collect_ids(
         db,
         FeeScheduleItem.__table__,
@@ -355,8 +389,6 @@ def cleanup_dangling_records(db: Session) -> DatabaseCleanupResult:
 
     for table_name, ids in (
         ("agentic_assistant_message_feedback", assistant_feedback_ids),
-        ("agentic_assistant_turn_events", assistant_turn_event_ids),
-        ("agentic_assistant_run_telemetry", assistant_run_ids),
         ("agentic_zoning_code_sections", zoning_section_ids),
         ("agentic_zoning_code_documents", zoning_document_ids),
         ("shared_tenant_domains", tenant_domain_ids),
@@ -368,18 +400,18 @@ def cleanup_dangling_records(db: Session) -> DatabaseCleanupResult:
         ("letters_request_notes", request_note_ids),
         ("letters_request_assignments", request_assignment_ids),
         ("letters_request_status_events", request_status_event_ids),
-        ("shared_email_events", email_event_ids),
+        ("letters_email_events", email_event_ids),
         ("letters_quotes", quote_ids),
         ("letters_fee_schedule_items", fee_item_ids),
         ("letters_requests", request_ids_all),
         ("shared_property_snapshots", property_snapshot_ids),
         ("letters_fee_schedules", fee_schedule_ids),
         ("letters_letter_templates", letter_template_ids),
-        ("shared_email_templates", email_template_ids),
+        ("letters_email_templates", email_template_ids),
         ("agentic_zoning_code_ingestion_runs", zoning_run_ids),
         ("shared_properties", property_ids),
         ("shared_tenant_clients", tenant_ids),
-        ("shared_jurisdiction_home_page_content", homepage_ids),
+        ("letters_jurisdiction_home_page_content", homepage_ids),
     ):
         table = Base.metadata.tables[table_name]
         deleted = _delete_by_ids(db, table, ids)

@@ -5,10 +5,9 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.api.v1 import admin
+import app.services.database_maintenance_service as database_maintenance_service
 from app.db.models import (
     AssistantMessageFeedback,
-    AssistantRunTelemetry,
-    AssistantTurnEvent,
     Delivery,
     EmailEvent,
     EmailTemplate,
@@ -38,7 +37,7 @@ from app.services.database_maintenance_service import cleanup_dangling_records, 
 from .helpers import add_jurisdiction, add_tenant_client, add_user, make_db
 
 
-def test_database_info_reports_table_sizes_and_dangling_rows() -> None:
+def test_database_info_reports_table_sizes_and_dangling_rows(monkeypatch) -> None:
     db = make_db()
     try:
         add_jurisdiction(db, id="jur-valid", code="valid-town", name="Valid Town")
@@ -75,13 +74,28 @@ def test_database_info_reports_table_sizes_and_dangling_rows() -> None:
         )
         db.commit()
 
+        monkeypatch.setattr(
+            database_maintenance_service,
+            "_schema_table_summaries",
+            lambda db_session, schema: [
+                database_maintenance_service.DatabaseTableSummary(
+                    table_name="aos_sessions",
+                    row_count=3,
+                    size_bytes=2048,
+                    size_label="2.0 KB",
+                )
+            ] if schema == "agent_os" else [],
+        )
+
         info = get_database_info(db)
 
         table_names = {item.table_name for item in info.tables}
+        agno_table_names = {item.table_name for item in info.agno_tables}
         dangling_tables = {item.table_name: item for item in info.dangling_tables}
 
         assert "shared_tenant_clients" in table_names
         assert "shared_properties" in table_names
+        assert "aos_sessions" in agno_table_names
         assert "shared_tenant_clients" in dangling_tables
         assert "shared_properties" in dangling_tables
         assert dangling_tables["shared_tenant_clients"].dangling_rows == 1
@@ -106,8 +120,6 @@ def test_cleanup_dangling_records_deletes_dangling_graphs_and_keeps_valid_rows()
         )
         db.add(TenantDomain(id="tenant-domain-valid", tenant_client_id=valid_tenant.id, hostname="valid.example.com"))
         db.add(AssistantMessageFeedback(id="feedback-valid", tenant_client_id=valid_tenant.id, agent_id="assistant", surface="public-assistant", conversation_id="c-valid", message_id="m-valid", feedback_value="positive"))
-        db.add(AssistantTurnEvent(id="turn-valid", tenant_client_id=valid_tenant.id, conversation_id="c-valid"))
-        db.add(AssistantRunTelemetry(id="run-valid", tenant_client_id=valid_tenant.id, run_scope="team"))
         db.add(
             ZoningCodeIngestionRun(
                 id="run-valid",
@@ -177,8 +189,6 @@ def test_cleanup_dangling_records_deletes_dangling_graphs_and_keeps_valid_rows()
                 feedback_value="negative",
             )
         )
-        db.add(AssistantTurnEvent(id="turn-dangling", tenant_client_id=dangling_tenant.id, conversation_id="c-dangling"))
-        db.add(AssistantRunTelemetry(id="telemetry-dangling", tenant_client_id=dangling_tenant.id, run_scope="team"))
         db.add(
             ZoningCodeIngestionRun(
                 id="run-dangling",
@@ -401,13 +411,11 @@ def test_cleanup_dangling_records_deletes_dangling_graphs_and_keeps_valid_rows()
         assert "shared_property_snapshots" in deleted_tables
         assert "letters_quotes" in deleted_tables
         assert "letters_payments" in deleted_tables
-        assert "shared_email_templates" in deleted_tables
+        assert "letters_email_templates" in deleted_tables
 
         assert db.get(TenantClient, dangling_tenant_id) is None
         assert db.get(TenantDomain, "tenant-domain-dangling") is None
         assert db.get(AssistantMessageFeedback, "feedback-dangling") is None
-        assert db.get(AssistantTurnEvent, "turn-dangling") is None
-        assert db.get(AssistantRunTelemetry, "telemetry-dangling") is None
         assert db.get(ZoningCodeIngestionRun, "run-dangling") is None
         assert db.get(ZoningCodeDocument, "doc-dangling") is None
         assert db.get(ZoningCodeSection, "section-dangling") is None

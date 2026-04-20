@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { fetchCustomerEmbedSettings } from '../../../admin/actions'
 import { CustomerAssistantEmbedPreview } from '../../../../components/CustomerAssistantEmbedPreview'
 import { SuperAdminCustomerHeader } from '../../../../components/SuperAdminCustomerIcons'
+import { getServerBackendOrigin } from '../../../../lib/backend'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
 
@@ -19,7 +20,7 @@ type PageProps = {
 export default async function SuperAdminCustomerAssistantEmbedPage({ params, searchParams }: PageProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
-  const backendBase = process.env.NEXT_PUBLIC_UZONE_API_BASE || process.env.UZONE_API_BASE || ''
+  const backendBase = getServerBackendOrigin()
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (

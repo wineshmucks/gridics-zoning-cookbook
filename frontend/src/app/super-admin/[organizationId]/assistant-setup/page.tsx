@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation'
 
 import {
-  fetchCustomerAssistantConversationReview,
   fetchCustomerEmbedSettings,
   fetchCustomerExperienceSettings,
   fetchPlatformAssistantSettings,
@@ -15,15 +14,9 @@ type PageProps = {
   params: Promise<{
     organizationId: string
   }>
-  searchParams: Promise<{
-    section?: string
-    page?: string
-    search?: string
-    conversation_id?: string
-  }>
 }
 
-export default async function SuperAdminCustomerAssistantSetupPage({ params, searchParams }: PageProps) {
+export default async function SuperAdminCustomerAssistantSetupPage({ params }: PageProps) {
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
 
@@ -37,7 +30,6 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params, sea
   }
 
   const { organizationId } = await params
-  const query = await searchParams
   const client = await getClerkManagementClient()
   const organizations = await client.organizations.getOrganizationList({
     includeMembersCount: true,
@@ -50,18 +42,12 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params, sea
   }
 
   const displayName = organization.name
-  const [experienceSettings, embedSettings, zoningKnowledgeStatus, baselineSettings, conversationReview] =
-    await Promise.all([
-      fetchCustomerExperienceSettings(organizationId),
-      fetchCustomerEmbedSettings(organizationId),
-      fetchCustomerZoningKnowledgeStatus(organizationId),
-      fetchPlatformAssistantSettings(),
-      fetchCustomerAssistantConversationReview(organizationId, {
-        page: query.page ? Number(query.page) : undefined,
-        search: query.search,
-        conversationId: query.conversation_id,
-      }),
-    ])
+  const [experienceSettings, embedSettings, zoningKnowledgeStatus, baselineSettings] = await Promise.all([
+    fetchCustomerExperienceSettings(organizationId),
+    fetchCustomerEmbedSettings(organizationId),
+    fetchCustomerZoningKnowledgeStatus(organizationId),
+    fetchPlatformAssistantSettings(),
+  ])
 
   return (
     <CustomerAssistantSetupPanel
@@ -75,7 +61,6 @@ export default async function SuperAdminCustomerAssistantSetupPage({ params, sea
       embedSettings={embedSettings}
       zoningKnowledgeStatus={zoningKnowledgeStatus}
       baselineSettings={baselineSettings}
-      conversationReview={conversationReview}
     />
   )
 }

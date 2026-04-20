@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getAssistantContent, getAssistantContentDebug, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent'
 import { buildAssistantApiUrl } from '../lib/assistant-api'
+import AssistantLanding from './AssistantLanding'
 
 type AgentRunResponse = {
   session_id?: string
@@ -129,6 +130,14 @@ type AssistantModelTraceEntry = {
   reason?: string | null
 }
 
+type SelectedProperty = {
+  id: string
+  place_name: string
+  text: string
+  center?: number[]
+  [key: string]: any
+}
+
 type ConversationCopyContext = {
   agentId: string
   customerName: string
@@ -176,8 +185,6 @@ function buildConversationExport(messages: ChatMessage[], context: ConversationC
       surface: context.surface,
       session_id: context.sessionId,
       run_id: context.runId,
-      model_id: context.modelId || null,
-      default_model_id: context.defaultModelId || null,
       model_override_active: Boolean(context.modelId && context.modelId.trim() && context.modelId.trim() !== context.defaultModelId.trim()),
       message_count: messages.length,
       assistant_message_count: assistantCount,
@@ -211,8 +218,6 @@ function buildConversationExport(messages: ChatMessage[], context: ConversationC
     `- Surface: ${context.surface}`,
     `- Session ID: ${context.sessionId || "(none)"}`,
     `- Run ID: ${context.runId || "(none)"}`,
-    `- Model: ${context.modelId || "(default)"}`,
-    `- Default model: ${context.defaultModelId || "(none)"}`,
     `- Model override active: ${context.modelId.trim() && context.modelId.trim() !== context.defaultModelId.trim() ? "yes" : "no"}`,
     `- Messages: ${messages.length} total, ${assistantCount} assistant`,
     "",
@@ -577,8 +582,53 @@ function extractCitationLinks(parsed: Record<string, unknown> | null | undefined
   return [...new Set(links)]
 }
 
+function collectReferenceLinksFromToolCalls(toolCalls: StreamToolCall[]): string[] {
+  const links: string[] = ['[Powered by Gridics](https://gridics.com/)']
+
+  for (const toolCall of toolCalls) {
+    if (!toolCall.rawResult) {
+      continue
+    }
+
+    const parsed = unwrapToolResult(toolCall.rawResult)
+    if (!parsed || typeof parsed !== 'object') {
+      continue
+    }
+
+    const citationLinks = extractCitationLinks(parsed as Record<string, unknown>)
+    for (const link of citationLinks) {
+      if (link && !links.includes(link)) {
+        links.push(link)
+      }
+    }
+  }
+
+  return links
+}
+
+function appendReferenceSection(content: string, toolCalls: StreamToolCall[]): string {
+  const trimmedContent = content.trim()
+  const referenceLinks = collectReferenceLinksFromToolCalls(toolCalls)
+  if (!referenceLinks.length) {
+    return trimmedContent
+  }
+
+  if (/\b(Powered by Gridics|References|Sources?)\b/i.test(trimmedContent)) {
+    return trimmedContent
+  }
+
+  return `${trimmedContent}\n\n---\n\n**References**\n${referenceLinks.map((link) => `- ${link}`).join('\n')}`
+}
+
 function unwrapToolResult(raw: unknown): unknown {
-  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw
+  let parsed = raw
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      return raw
+    }
+  }
   if (!parsed || typeof parsed !== "object") {
     return parsed
   }
@@ -590,13 +640,15 @@ function unwrapToolResult(raw: unknown): unknown {
       continue
     }
 
-    const nested = typeof candidate === "string" ? (() => {
-      try {
-        return JSON.parse(candidate)
-      } catch {
-        return candidate
-      }
-    })() : candidate
+      const nested = typeof candidate === "string"
+        ? (() => {
+            try {
+              return JSON.parse(candidate)
+            } catch {
+              return candidate
+            }
+          })()
+        : candidate
 
     if (nested && typeof nested === "object") {
       const nestedRecord = nested as Record<string, unknown>
@@ -706,6 +758,28 @@ function buildToolResultFallback(toolCalls: StreamToolCall[]): string | null {
   } catch {
     return null
   }
+}
+
+function shouldPreferStructuredParcelFallback(content: string, toolCalls: StreamToolCall[]): boolean {
+  const hasParcelAnalysis = toolCalls.some((toolCall) => {
+    const parsed = unwrapToolResult(toolCall.rawResult)
+    if (!parsed || typeof parsed !== "object") {
+      return false
+    }
+
+    const record = parsed as Record<string, unknown>
+    const assistantTurn = record.assistant_turn && typeof record.assistant_turn === "object"
+      ? (record.assistant_turn as Record<string, unknown>)
+      : null
+
+    return (
+      record.question_type === "specific_address" &&
+      Boolean(record.gridics) &&
+      assistantTurn?.needs_clarification !== true
+    )
+  })
+
+  return hasParcelAnalysis && Boolean(content.trim() || toolCalls.length)
 }
 
 function formatExpandableToolPayload(rawResult: unknown): { label: string; content: string } | null {
@@ -1171,6 +1245,7 @@ export function AgentChatPanel({
   const [copyMessage, setCopyMessage] = useState<string | null>(null)
   const [messageFeedback, setMessageFeedback] = useState<Record<string, MessageFeedback | undefined>>({})
   const [modelId, setModelId] = useState(defaultModelId)
+  const [selectedProperty, setSelectedProperty] = useState<SelectedProperty | null>(null)
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
   const searchParams = useSearchParams()
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -1395,22 +1470,34 @@ export function AgentChatPanel({
     if (sessionIdRef.current) {
       body.set("session_id", sessionIdRef.current)
     }
-    body.set(
-      "dependencies",
-      JSON.stringify({
-        client_id: clientId,
-        customer_name: customerName,
-      }),
-    )
-    body.set(
-      "metadata",
-      JSON.stringify({
-        surface,
-        client_id: clientId,
-        assistant_model_id: modelId.trim() || undefined,
-        embed_token: embedSessionToken || undefined,
-      }),
-    )
+    const dependenciesPayload: Record<string, unknown> = {
+      client_id: clientId,
+      customer_name: customerName,
+    }
+    if (selectedProperty) {
+      dependenciesPayload.property = {
+        place_name: selectedProperty.place_name,
+        center: selectedProperty.center || null,
+      }
+    }
+
+    body.set("dependencies", JSON.stringify(dependenciesPayload))
+
+    const metadataPayload: Record<string, unknown> = {
+      surface,
+      client_id: clientId,
+      tenant_client_id: clientId,
+      assistant_model_id: modelId.trim() || undefined,
+      embed_token: embedSessionToken || undefined,
+    }
+    if (selectedProperty) {
+      metadataPayload.property = {
+        place_name: selectedProperty.place_name,
+        center: selectedProperty.center || null,
+      }
+    }
+
+    body.set("metadata", JSON.stringify(metadataPayload))
 
     let textContent = ""
     let runSteps = initialSteps
@@ -1444,12 +1531,10 @@ export function AgentChatPanel({
       }
 
       if (eventMatches(event.event, "RunStarted")) {
-        const model = typeof payload.model === "string" ? payload.model : "configured model"
-        const traceDetail = formatAssistantModelTrace(payload)
         runSteps = upsertStep(runSteps, {
           id: "run-started",
           label: "Preparing answer",
-          detail: traceDetail ? `Connected to ${model} | ${traceDetail}` : `Connected to ${model}`,
+          detail: "Connected",
           status: "complete",
         })
         runSteps = upsertStep(runSteps, {
@@ -1618,9 +1703,11 @@ export function AgentChatPanel({
           lastVisibleContent = textContent
         }
 
-        const toolFallbackContent = finalContent || textContent || provisionalContent || lastVisibleContent
-          ? null
-          : buildToolResultFallback(toolCalls)
+        const structuredParcelContent = buildToolResultFallback(toolCalls)
+        const renderedContent =
+          finalContent && structuredParcelContent && shouldPreferStructuredParcelFallback(finalContent, toolCalls)
+            ? structuredParcelContent
+            : finalContent || textContent || provisionalContent || lastVisibleContent || structuredParcelContent
 
         runSteps = upsertStep(runSteps, {
           id: "model-request",
@@ -1631,13 +1718,7 @@ export function AgentChatPanel({
         runSteps = enrichRunStartedStepWithTrace(runSteps, traceDetail)
         runSteps = appendDebugStep(runSteps, debugDetail)
         handleStreamUpdate({
-          content:
-            finalContent ||
-            textContent ||
-            provisionalContent ||
-            lastVisibleContent ||
-            toolFallbackContent ||
-            buildEmptyAssistantResponse(debugDetail),
+          content: appendReferenceSection(renderedContent || buildEmptyAssistantResponse(debugDetail), toolCalls),
           steps: runSteps,
           toolCalls,
           status: "complete",
@@ -1827,6 +1908,7 @@ export function AgentChatPanel({
       if (!finished && !controller.signal.aborted) {
         let debugDetail: string | null = null
         let fallbackContent = textContent || provisionalContent || lastVisibleContent
+        const structuredParcelContent = buildToolResultFallback(toolCalls)
 
         if (!fallbackContent && runIdRef.current) {
           const completedRun = await fetchCompletedRunWithRetry(
@@ -1844,11 +1926,15 @@ export function AgentChatPanel({
         }
 
         if (!fallbackContent) {
-          fallbackContent = buildToolResultFallback(toolCalls) || ""
+          fallbackContent = structuredParcelContent || ""
+        }
+
+        if (structuredParcelContent && shouldPreferStructuredParcelFallback(fallbackContent, toolCalls)) {
+          fallbackContent = structuredParcelContent
         }
 
         handleStreamUpdate({
-          content: fallbackContent || buildEmptyAssistantResponse(debugDetail),
+          content: appendReferenceSection(fallbackContent || buildEmptyAssistantResponse(debugDetail), toolCalls),
           status: "complete",
           steps: runSteps,
           toolCalls,
@@ -2041,7 +2127,13 @@ export function AgentChatPanel({
         ) : null}
         <div ref={viewportRef} className={`agent-chat-log agent-chat-log-${variant}`}>
           {messages.length === 0 ? (
-            <ChatEmptyState customerName={customerName} onSelectPrompt={handleSuggestionClick} />
+            <AssistantLanding
+              customerName={customerName}
+              onSelectPrompt={handleSuggestionClick}
+              selectedProperty={selectedProperty}
+              onSelectProperty={(f) => setSelectedProperty(f)}
+              onClearProperty={() => setSelectedProperty(null)}
+            />
           ) : (
             messages.map((message) => (
               <div
@@ -2116,7 +2208,7 @@ export function AgentChatPanel({
                     <div className="assistant-model-controls-copy">
                       <strong>Model override</strong>
                       <span>
-                        Default: <code>{defaultModelId || "backend-defined model"}</code>
+                        Default: <code>backend-defined setting</code>
                       </span>
                     </div>
                     <button
@@ -2135,7 +2227,7 @@ export function AgentChatPanel({
                       value={modelId}
                       disabled={isStreaming}
                       onChange={(event) => setModelId(event.target.value)}
-                      placeholder={defaultModelId || "Leave blank to use the backend-defined model"}
+                      placeholder="Leave blank to use the backend-defined setting"
                     />
                     <button
                       className="button secondary"
@@ -2148,8 +2240,8 @@ export function AgentChatPanel({
                   </div>
                   <div className="assistant-model-controls-status">
                     {isModelOverrideActive
-                      ? `Override active for new runs: ${normalizedModelId}`
-                      : "No override active. New runs will use the model defined by the backend agent."}
+                      ? "Override active for new runs."
+                      : "No override active. New runs will use the backend-defined setting."}
                   </div>
                 </div>
               ) : null}
@@ -2195,11 +2287,11 @@ export function AgentChatPanel({
                 >
                   {isModelOverrideActive ? (
                     <>
-                      Next run will override the backend-defined model with <code>{normalizedModelId}</code>.
+                      Next run will use a backend override setting.
                     </>
                   ) : (
                     <>
-                      Next run will use the backend-defined model <code>{defaultModelId || "agent default"}</code>.
+                      Next run will use the backend-defined setting.
                     </>
                   )}
                 </div>

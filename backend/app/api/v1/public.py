@@ -5,13 +5,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db, get_optional_auth_context
 from app.core.security import AuthContext
 from app.core.config import settings
-from app.db.models import AssistantMessageFeedback, AssistantTurnEvent, TenantClient
+from app.db.models import AssistantMessageFeedback, TenantClient
 from app.services.embed_service import (
     build_embed_widget_payload,
     decode_embed_session_token,
@@ -93,13 +93,6 @@ class AssistantMessageFeedbackUpsertResponse(BaseModel):
     message_id: str
     conversation_id: str
     feedback_value: Literal["up", "down"] | None = None
-
-
-class AssistantMetricsResponse(BaseModel):
-    total_turns: int
-    total_feedback: int
-    decisions: dict[str, int]
-    reason_codes: dict[str, int]
 
 
 def _ensure_tenant_client_for_organization(db: Session, organization_id: str | None) -> TenantClient | None:
@@ -195,61 +188,6 @@ def upsert_assistant_feedback(
     }
 
 
-@router.get("/assistant-metrics", response_model=AssistantMetricsResponse)
-def get_assistant_metrics(
-    client_id: str | None = Query(default=None),
-    db: Session = Depends(get_db),
-    auth: AuthContext | None = Depends(get_optional_auth_context),
-) -> dict:
-    if auth is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
-
-    tenant_filter = []
-    if client_id:
-        tenant = db.scalar(select(TenantClient).where(TenantClient.client_id == client_id.strip()))
-        if tenant is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-        tenant_filter.append(AssistantTurnEvent.tenant_client_id == tenant.id)
-
-    turns_stmt = select(func.count()).select_from(AssistantTurnEvent)
-    feedback_stmt = select(func.count()).select_from(AssistantMessageFeedback)
-    if tenant_filter:
-        turns_stmt = turns_stmt.where(*tenant_filter)
-        feedback_stmt = feedback_stmt.where(AssistantMessageFeedback.tenant_client_id == tenant.id)
-
-    total_turns = db.scalar(turns_stmt) or 0
-    total_feedback = db.scalar(feedback_stmt) or 0
-
-    decision_stmt = select(
-        AssistantTurnEvent.policy_decision,
-        func.count().label("count"),
-    ).group_by(AssistantTurnEvent.policy_decision)
-    reason_stmt = select(
-        AssistantTurnEvent.reason_code,
-        func.count().label("count"),
-    ).group_by(AssistantTurnEvent.reason_code)
-    if tenant_filter:
-        decision_stmt = decision_stmt.where(*tenant_filter)
-        reason_stmt = reason_stmt.where(*tenant_filter)
-
-    decisions: dict[str, int] = {}
-    for decision, count in db.execute(decision_stmt):
-        key = str(decision or "unknown")
-        decisions[key] = int(count or 0)
-
-    reason_codes: dict[str, int] = {}
-    for reason, count in db.execute(reason_stmt):
-        key = str(reason or "unknown")
-        reason_codes[key] = int(count or 0)
-
-    return AssistantMetricsResponse(
-        total_turns=int(total_turns),
-        total_feedback=int(total_feedback),
-        decisions=decisions,
-        reason_codes=reason_codes,
-    ).model_dump()
-
-
 @router.get("/client-config")
 def get_client_config(
     request: Request,
@@ -319,6 +257,7 @@ def list_public_customers(db: Session = Depends(get_db)) -> list[dict]:
                 "client_id": customer.client_id,
                 "path_alias": get_tenant_path_alias(customer.settings_json),
                 "logo_path": get_tenant_logo_path(customer.settings_json),
+                "logo_source": "jurisdiction" if get_tenant_logo_path(customer.settings_json) else None,
                 "city_name": customer.city_name,
                 "department_name": customer.department_name,
             }

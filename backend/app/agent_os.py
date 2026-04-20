@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
 
+from app.agents.storage import get_agno_db
 from app.services.embed_service import decode_embed_session_token, parse_embed_token_from_header
-
 from app.core.config import settings
 
 PUBLIC_CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS = (
@@ -43,44 +43,25 @@ def _rewrite_customer_zoning_assistant_route(request) -> bool:
 
 
 def _build_agent_os_db():
-    from agno.db.postgres.postgres import PostgresDb
-
-    # Store AgentOS runs in the app database so completed-run lookups work
-    # consistently across ECS task restarts and between requests.
-    return PostgresDb(
-        db_url=settings.database_url,
-        db_schema="agent_os",
-        session_table="aos_sessions",
-        memory_table="aos_memories",
-        metrics_table="aos_metrics",
-        eval_table="aos_eval_runs",
-        traces_table="aos_traces",
-        spans_table="aos_spans",
-        versions_table="aos_schema_versions",
-        components_table="aos_components",
-        component_configs_table="aos_component_configs",
-        component_links_table="aos_component_links",
-        learnings_table="aos_learnings",
-        schedules_table="aos_schedules",
-        schedule_runs_table="aos_schedule_runs",
-        approvals_table="aos_approvals",
-    )
+    return get_agno_db()
 
 
 def build_agent_os_app(base_app: FastAPI) -> FastAPI:
     from agno.os import AgentOS
-    from app.agents.registry import ALL_AGENTS
-    from app.agents.registry import ALL_TEAMS
+    from app.agents import registry as agent_registry
+
+    all_agents = getattr(agent_registry, "ALL_AGENTS", [])
+    all_teams = getattr(agent_registry, "ALL_TEAMS", [])
     
     agent_os = AgentOS(
-        agents=ALL_AGENTS,
-        teams=ALL_TEAMS,
+        agents=all_agents,
+        teams=all_teams,
         db=_build_agent_os_db(),
         base_app=base_app,
         id="uzone-agent-os",
         name="UZone Agents",
         description="Agno runtime for UZone",
-        telemetry=False,
+        tracing=True,
         auto_provision_dbs=True,
     )
     app = agent_os.get_app()

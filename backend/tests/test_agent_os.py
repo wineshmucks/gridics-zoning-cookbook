@@ -51,8 +51,8 @@ def test_build_agent_os_app_configures_persistent_db(monkeypatch) -> None:
     app = agent_os.build_agent_os_app(FastAPI())
 
     assert app.state.agent_os_kwargs["db"] == "db-sentinel"
+    assert app.state.agent_os_kwargs["tracing"] is True
     assert app.state.agent_os_kwargs["auto_provision_dbs"] is True
-    assert app.state.agent_os_kwargs["telemetry"] is False
     assert app.state.agent_os_kwargs["agents"] == ["agent-sentinel"]
 
 

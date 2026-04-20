@@ -1,6 +1,6 @@
 # UZone
 
-UZone is a self-contained zoning verification workflow app under `uzone/`.
+UZone is a self-contained zoning verification workflow app with `backend/` and `frontend/` at the repo root.
 
 ## Stack
 
@@ -10,7 +10,7 @@ UZone is a self-contained zoning verification workflow app under `uzone/`.
 
 ## Run Locally With Docker
 
-From the `uzone/` directory:
+From the repo root:
 
 ```bash
 cp .env.example .env
@@ -39,7 +39,7 @@ The backend container automatically:
 
 Production AWS deployment scaffolding is available under:
 
-- [uzone/deploy/aws/README.md](/workspaces/gridics-zoning-cookbook/uzone/deploy/aws/README.md)
+- [deploy/aws/README.md](/workspaces/gridics-zoning-cookbook/deploy/aws/README.md)
 
 It includes:
 
@@ -47,7 +47,7 @@ It includes:
 - Terraform for ECR, ECS Fargate, ALB, and RDS PostgreSQL
 - a build-and-push script for publishing images to ECR
 
-The shared deploy baseline lives in `uzone/.env-deploy`. If you need a production deploy file, create `uzone/.env-deploy.prod` locally and keep it untracked.
+The shared deploy baseline lives in `.env-deploy`. If you need a production deploy file, create `.env-deploy.prod` locally and keep it untracked.
 
 ## Seeded Demo Users
 
@@ -65,6 +65,50 @@ python -m app.scripts.seed_data
 uvicorn app.main:app --reload
 ```
 
+## Agno Session Persistence
+
+Agno session persistence is wired in through the backend AgentOS and customer zoning agent setup:
+
+- [`backend/app/agents/storage.py`](/workspaces/gridics-zoning-cookbook/backend/app/agents/storage.py) builds the shared Agno Postgres session DB, run-metrics helpers, and session-usage rollups
+- [`backend/app/agents/customer_zoning_agent.py`](/workspaces/gridics-zoning-cookbook/backend/app/agents/customer_zoning_agent.py) attaches the DB and bounded history settings to the public team and agent
+- [`backend/app/agent_os.py`](/workspaces/gridics-zoning-cookbook/backend/app/agent_os.py) reuses the same PostgreSQL connection for AgentOS
+
+Session identity:
+
+- The browser already keeps a stable `session_id` per chat thread and sends it with each run
+- Tenant scope is stored in `metadata.tenant_client_id` so `user_id` stays available for a future real user id
+- Agno prefers `conversation_id`, `session_id`, `thread_id`, or `chat_id` if those are available in metadata or session state
+- If none are present, Agno generates a fresh session id
+
+Storage controls:
+
+- `AGNO_SESSIONS_ENABLED=true|false`
+- `AGNO_SESSION_TABLE=...`
+- `AGNO_STORE_HISTORY_MESSAGES=true|false`
+- `AGNO_NUM_HISTORY_RUNS=...`
+
+The implementation keeps history conservative by default:
+
+- `add_history_to_context` is enabled for the customer zoning assistant because it already depends on multi-turn follow-ups
+- `num_history_runs` is capped at 5
+- `store_history_messages` defaults to `false`
+- If you turn `AGNO_STORE_HISTORY_MESSAGES=true` on, expect materially higher PostgreSQL usage because Agno persists expanded history per run
+
+Inspecting stored conversations:
+
+- Use `customer_zoning_team.get_session(session_id="...")` or `customer_zoning_agent.get_session(session_id="...")`
+- Use `GET /api/admin/agno/sessions/{session_id}/usage` to inspect per-session totals from the browser or API client
+- Use the super-admin conversations screen at `/super-admin/{organizationId}/conversations` to review tenant-scoped chat threads
+- Use [`backend/app/agents/storage.py`](/workspaces/gridics-zoning-cookbook/backend/app/agents/storage.py) `get_session_usage_totals(session_id)` to inspect per-session totals
+
+Example:
+
+```python
+from app.agents.storage import get_session_usage_totals
+
+print(get_session_usage_totals("session_123"))
+```
+
 ## Local Frontend Without Docker
 
 ```bash
@@ -75,7 +119,7 @@ UZONE_API_BASE=http://localhost:8000 NEXT_PUBLIC_UZONE_API_BASE=http://localhost
 
 For local testing of the split host routing model (`agentic` vs `zvl`) with Windows or Linux hosts files, see:
 
-- [routing-matrix.md](/home/ben/gprojects/gridics-zoning-cookbook/uzone/docs/routing-matrix.md)
+- [docs/routing-matrix.md](/workspaces/gridics-zoning-cookbook/docs/routing-matrix.md)
 
 The canonical public URLs for the split app surfaces are set with:
 
@@ -94,7 +138,7 @@ For local development, the frontend still supports the older
 `NEXT_PUBLIC_UZONE_PRODUCT_HOST_MAP` fallback, but the base URL variables are the preferred source
 of truth for staging and production.
 
-For AWS deploys, keep `uzone/.env-deploy` in git as the baseline and create `uzone/.env-deploy.prod`
+For AWS deploys, keep `.env-deploy` in git as the baseline and create `.env-deploy.prod`
 locally when you need a production-specific env file. Do not commit the prod file.
 
 Frontend host routing:
@@ -127,10 +171,9 @@ Still simplified:
 
 ## Important Environment Variables
 
-Docker Compose loads `uzone/.env` via `env_file`, so the usual local flow is:
+Docker Compose loads `.env` via `env_file`, so the usual local flow is:
 
 ```bash
-cd uzone
 cp .env.example .env
 ```
 
@@ -178,7 +221,7 @@ This matches Clerk’s guidance for validating session tokens and checking `azp`
 
 The payment layer now uses provider adapters under:
 
-- [payment_service.py](/workspaces/gridics-zoning-cookbook/uzone/backend/app/services/payment_service.py)
+- [payment_service.py](/workspaces/gridics-zoning-cookbook/backend/app/services/payment_service.py)
 
 Current providers:
 
@@ -203,7 +246,7 @@ Related env var:
 
 The email layer now uses provider adapters under:
 
-- [email_service.py](/workspaces/gridics-zoning-cookbook/uzone/backend/app/services/email_service.py)
+- [email_service.py](/workspaces/gridics-zoning-cookbook/backend/app/services/email_service.py)
 
 Current providers:
 

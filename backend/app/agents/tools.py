@@ -8,11 +8,10 @@ delegating the heavy lifting to the richer legacy implementation in
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.agents import legacy_tools as _legacy
-from app.services.assistant_observability import append_policy_trace
-from app.services.assistant_observability import append_run_trace
 from app.services.confirmation_service import (
     build_pending_confirmation_prompt,
     classify_pending_property_confirmation_response,
@@ -38,10 +37,90 @@ _legacy_query_customer_zoning_code = _legacy.query_customer_zoning_code
 _RECENT_STANDARDIZED_ADDRESS_SESSION_KEY = "recent_standardized_address"
 
 
+def _parse_failure_diagnostics(error: Exception) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(str(error))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _build_graceful_failure_payload(
+    *,
+    operation: str,
+    error: Exception,
+    query: str | None = None,
+    client_id: str | None = None,
+    address: str | None = None,
+    run_context: Any = None,
+) -> dict[str, Any]:
+    diagnostics = _parse_failure_diagnostics(error)
+    query_text = str(query or "").strip()
+    latest_failure = None
+    if isinstance(diagnostics, dict):
+        failures = diagnostics.get("failures")
+        if isinstance(failures, list) and failures:
+            latest_failure = failures[-1] if isinstance(failures[-1], dict) else None
+    fallback_question_type = (
+        str(latest_failure.get("question_type")).strip()
+        if latest_failure and isinstance(latest_failure.get("question_type"), str) and str(latest_failure.get("question_type")).strip()
+        else ("specific_address" if address else "general_zoning")
+    )
+
+    retry_debug = diagnostics if isinstance(diagnostics, dict) else {
+        "message": str(error),
+    }
+    retry_debug["recovered"] = False
+    retry_debug.setdefault("operation", operation)
+
+    return {
+        "question_type": fallback_question_type,
+        "query": query_text or None,
+        "client_id": client_id,
+        "address_context": latest_failure.get("address_context") if latest_failure else None,
+        "address_resolution": latest_failure.get("address_context") if latest_failure else None,
+        "assistant_turn": {
+            "intent_type": fallback_question_type,
+            "policy_decision": {
+                "decision": "clarify",
+                "reason_code": "assistant_unavailable",
+                "reason": "The zoning assistant could not complete the lookup right now.",
+            },
+            "jurisdiction_status": "needs_verification",
+            "needs_clarification": True,
+            "clarification_type": "service_error",
+            "confidence": 0.1,
+        },
+        "request_classification": {
+            "type": fallback_question_type,
+            "label": "specific address" if fallback_question_type == "specific_address" else "general zoning",
+            "reason": "The assistant could not complete the lookup right now.",
+        },
+        "response_guardrail": {
+            "message": (
+                "I couldn't complete the zoning lookup right now. Please try again in a moment or contact staff "
+                "if the problem continues."
+            ),
+            "operation": operation,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        },
+        "follow_up_context": {
+            "context_type": fallback_question_type,
+            "active_location": latest_failure.get("address_context") if latest_failure else None,
+            "reuse_for_follow_ups": False,
+            "guidance": "Try the same question again once the service is available.",
+        },
+        "retry_debug": retry_debug,
+        "error": str(error),
+    }
+
+
 def _get_session_state(run_context: Any = None, **kwargs: Any) -> dict[str, Any] | None:
     session_state = kwargs.get("session_state")
     if isinstance(session_state, dict):
         return session_state
+    run_context = kwargs.get("run_context", run_context)
     session_state = getattr(run_context, "session_state", None)
     return session_state if isinstance(session_state, dict) else None
 
@@ -96,10 +175,6 @@ def _prefer_recent_standardized_address(address: str | None, run_context: Any = 
     return normalized_address
 
 
-def _append_tool_trace(run_context: Any, event: dict[str, Any]) -> None:
-    append_run_trace(run_context, {"category": "tool", **event})
-
-
 def _sync_legacy_helpers() -> None:
     _legacy.query_customer_zoning_code = query_customer_zoning_code
     _legacy._build_gridics_client = _build_gridics_client
@@ -113,7 +188,6 @@ def _sync_legacy_helpers() -> None:
     _legacy.build_evidence_pack = build_evidence_pack
     _legacy.citation_completeness_report = citation_completeness_report
     _legacy.grounding_verdict = grounding_verdict
-    _legacy.append_policy_trace = append_policy_trace
     _legacy.evaluate_policy_decision = evaluate_policy_decision
     _legacy.resolve_jurisdiction_for_property_request = resolve_jurisdiction_for_property_request
     _legacy.insufficient_evidence_message = insufficient_evidence_message
@@ -142,13 +216,6 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
 
     pending_context = _get_pending_property_confirmation(run_context or kwargs.get("run_context"))
     if not pending_context:
-        _append_tool_trace(
-            run_context or kwargs.get("run_context"),
-            {
-                "event": "tool.confirm_pending_address",
-                "status": "no_pending_context",
-            },
-        )
         return {
             "confirmed": False,
             "needs_confirmation": False,
@@ -162,14 +229,6 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
     )
     if response.get("decision") == "confirm_pending":
         _clear_pending_property_confirmation(run_context or kwargs.get("run_context"))
-        _append_tool_trace(
-            run_context or kwargs.get("run_context"),
-            {
-                "event": "tool.confirm_pending_address",
-                "status": "confirmed",
-                "decision": response,
-            },
-        )
         return {
             "confirmed": True,
             "decision": response,
@@ -177,14 +236,6 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
         }
 
     if response.get("decision") == "clarify":
-        _append_tool_trace(
-            run_context or kwargs.get("run_context"),
-            {
-                "event": "tool.confirm_pending_address",
-                "status": "clarify",
-                "decision": response,
-            },
-        )
         return {
             "confirmed": False,
             "needs_confirmation": True,
@@ -196,14 +247,6 @@ def confirm_pending_address(*, query: str | None = None, run_context: Any = None
             "decision": response,
         }
 
-    _append_tool_trace(
-        run_context or kwargs.get("run_context"),
-        {
-            "event": "tool.confirm_pending_address",
-            "status": "not_confirmed",
-            "decision": response,
-        },
-    )
     return {
         "confirmed": False,
         "decision": response,
@@ -218,21 +261,21 @@ def query_customer_zoning_code(
     run_context: Any = None,
     **kwargs: Any,
 ) -> dict:
-    _append_tool_trace(
-        run_context,
-        {
-            "event": "tool.query_customer_zoning_code",
-            "query": query,
-            "limit": limit,
-            "client_id": client_id,
-        },
-    )
-    return _legacy_query_customer_zoning_code(
-        query=query,
-        limit=limit,
-        client_id=client_id,
-        run_context=run_context or kwargs.get("run_context"),
-    )
+    try:
+        return _legacy_query_customer_zoning_code(
+            query=query,
+            limit=limit,
+            client_id=client_id,
+            run_context=run_context or kwargs.get("run_context"),
+        )
+    except Exception as exc:
+        return _build_graceful_failure_payload(
+            operation="query_customer_zoning_code",
+            error=exc,
+            query=query,
+            client_id=client_id,
+            run_context=run_context or kwargs.get("run_context"),
+        )
 
 
 def analyze_customer_zoning_request(
@@ -245,44 +288,27 @@ def analyze_customer_zoning_request(
     run_context: Any = None,
     **kwargs: Any,
 ) -> dict:
-    _append_tool_trace(
-        run_context,
-        {
-            "event": "tool.analyze_customer_zoning_request",
-            "query": query,
-            "address": address,
-            "state_env": state_env,
-            "zip_code": zip_code,
-            "knowledge_limit": knowledge_limit,
-            "client_id": client_id,
-        },
-    )
     _sync_legacy_helpers()
-    effective_query = str(query or "").strip()
-    preferred_address = _prefer_recent_standardized_address(address, run_context, **kwargs)
-    if not effective_query:
-        effective_query = (
-            f"What are the zoning rules for {preferred_address}?"
-            if preferred_address
-            else "What are the zoning rules for this property?"
+    try:
+        result = _legacy.analyze_customer_zoning_request(
+            query=query,
+            address=address,
+            state_env=state_env,
+            zip_code=zip_code,
+            knowledge_limit=knowledge_limit,
+            client_id=client_id,
+            run_context=run_context,
         )
-    return _legacy.analyze_customer_zoning_request(
-        query=effective_query,
-        address=preferred_address,
-        state_env=state_env,
-        zip_code=zip_code,
-        knowledge_limit=knowledge_limit,
-        client_id=client_id,
-        run_context=run_context,
-    )
-    _append_tool_trace(
-        run_context,
-        {
-            "event": "tool.analyze_customer_zoning_request.complete",
-            "client_id": client_id,
-            "result_keys": sorted(result.keys()) if isinstance(result, dict) else None,
-        },
-    )
+    except Exception as exc:
+        return _build_graceful_failure_payload(
+            operation="analyze_customer_zoning_request",
+            error=exc,
+            query=query,
+            client_id=client_id,
+            address=address,
+            run_context=run_context,
+        )
+
     return result
 
 
@@ -298,7 +324,6 @@ __all__ = [
     "_extract_gridics_street_address",
     "_load_tenant_client",
     "_standardize_address",
-    "append_policy_trace",
     "build_evidence_pack",
     "build_pending_confirmation_prompt",
     "citation_completeness_report",

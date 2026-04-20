@@ -145,7 +145,7 @@ export function CustomerAssistantEmbedPreview({
         const detail = typeof errorPayload?.detail === 'string' ? errorPayload.detail : ''
         if (detail.includes('Embed session signing secret is not configured')) {
           throw new Error(
-            'Backend embed signing secret is missing. Set UZONE_EMBED_SESSION_SIGNING_SECRET in uzone/.env and restart the backend.',
+            'Backend embed signing secret is missing. Set UZONE_EMBED_SESSION_SIGNING_SECRET in .env and restart the backend.',
           )
         }
         throw new Error(

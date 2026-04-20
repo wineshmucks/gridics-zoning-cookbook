@@ -1,63 +1,8 @@
-import {
-  ASSISTANT_MODEL_PROVIDER_OPTIONS,
-  CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
-} from './assistantTargetIds'
+import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 
 export const assistantProviderKeyFields = [
   { id: 'gemini', label: 'Gemini API key', fieldName: 'providerKeyGemini' },
 ] as const
-
-export const modelTargetFields = [
-  {
-    id: CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
-    label: 'Customer zoning team',
-    providerFieldName: 'targetProviderCustomerZoningAgent',
-    modelFieldName: 'targetModelCustomerZoningAgent',
-    baseUrlFieldName: 'targetBaseUrlCustomerZoningAgent',
-  },
-  {
-    id: 'parcel-data-agent',
-    label: 'Parcel data agent',
-    providerFieldName: 'targetProviderParcelDataAgent',
-    modelFieldName: 'targetModelParcelDataAgent',
-    baseUrlFieldName: 'targetBaseUrlParcelDataAgent',
-  },
-  {
-    id: 'code-researcher-agent',
-    label: 'Code researcher agent',
-    providerFieldName: 'targetProviderCodeResearcherAgent',
-    modelFieldName: 'targetModelCodeResearcherAgent',
-    baseUrlFieldName: 'targetBaseUrlCodeResearcherAgent',
-  },
-] as const
-
-export const assistantModelProviderOptions = ASSISTANT_MODEL_PROVIDER_OPTIONS
-
-export type AssistantModelTargetValue = {
-  provider: string | null
-  model_id: string | null
-  base_url: string | null
-}
-
-export function hasAssistantModelTarget(value: AssistantModelTargetValue | null | undefined) {
-  return Boolean(value && (value.provider || value.model_id || value.base_url))
-}
-
-export function describeAssistantModelTarget(value: AssistantModelTargetValue | null | undefined) {
-  if (!hasAssistantModelTarget(value)) {
-    return 'Model: code default'
-  }
-
-  const provider = value?.provider?.trim()
-  const modelId = value?.model_id?.trim()
-  const pieces = [provider, modelId].filter((piece): piece is string => Boolean(piece))
-
-  if (pieces.length === 0) {
-    return 'Model: code default'
-  }
-
-  return `Model: ${pieces.join(' / ')}`
-}
 
 export const agentPromptFields = [
   {

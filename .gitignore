@@ -223,7 +223,7 @@ pnpm-debug.log*
 
 # gridics-forge generated spreadsheets
 /gridics-forge/cache/
-/uzone/frontend/cache/
+/frontend/cache/
 /gridics-forge/out/
 /gridics-forge/**/*.xlsx
 !/gridics-forge/data/templates/*.xlsx
@@ -247,4 +247,4 @@ override.tf.json
 
 # Local AWS CLI installer artifacts
 awscliv2.zip
-uzone/deploy/aws/terraform/aws/
+deploy/aws/terraform/aws/

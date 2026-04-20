@@ -10,7 +10,6 @@ import { getClerkManagementClient } from '../../lib/clerk'
 import { getPermissionContext } from '../../lib/permissions'
 import {
   CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
-  normalizeAssistantModelProvider,
   normalizeAssistantTargetId,
 } from '../../components/assistantTargetIds'
 
@@ -45,6 +44,7 @@ export type CustomerRecord = {
   department_name: string
   is_active: boolean
   logo_path?: string | null
+  logo_source?: 'jurisdiction' | null
   settings_json?: {
     header_logo_path?: string | null
     market?: string | null
@@ -63,22 +63,6 @@ export type CustomerExperienceSettings = {
   assistant_disclaimer_text: string
   assistant_provider_keys: Record<string, string | null>
   assistant_agent_prompts: Record<string, string>
-  assistant_model_targets: Record<
-    string,
-    {
-      provider: string | null
-      model_id: string | null
-      base_url: string | null
-    }
-  >
-  code_default_assistant_model_targets: Record<
-    string,
-    {
-      provider: string | null
-      model_id: string | null
-      base_url: string | null
-    }
-  >
 }
 
 export type PlatformAssistantSettings = CustomerExperienceSettings
@@ -130,115 +114,60 @@ export type CustomerZoningKnowledgeStatus = {
   latest_run: CustomerZoningKnowledgeLatestRun | null
 }
 
-export type AssistantTelemetrySummary = {
-  total_runs: number
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  cost: number
-}
-
-export type AssistantTelemetryRun = {
-  id: string
-  run_scope: string
+export type AgnoConversationSummary = {
+  session_id: string
+  session_name: string
+  session_state: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+  user_id: string | null
   agent_id: string | null
-  conversation_id: string | null
-  message_id: string | null
-  run_id: string | null
-  session_id: string | null
-  model_provider: string | null
-  model_name: string | null
-  model_id: string | null
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  cost: number | null
-  time_to_first_token: number | null
-  duration_seconds: number | null
-  created_at: string
-  metrics_json: Record<string, unknown> | null
+  team_id: string | null
+  workflow_id: string | null
+  session_summary: {
+    summary?: string | null
+    updated_at?: string | null
+  } | null
+  metrics: {
+    input_tokens?: number | null
+    output_tokens?: number | null
+    total_tokens?: number | null
+    reasoning_tokens?: number | null
+    cache_read_tokens?: number | null
+    cache_write_tokens?: number | null
+    duration?: number | null
+    time_to_first_token?: number | null
+  } | null
+  total_tokens: number | null
+  metadata: Record<string, unknown> | null
 }
 
-export type AssistantTelemetryResponse = {
-  summary: AssistantTelemetrySummary
-  runs: AssistantTelemetryRun[]
-  pagination: {
-    page: number
-    page_size: number
-    total_runs: number
-    total_pages: number
-    has_previous: boolean
-    has_next: boolean
-    search: string | null
-  }
+export type AgnoConversationMessage = {
+  role?: string
+  content?: string
+  created_at?: number | string | null
+  from_history?: boolean | null
+  stop_after_tool_call?: boolean | null
+  metrics?: Record<string, unknown> | null
+  tool_calls?: Array<Record<string, unknown>> | null
 }
 
-export type AssistantConversationReviewTurn = {
-  id: string
-  created_at: string
-  message_id: string | null
-  run_id: string | null
-  agent_id: string | null
-  intent_type: string | null
-  jurisdiction_status: string | null
-  policy_decision: string | null
-  reason_code: string | null
-  payload_json: Record<string, unknown> | null
-}
-
-export type AssistantConversationReviewRun = AssistantTelemetryRun
-
-export type AssistantConversationReviewFeedback = {
-  id: string
-  clerk_user_id: string | null
-  agent_id: string
-  surface: string
-  conversation_id: string
-  message_id: string
-  run_id: string | null
-  feedback_value: string
-  message_excerpt: string | null
-  metadata_json: Record<string, unknown> | null
-  created_at: string
-}
-
-export type AssistantConversationReviewConversation = {
-  conversation_id: string
-  latest_at: string | null
-  turn_count: number
-  run_count: number
-  feedback_count: number
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  cost: number
-  turns: AssistantConversationReviewTurn[]
-  runs: AssistantConversationReviewRun[]
-  feedback: AssistantConversationReviewFeedback[]
-}
-
-export type AssistantConversationReviewResponse = {
-  summary: {
-    total_conversations: number
-    total_turns: number
-    total_runs: number
-    total_feedback: number
-    input_tokens: number
-    output_tokens: number
-    total_tokens: number
-    cost: number
-  }
-  conversations: AssistantConversationReviewConversation[]
-  pagination: {
-    page: number
-    page_size: number
-    total_conversations: number
-    total_pages: number
-    has_previous: boolean
-    has_next: boolean
-    search: string | null
-    conversation_id: string | null
-  }
+export type AgnoConversationDetail = {
+  session_id: string
+  session_name: string
+  user_id: string | null
+  team_id: string | null
+  session_summary: {
+    summary?: string | null
+    updated_at?: string | null
+  } | null
+  session_state: Record<string, unknown> | null
+  metrics: Record<string, unknown> | null
+  team_data: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  chat_history: AgnoConversationMessage[]
+  created_at: string | null
+  updated_at: string | null
 }
 
 export type CustomerZoningKnowledgeMutationState = {
@@ -417,6 +346,7 @@ export type DatabaseInfo = {
   total_size_bytes: number | null
   total_size_label: string | null
   tables: DatabaseTableSummary[]
+  agno_tables: DatabaseTableSummary[]
   dangling_tables: DanglingTableSummary[]
 }
 
@@ -514,8 +444,6 @@ function buildEmptyCustomerExperienceSettings(): CustomerExperienceSettings {
       gemini: null,
     },
     assistant_agent_prompts: {},
-    assistant_model_targets: {},
-    code_default_assistant_model_targets: {},
   }
 }
 
@@ -561,10 +489,6 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     record.assistant_provider_keys && typeof record.assistant_provider_keys === 'object'
       ? (record.assistant_provider_keys as Record<string, unknown>)
       : {}
-  const modelTargetsInput =
-    record.assistant_model_targets && typeof record.assistant_model_targets === 'object'
-      ? (record.assistant_model_targets as Record<string, unknown>)
-      : {}
   const agentPromptsInput =
     record.assistant_agent_prompts && typeof record.assistant_agent_prompts === 'object'
       ? (record.assistant_agent_prompts as Record<string, unknown>)
@@ -572,27 +496,6 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
 
   const assistant_provider_keys: CustomerExperienceSettings['assistant_provider_keys'] = {
     gemini: typeof providerKeysInput.gemini === 'string' ? providerKeysInput.gemini : null,
-  }
-
-  const assistant_model_targets: CustomerExperienceSettings['assistant_model_targets'] = {}
-  for (const [targetId, rawTarget] of Object.entries(modelTargetsInput)) {
-    if (!rawTarget || typeof rawTarget !== 'object') {
-      continue
-    }
-
-    const target = rawTarget as Record<string, unknown>
-    const normalizedProvider = normalizeAssistantModelProvider(
-      typeof target.provider === 'string' ? target.provider : null,
-    )
-    if (typeof target.provider === 'string' && target.provider.trim() && !normalizedProvider) {
-      continue
-    }
-
-    assistant_model_targets[normalizeAssistantTargetId(targetId)] = {
-      provider: normalizedProvider,
-      model_id: typeof target.model_id === 'string' ? target.model_id : null,
-      base_url: typeof target.base_url === 'string' ? target.base_url : null,
-    }
   }
 
   const assistant_agent_prompts: CustomerExperienceSettings['assistant_agent_prompts'] = {}
@@ -606,36 +509,16 @@ function normalizeCustomerExperienceSettings(payload: unknown): CustomerExperien
     }
   }
 
-  const code_default_assistant_model_targets: CustomerExperienceSettings['code_default_assistant_model_targets'] = {}
-  const codeDefaultTargetsInput =
-    record.code_default_assistant_model_targets && typeof record.code_default_assistant_model_targets === 'object'
-      ? (record.code_default_assistant_model_targets as Record<string, unknown>)
-      : {}
-  for (const [targetId, rawTarget] of Object.entries(codeDefaultTargetsInput)) {
-    if (!rawTarget || typeof rawTarget !== 'object') {
-      continue
-    }
-
-    const target = rawTarget as Record<string, unknown>
-    code_default_assistant_model_targets[normalizeAssistantTargetId(targetId)] = {
-      provider: typeof target.provider === 'string' ? target.provider : null,
-      model_id: typeof target.model_id === 'string' ? target.model_id : null,
-      base_url: typeof target.base_url === 'string' ? target.base_url : null,
-    }
-  }
-
   return {
     zoning_code_url: typeof record.zoning_code_url === 'string' ? record.zoning_code_url : null,
     assistant_disclaimer_text:
       hasOwnAssistantDisclaimerOverride(payload) &&
       typeof record.assistant_disclaimer_text === 'string' &&
-      record.assistant_disclaimer_text.trim()
+        record.assistant_disclaimer_text.trim()
         ? record.assistant_disclaimer_text.trim()
         : '',
     assistant_provider_keys,
     assistant_agent_prompts,
-    assistant_model_targets,
-    code_default_assistant_model_targets,
   }
 }
 
@@ -718,6 +601,7 @@ function normalizeDatabaseInfo(payload: unknown): DatabaseInfo {
     total_size_bytes: null,
     total_size_label: null,
     tables: [],
+    agno_tables: [],
     dangling_tables: [],
   }
 
@@ -731,6 +615,7 @@ function normalizeDatabaseInfo(payload: unknown): DatabaseInfo {
     total_size_bytes: typeof record.total_size_bytes === 'number' ? record.total_size_bytes : null,
     total_size_label: typeof record.total_size_label === 'string' ? record.total_size_label : null,
     tables: Array.isArray(record.tables) ? record.tables.map(normalizeDatabaseTableSummary) : [],
+    agno_tables: Array.isArray(record.agno_tables) ? record.agno_tables.map(normalizeDatabaseTableSummary) : [],
     dangling_tables: Array.isArray(record.dangling_tables)
       ? record.dangling_tables.map(normalizeDanglingTableSummary)
       : [],
@@ -1276,11 +1161,13 @@ export async function fetchCustomerRecord(
       (record.settings_json && typeof record.settings_json.header_logo_path === 'string'
         ? record.settings_json.header_logo_path
         : null)
+    const logoSource = normalizedLogoPath ? record.logo_source || 'jurisdiction' : null
 
     if (normalizedLogoPath) {
       return {
         ...record,
         logo_path: normalizedLogoPath,
+        logo_source: logoSource,
       }
     }
 
@@ -1299,6 +1186,7 @@ export async function fetchCustomerRecord(
         return {
           ...record,
           logo_path: publicConfig.logo_path,
+          logo_source: 'jurisdiction',
         }
       }
     }
@@ -1419,23 +1307,6 @@ export async function saveCustomerExperienceSettingsAction(
   const assistantProviderKeys = {
     gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
   }
-  const assistantModelTargets = {
-    [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]: {
-      provider: String(formData.get('targetProviderCustomerZoningAgent') || '').trim() || null,
-      model_id: String(formData.get('targetModelCustomerZoningAgent') || '').trim() || null,
-      base_url: String(formData.get('targetBaseUrlCustomerZoningAgent') || '').trim() || null,
-    },
-    'parcel-data-agent': {
-      provider: String(formData.get('targetProviderParcelDataAgent') || '').trim() || null,
-      model_id: String(formData.get('targetModelParcelDataAgent') || '').trim() || null,
-      base_url: String(formData.get('targetBaseUrlParcelDataAgent') || '').trim() || null,
-    },
-    'code-researcher-agent': {
-      provider: String(formData.get('targetProviderCodeResearcherAgent') || '').trim() || null,
-      model_id: String(formData.get('targetModelCodeResearcherAgent') || '').trim() || null,
-      base_url: String(formData.get('targetBaseUrlCodeResearcherAgent') || '').trim() || null,
-    },
-  }
   const assistantAgentPrompts = {
     [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
       String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
@@ -1462,7 +1333,6 @@ export async function saveCustomerExperienceSettingsAction(
           assistant_disclaimer_text: assistantDisclaimerText || null,
           assistant_provider_keys: assistantProviderKeys,
           assistant_agent_prompts: assistantAgentPrompts,
-          assistant_model_targets: assistantModelTargets,
         }),
       })
 
@@ -1607,157 +1477,55 @@ export async function fetchCustomerZoningKnowledgeStatus(
   }
 }
 
-export async function fetchCustomerAssistantTelemetry(
+export async function fetchCustomerConversations(
   organizationId: string,
-  options?: {
-    page?: number
-    search?: string
-  },
-): Promise<AssistantTelemetryResponse> {
+): Promise<{ client_id: string; total_count: number; items: AgnoConversationSummary[] }> {
   try {
-    const searchParams = new URLSearchParams()
-    if (options?.page && options.page > 1) {
-      searchParams.set('page', String(options.page))
-    }
-    if (options?.search?.trim()) {
-      searchParams.set('search', options.search.trim())
-    }
-
-    const queryString = searchParams.toString()
     const response = await fetch(
-      buildBackendApiUrl(`/api/admin/clients/${organizationId}/assistant-telemetry${queryString ? `?${queryString}` : ''}`),
-      {
-      cache: 'no-store',
-      },
-    )
-
-    if (!response.ok) {
-      return {
-        summary: {
-          total_runs: 0,
-          input_tokens: 0,
-          output_tokens: 0,
-          total_tokens: 0,
-          cost: 0,
-        },
-        runs: [],
-        pagination: {
-          page: 1,
-          page_size: 50,
-          total_runs: 0,
-          total_pages: 0,
-          has_previous: false,
-          has_next: false,
-          search: null,
-        },
-      }
-    }
-
-    return (await response.json()) as AssistantTelemetryResponse
-  } catch {
-    return {
-      summary: {
-        total_runs: 0,
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cost: 0,
-        },
-        runs: [],
-        pagination: {
-          page: 1,
-          page_size: 50,
-          total_runs: 0,
-          total_pages: 0,
-          has_previous: false,
-          has_next: false,
-          search: null,
-        },
-      }
-  }
-}
-
-export async function fetchCustomerAssistantConversationReview(
-  organizationId: string,
-  options?: {
-    page?: number
-    search?: string
-    conversationId?: string
-  },
-): Promise<AssistantConversationReviewResponse> {
-  try {
-    const searchParams = new URLSearchParams()
-    if (options?.page && options.page > 1) {
-      searchParams.set('page', String(options.page))
-    }
-    if (options?.search?.trim()) {
-      searchParams.set('search', options.search.trim())
-    }
-    if (options?.conversationId?.trim()) {
-      searchParams.set('conversation_id', options.conversationId.trim())
-    }
-
-    const queryString = searchParams.toString()
-    const response = await fetch(
-      buildBackendApiUrl(
-        `/api/admin/clients/${organizationId}/assistant-conversations${queryString ? `?${queryString}` : ''}`,
-      ),
+      buildBackendApiUrl(`/api/admin/clients/${organizationId}/conversations`),
       {
         cache: 'no-store',
       },
     )
 
     if (!response.ok) {
-      return {
-        summary: {
-          total_conversations: 0,
-          total_turns: 0,
-          total_runs: 0,
-          total_feedback: 0,
-          input_tokens: 0,
-          output_tokens: 0,
-          total_tokens: 0,
-          cost: 0,
-        },
-        conversations: [],
-        pagination: {
-          page: 1,
-          page_size: 20,
-          total_conversations: 0,
-          total_pages: 0,
-          has_previous: false,
-          has_next: false,
-          search: null,
-          conversation_id: null,
-        },
-      }
+      return { client_id: organizationId, total_count: 0, items: [] }
     }
 
-    return (await response.json()) as AssistantConversationReviewResponse
-  } catch {
+    const payload = (await response.json()) as { client_id?: string; total_count?: number; items?: AgnoConversationSummary[] }
     return {
-      summary: {
-        total_conversations: 0,
-        total_turns: 0,
-        total_runs: 0,
-        total_feedback: 0,
-        input_tokens: 0,
-        output_tokens: 0,
-        total_tokens: 0,
-        cost: 0,
-      },
-      conversations: [],
-      pagination: {
-        page: 1,
-        page_size: 20,
-        total_conversations: 0,
-        total_pages: 0,
-        has_previous: false,
-        has_next: false,
-        search: null,
-        conversation_id: null,
-      },
+      client_id: typeof payload?.client_id === 'string' ? payload.client_id : organizationId,
+      total_count: typeof payload?.total_count === 'number' ? payload.total_count : 0,
+      items: Array.isArray(payload?.items) ? payload.items : [],
     }
+  } catch {
+    return { client_id: organizationId, total_count: 0, items: [] }
+  }
+}
+
+export async function fetchCustomerConversation(
+  organizationId: string,
+  sessionId: string,
+): Promise<AgnoConversationDetail | null> {
+  if (!sessionId.trim()) {
+    return null
+  }
+
+  try {
+    const response = await fetch(
+      buildBackendApiUrl(`/api/admin/clients/${organizationId}/conversations/${encodeURIComponent(sessionId)}`),
+      {
+        cache: 'no-store',
+      },
+    )
+
+    if (!response.ok) {
+      return null
+    }
+
+    return (await response.json()) as AgnoConversationDetail
+  } catch {
+    return null
   }
 }
 

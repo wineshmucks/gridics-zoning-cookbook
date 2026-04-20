@@ -24,6 +24,7 @@ class TenantPublicConfig:
     public_site_title: str | None
     path_alias: str | None
     logo_path: str | None
+    logo_source: str | None
     standard_letter_fee_cents: int
     comprehensive_letter_fee_cents: int
     expedited_fee_cents: int
@@ -187,7 +188,24 @@ def get_tenant_logo_path(settings_json: dict | None) -> str | None:
         return None
 
     logo_path = settings_json.get(HEADER_LOGO_PATH_SETTING_KEY)
-    return logo_path if isinstance(logo_path, str) and logo_path.strip() else None
+    if not isinstance(logo_path, str):
+        return None
+
+    normalized_logo_path = logo_path.strip()
+    if not normalized_logo_path:
+        return None
+
+    if normalized_logo_path.startswith("/api/"):
+        return normalized_logo_path
+
+    api_index = normalized_logo_path.find("/api/")
+    if api_index >= 0:
+        return normalized_logo_path[api_index:]
+
+    if normalized_logo_path.startswith("api/"):
+        return f"/{normalized_logo_path}"
+
+    return normalized_logo_path
 
 
 def normalize_tenant_path_alias(value: str | None) -> str | None:
@@ -653,7 +671,7 @@ def get_home_page_content_record(
     except ProgrammingError as exc:
         # Allow environments that have the code deployed before the new migration runs
         # to fall back to generated default content instead of returning a 500.
-        if "shared_jurisdiction_home_page_content" in str(exc):
+        if "letters_jurisdiction_home_page_content" in str(exc) or "shared_jurisdiction_home_page_content" in str(exc):
             db.rollback()
             return None
         raise
@@ -661,7 +679,7 @@ def get_home_page_content_record(
 
 def has_home_page_content_storage(db: Session) -> bool:
     bind = db.get_bind()
-    return bool(bind is not None and inspect(bind).has_table("shared_jurisdiction_home_page_content"))
+    return bool(bind is not None and inspect(bind).has_table("letters_jurisdiction_home_page_content"))
 
 
 def _to_public_config(
@@ -687,6 +705,7 @@ def _to_public_config(
         public_site_title=jurisdiction_public_site_title,
         path_alias=get_tenant_path_alias(client.settings_json),
         logo_path=get_tenant_logo_path(client.settings_json),
+        logo_source="jurisdiction" if get_tenant_logo_path(client.settings_json) else None,
         standard_letter_fee_cents=client.standard_letter_fee_cents,
         comprehensive_letter_fee_cents=client.comprehensive_letter_fee_cents,
         expedited_fee_cents=client.expedited_fee_cents,

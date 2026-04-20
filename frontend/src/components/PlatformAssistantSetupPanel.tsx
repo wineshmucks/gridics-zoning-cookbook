@@ -6,11 +6,7 @@ import type { PlatformAssistantSettings } from '../app/admin/actions'
 import { buildApiUrl } from '../lib/api'
 import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
 import {
-  assistantModelProviderOptions,
   assistantProviderKeyFields,
-  describeAssistantModelTarget,
-  hasAssistantModelTarget,
-  modelTargetFields,
 } from './agenticSetupConfig'
 import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 
@@ -39,14 +35,11 @@ export function PlatformAssistantSetupPanel({
 
   const currentSettings = settingsState.settings || initialSettings
   const providerKeys = currentSettings.assistant_provider_keys || {}
-  const modelTargets = currentSettings.assistant_model_targets || {}
-  const codeDefaultModelTargets = currentSettings.code_default_assistant_model_targets || {}
   const agentPrompts = currentSettings.assistant_agent_prompts || {}
 
   const renderHiddenFields = (options: {
     includeDisclaimer?: boolean
     includeProviderKeys?: boolean
-    includeModelTargets?: boolean
     includeAgentPrompts?: boolean
   }) => (
     <>
@@ -62,35 +55,6 @@ export function PlatformAssistantSetupPanel({
               value={providerKeys[provider.id] || ''}
             />
           ))
-        : null}
-      {options.includeModelTargets
-        ? modelTargetFields.map((target) => {
-            const targetSettings = modelTargets[target.id] || {
-              provider: null,
-              model_id: null,
-              base_url: null,
-            }
-
-            return (
-              <span key={target.id}>
-                <input
-                  type="hidden"
-                  name={target.providerFieldName}
-                  value={targetSettings.provider || ''}
-                />
-                <input
-                  type="hidden"
-                  name={target.modelFieldName}
-                  value={targetSettings.model_id || ''}
-                />
-                <input
-                  type="hidden"
-                  name={target.baseUrlFieldName}
-                  value={targetSettings.base_url || ''}
-                />
-              </span>
-            )
-          })
         : null}
       {options.includeAgentPrompts
         ? Object.entries(agentPrompts).map(([targetId, prompt]) => (
@@ -141,23 +105,6 @@ export function PlatformAssistantSetupPanel({
       assistant_disclaimer_text: String(formData.get('assistantDisclaimerText') || '').trim() || null,
       assistant_provider_keys: {
         gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
-      },
-      assistant_model_targets: {
-        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]: {
-          provider: String(formData.get('targetProviderCustomerZoningAgent') || '').trim() || null,
-          model_id: String(formData.get('targetModelCustomerZoningAgent') || '').trim() || null,
-          base_url: String(formData.get('targetBaseUrlCustomerZoningAgent') || '').trim() || null,
-        },
-        'parcel-data-agent': {
-          provider: String(formData.get('targetProviderParcelDataAgent') || '').trim() || null,
-          model_id: String(formData.get('targetModelParcelDataAgent') || '').trim() || null,
-          base_url: String(formData.get('targetBaseUrlParcelDataAgent') || '').trim() || null,
-        },
-        'code-researcher-agent': {
-          provider: String(formData.get('targetProviderCodeResearcherAgent') || '').trim() || null,
-          model_id: String(formData.get('targetModelCodeResearcherAgent') || '').trim() || null,
-          base_url: String(formData.get('targetBaseUrlCodeResearcherAgent') || '').trim() || null,
-        },
       },
       assistant_agent_prompts: {
         [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
@@ -224,7 +171,6 @@ export function PlatformAssistantSetupPanel({
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeProviderKeys: true,
-              includeModelTargets: true,
               includeAgentPrompts: true,
             })}
             <label className="field field-full">
@@ -253,7 +199,6 @@ export function PlatformAssistantSetupPanel({
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeDisclaimer: true,
-              includeModelTargets: true,
               includeAgentPrompts: true,
             })}
             <label className="api-key-toggle">
@@ -289,72 +234,6 @@ export function PlatformAssistantSetupPanel({
             <div className="admin-form-actions">
               <button className="button button-fit" type="submit" disabled={pending}>
                 {pending ? 'Saving…' : 'Save Gemini key'}
-              </button>
-            </div>
-            {settingsState.error ? <div className="status-banner status-banner-error">{settingsState.error}</div> : null}
-            {settingsState.success ? (
-              <div className="status-banner status-banner-success">{settingsState.success}</div>
-            ) : null}
-          </form>
-        </FormSection>
-
-        <FormSection title="Models" icon="assistant">
-          <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
-            {renderHiddenFields({
-              includeDisclaimer: true,
-              includeProviderKeys: true,
-              includeAgentPrompts: true,
-            })}
-            <div className="admin-form-grid admin-form-grid-single">
-              {modelTargetFields.map((target) => {
-                const targetSettings = modelTargets[target.id] || {
-                  provider: null,
-                  model_id: null,
-                  base_url: null,
-                }
-
-                return (
-                  <div key={target.id} className="admin-target-row">
-                    <div className="admin-target-row-head">
-                      <strong>{target.label}</strong>
-                    </div>
-                    <div className="admin-form-grid admin-form-grid-3">
-                      <label className="field">
-                        <span>Provider</span>
-                          <select name={target.providerFieldName} defaultValue={targetSettings.provider || ''}>
-                            {assistantModelProviderOptions.map((option) => (
-                              <option key={option.value || 'default'} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                      </label>
-                      <label className="field">
-                        <span>Model ID</span>
-                        <input
-                          name={target.modelFieldName}
-                          type="text"
-                          placeholder="Use code default"
-                          defaultValue={targetSettings.model_id || ''}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Base URL</span>
-                        <input
-                          name={target.baseUrlFieldName}
-                          type="text"
-                          placeholder="Optional custom base URL"
-                          defaultValue={targetSettings.base_url || ''}
-                        />
-                      </label>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="admin-form-actions">
-              <button className="button button-fit" type="submit" disabled={pending}>
-                {pending ? 'Saving…' : 'Save baseline models'}
               </button>
             </div>
             {settingsState.error ? <div className="status-banner status-banner-error">{settingsState.error}</div> : null}

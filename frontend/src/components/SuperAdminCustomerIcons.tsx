@@ -1,6 +1,6 @@
 'use client'
 
-type IconName = 'jurisdiction-details' | 'assistant-setup' | 'assistant' | 'admin-users' | 'database' | 'back'
+type IconName = 'jurisdiction-details' | 'assistant-setup' | 'assistant' | 'admin-users' | 'database' | 'conversations' | 'back'
 
 function IconPath({ name }: { name: IconName }) {
   if (name === 'jurisdiction-details') {
@@ -43,6 +43,15 @@ function IconPath({ name }: { name: IconName }) {
     return (
       <path
         d="M12 3c-4.4 0-8 1.7-8 3.8v10.4C4 19.3 7.6 21 12 21s8-1.7 8-3.8V6.8C20 4.7 16.4 3 12 3Zm0 2c3.5 0 6 .9 6 1.8s-2.5 1.8-6 1.8-6-.9-6-1.8S8.5 5 12 5Zm0 14c-3.5 0-6-.9-6-1.8v-2c1.4 1 3.7 1.5 6 1.5s4.6-.5 6-1.5v2c0 .9-2.5 1.8-6 1.8Zm0-5.8c-3.5 0-6-.9-6-1.8v-2c1.4 1 3.7 1.5 6 1.5s4.6-.5 6-1.5v2c0 .9-2.5 1.8-6 1.8Z"
+        fill="currentColor"
+      />
+    )
+  }
+
+  if (name === 'conversations') {
+    return (
+      <path
+        d="M6.5 5.5A3.5 3.5 0 0 0 3 9v5a3.5 3.5 0 0 0 3.5 3.5H8l3 2.5c.7.6 1.8.1 1.8-.9v-1.6H17A3.5 3.5 0 0 0 20.5 14V9A3.5 3.5 0 0 0 17 5.5H6.5Zm2 4.7a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm3.5 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm3.5 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z"
         fill="currentColor"
       />
     )

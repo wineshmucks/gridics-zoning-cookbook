@@ -10,8 +10,8 @@ BASE_URL="${1%/}"
 for PATH_SUFFIX in "/" "/select-jurisdiction?returnTo=%2F"; do
   HTML="$(curl -fsSL "${BASE_URL}${PATH_SUFFIX}")"
 
-  if [[ "${HTML}" != *"<title>Gridics AI Assistant</title>"* ]]; then
-    echo "error: expected ${PATH_SUFFIX} title to be Gridics AI Assistant" >&2
+  if [[ "${HTML}" != *"<title>Gridics AI Zoning Assistant</title>"* ]]; then
+    echo "error: expected ${PATH_SUFFIX} title to be Gridics AI Zoning Assistant" >&2
     exit 1
   fi
 

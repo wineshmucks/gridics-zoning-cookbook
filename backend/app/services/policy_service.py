@@ -192,7 +192,7 @@ def evaluate_policy_decision(
             "reason": scope_reason,
         }
 
-    if scope_decision == "clarify_scope":
+    if scope_decision == "clarify_scope" and question_type != "specific_address":
         return {
             "decision": "clarify",
             "reason_code": "scope_ambiguous",

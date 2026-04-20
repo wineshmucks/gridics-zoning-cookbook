@@ -14,8 +14,6 @@ from typing import Any
 
 from app.schemas.assistant_guardrails import AssistantTurnContract
 from app.schemas.gridics import GridicsBuilding, GridicsDataRow, GridicsResponse
-from app.services.assistant_observability import append_policy_trace
-from app.services.assistant_turn_event_service import record_assistant_turn_event
 from app.services.confirmation_service import (
     build_pending_confirmation_prompt,
     classify_pending_property_confirmation_response,
@@ -114,6 +112,7 @@ _ADDRESS_STOP_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _ACTIVE_PROPERTY_SESSION_KEY = "active_property_context"
+_RECENT_STANDARDIZED_ADDRESS_SESSION_KEY = "recent_standardized_address"
 _PENDING_PROPERTY_CONFIRMATION_SESSION_KEY = "pending_property_confirmation"
 _JURISDICTION_LOCK_SESSION_KEY = "jurisdiction_lock"
 _FOLLOW_UP_PROPERTY_PATTERN = re.compile(
@@ -322,6 +321,36 @@ def _get_pending_property_confirmation(run_context: Any) -> dict[str, Any] | Non
     session_state = _get_session_state(run_context)
     pending_context = session_state.get(_PENDING_PROPERTY_CONFIRMATION_SESSION_KEY)
     return pending_context if isinstance(pending_context, dict) else None
+
+
+def _get_recent_standardized_address(run_context: Any) -> str | None:
+    session_state = _get_session_state(run_context)
+    recent_context = session_state.get(_RECENT_STANDARDIZED_ADDRESS_SESSION_KEY)
+    if not isinstance(recent_context, dict):
+        return None
+    standardized_address = str(recent_context.get("standardized_address") or "").strip()
+    return standardized_address or None
+
+
+def _prefer_recent_standardized_address(address: str | None, run_context: Any) -> str | None:
+    normalized_address = str(address or "").strip()
+    if not normalized_address:
+        return _get_recent_standardized_address(run_context)
+
+    recent_standardized_address = _get_recent_standardized_address(run_context)
+    if not recent_standardized_address:
+        return normalized_address
+
+    normalized_recent = _normalize_address_for_comparison(recent_standardized_address)
+    normalized_current = _normalize_address_for_comparison(normalized_address)
+
+    if normalized_current == normalized_recent:
+        return recent_standardized_address
+
+    if normalized_current and normalized_recent.startswith(normalized_current):
+        return recent_standardized_address
+
+    return normalized_address
 
 
 def _pending_property_confirmation_matches(
@@ -1011,6 +1040,13 @@ def _resolve_address_context(
         resolved_address = str(active_property_context.get("standardized_address") or "").strip() or None
         reused_active_property = bool(resolved_address)
 
+    recent_standardized_address = _get_recent_standardized_address(run_context)
+    reused_recent_standardized_address = False
+    if resolved_address and recent_standardized_address:
+        preferred_address = _prefer_recent_standardized_address(resolved_address, run_context)
+        reused_recent_standardized_address = preferred_address != str(resolved_address or "").strip()
+        resolved_address = preferred_address
+
     question_type = _classify_question(question, resolved_address)
     if question_type != "specific_address":
         return _ResolvedAddress(
@@ -1046,6 +1082,8 @@ def _resolve_address_context(
 
     if not normalized_zip_code and not _infer_zip(standardized_address) and tenant_default_zip:
         address_source = "tenant_default_zip"
+    elif reused_recent_standardized_address:
+        address_source = "session"
     elif provided_address:
         address_source = "confirmation" if reused_pending_confirmation else "argument"
     elif reused_active_property:
@@ -1134,14 +1172,6 @@ def _analyze_customer_zoning_request_once(
             query=question,
             question_type="general_zoning",
             tenant_client=tenant_client,
-        )
-        append_policy_trace(
-            run_context,
-            {
-                "question_type": "general_zoning",
-                "decision": policy_decision.get("decision"),
-                "reason_code": policy_decision.get("reason_code"),
-            },
         )
         if policy_decision["decision"] in {"deny", "clarify"}:
             return {
@@ -1243,17 +1273,6 @@ def _analyze_customer_zoning_request_once(
                 "resolved_address": resolution.confirmation_resolved_address,
             }
         )
-        append_policy_trace(
-            run_context,
-            {
-                "question_type": "specific_address",
-                "decision": policy_decision.get("decision"),
-                "reason_code": policy_decision.get("reason_code"),
-                "lookup_ready": False,
-                "jurisdiction_status": "needs_confirmation",
-                "confirmation_state": "clarify",
-            },
-        )
         return {
             "question_type": "specific_address",
             "policy_decision": policy_decision,
@@ -1339,16 +1358,6 @@ def _analyze_customer_zoning_request_once(
             standardized_address=resolution.standardized_address,
             lookup_ready=False,
         )
-        append_policy_trace(
-            run_context,
-            {
-                "question_type": "specific_address",
-                "decision": policy_decision.get("decision"),
-                "reason_code": policy_decision.get("reason_code"),
-                "lookup_ready": False,
-                "jurisdiction_status": jurisdiction_resolution.get("jurisdiction_status"),
-            },
-        )
         routing_reason = "A property address was detected, but it was missing enough location detail for a Gridics lookup."
         return {
             "question_type": "specific_address",
@@ -1383,54 +1392,12 @@ def _analyze_customer_zoning_request_once(
 
     client = gridics_client or _build_gridics_client()
     gridics_lookup_address = resolution.standardized_address or ""
-    if resolution.address_source == "query":
-        gridics_lookup_address = _extract_gridics_street_address(gridics_lookup_address)
     property_record = client.get_property_record(
         state_env=resolution.state_env or "",
         address=gridics_lookup_address,
         zip_code=resolution.zip_code or None,
     )
     zoning_summary = _extract_gridics_zoning_summary(property_record)
-
-    exact_standardized_match = not _addresses_differ(resolution.detected_address, resolution.standardized_address)
-    if _addresses_differ(resolution.detected_address, zoning_summary.get("resolved_address")) and not exact_standardized_match:
-        _set_pending_property_confirmation(
-            run_context,
-            requested_address=resolution.detected_address,
-            resolved_address=str(zoning_summary.get("resolved_address") or "").strip() or None,
-            state_env=resolution.state_env,
-            zip_code=resolution.zip_code,
-        )
-        confirmation_payload = _address_mismatch_confirmation_payload(
-            requested_address=resolution.detected_address,
-            resolved_address=zoning_summary.get("resolved_address"),
-            zoning_summary=zoning_summary,
-        )
-        return {
-            "question_type": "specific_address",
-            "policy_decision": evaluate_policy_decision(
-                query=question,
-                question_type="specific_address",
-                tenant_client=tenant_client,
-            ),
-            "request_classification": _request_classification_payload(
-                "specific_address",
-                "Gridics resolved a different parcel than the user requested, so confirmation is required.",
-            ),
-            "address_context": address_context,
-            "address_resolution": address_resolution,
-            "gridics": zoning_summary,
-            "follow_up_context": _follow_up_context_payload(
-                question_type="specific_address",
-                standardized_address=resolution.standardized_address,
-                state_env=resolution.state_env,
-                zip_code=resolution.zip_code,
-                zoning_summary=zoning_summary,
-            ),
-            "assistant_turn": confirmation_payload["assistant_turn"],
-            "response_guardrail": confirmation_payload,
-            "confidence_band": "needs_verification",
-        }
 
     policy_decision = evaluate_policy_decision(
         query=question,
@@ -1445,18 +1412,6 @@ def _analyze_customer_zoning_request_once(
         lookup_ready=True,
         resolved_city=str(zoning_summary.get("resolved_city") or ""),
         resolved_state=str(zoning_summary.get("resolved_state") or ""),
-    )
-    append_policy_trace(
-        run_context,
-        {
-            "question_type": "specific_address",
-            "decision": policy_decision.get("decision"),
-            "reason_code": policy_decision.get("reason_code"),
-            "lookup_ready": True,
-            "resolved_city": zoning_summary.get("resolved_city"),
-            "resolved_state": zoning_summary.get("resolved_state"),
-            "jurisdiction_status": jurisdiction_resolution.get("jurisdiction_status"),
-        },
     )
     lock = _get_jurisdiction_lock(run_context)
     if lock and lock.get("state") and str(lock.get("state")).lower() != str(zoning_summary.get("resolved_state") or "").lower():
@@ -1724,10 +1679,6 @@ def analyze_customer_zoning_request(
             result["message_id"] = str(metadata.get("message_id") or "") or None
             result["run_id"] = str(metadata.get("run_id") or "") or None
             result["agent_id"] = "customer-zoning-agent"
-            record_assistant_turn_event(
-                client_id=resolved_client_id,
-                payload=result,
-            )
 
             return result
 

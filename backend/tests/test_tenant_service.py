@@ -14,6 +14,7 @@ from app.services.tenant_service import (
     get_tenant_assistant_settings,
     get_tenant_assistant_agent_prompts,
     get_tenant_experience_settings,
+    get_tenant_logo_path,
     has_home_page_content_storage,
     invalidate_tenant_cache,
     merge_tenant_experience_settings,
@@ -53,6 +54,7 @@ def test_resolve_tenant_public_config_by_hostname_and_client_id() -> None:
             settings_json={
                 "agent_url": "https://agents.example.com/tenant-a",
                 "zoning_code_url": "https://codes.example.com/tenant-a/zoning",
+                "header_logo_path": "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png",
             },
         )
         db.add(tenant)
@@ -68,9 +70,12 @@ def test_resolve_tenant_public_config_by_hostname_and_client_id() -> None:
         assert by_host.client_id == "tenant-a"
         assert by_host.city_name == "Tenant A"
         assert by_host.agent_url == "https://agents.example.com/tenant-a"
+        assert by_host.logo_path == "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png"
+        assert by_host.logo_source == "jurisdiction"
         assert by_client_id is not None
         assert by_client_id.support_email == "tenant-a@example.com"
         assert by_client_id.zoning_code_url == "https://codes.example.com/tenant-a/zoning"
+        assert by_client_id.logo_source == "jurisdiction"
         assert by_client_id.home_page_content["contact"]["email"] == "tenant-a@example.com"
     finally:
         db.close()
@@ -135,6 +140,29 @@ def test_get_tenant_assistant_settings_normalizes_legacy_customer_zoning_agent_k
     assert prompts["customer_zoning_team"] == "New prompt"
 
 
+def test_get_tenant_logo_path_normalizes_api_asset_paths() -> None:
+    assert (
+        get_tenant_logo_path(
+            {
+                "header_logo_path": "st1-agentic.gridics.com/api/admin/assets/jurisdictions/tenant-a/logos/logo.png",
+            }
+        )
+        == "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png"
+    )
+    assert (
+        get_tenant_logo_path(
+            {
+                "header_logo_path": "https://st1-agentic.gridics.com/api/admin/assets/jurisdictions/tenant-a/logos/logo.png",
+            }
+        )
+        == "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png"
+    )
+    assert (
+        get_tenant_logo_path({"header_logo_path": "api/admin/assets/jurisdictions/tenant-a/logos/logo.png"})
+        == "/api/admin/assets/jurisdictions/tenant-a/logos/logo.png"
+    )
+
+
 def test_build_default_home_page_content_uses_tenant_specific_values() -> None:
     tenant = TenantClient(
         client_id="tenant-a",
@@ -160,7 +188,7 @@ def test_get_home_page_content_record_returns_none_when_table_is_missing() -> No
     db.scalar.side_effect = ProgrammingError(
         "SELECT ...",
         {},
-        Exception('relation "shared_jurisdiction_home_page_content" does not exist'),
+        Exception('relation "letters_jurisdiction_home_page_content" does not exist'),
     )
 
     result = get_home_page_content_record(db, "jur-1")

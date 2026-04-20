@@ -277,6 +277,8 @@ class TenantClientRead(BaseModel):
     contact_address: str | None
     is_active: bool
     settings_json: dict | None
+    logo_path: str | None = None
+    logo_source: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -296,12 +298,9 @@ class TenantExperienceSettingsRead(BaseModel):
     zoning_code_url: str | None
     assistant_disclaimer_text: str
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
-    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
-    code_default_assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     assistant_agent_prompts: dict[str, str] = Field(default_factory=dict)
     raw_settings_json: dict | None = None
     debug_received_assistant_provider_keys: dict[str, str | None] | None = None
-    debug_received_assistant_model_targets: dict[str, dict[str, str | None]] | None = None
     debug_received_assistant_agent_prompts: dict[str, str | None] | None = None
     debug_merged_settings_json: dict | None = None
 
@@ -310,15 +309,12 @@ class TenantExperienceSettingsUpdate(BaseModel):
     zoning_code_url: str | None = Field(default=None, max_length=2000)
     assistant_disclaimer_text: str | None = Field(default=None, max_length=8000)
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
-    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     assistant_agent_prompts: dict[str, str | None] = Field(default_factory=dict)
 
 
 class PlatformAssistantSettingsRead(BaseModel):
     assistant_disclaimer_text: str
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
-    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
-    code_default_assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     assistant_agent_prompts: dict[str, str] = Field(default_factory=dict)
     raw_settings_json: dict | None = None
 
@@ -326,7 +322,6 @@ class PlatformAssistantSettingsRead(BaseModel):
 class PlatformAssistantSettingsUpdate(BaseModel):
     assistant_disclaimer_text: str | None = Field(default=None, max_length=8000)
     assistant_provider_keys: dict[str, str | None] = Field(default_factory=dict)
-    assistant_model_targets: dict[str, dict[str, str | None]] = Field(default_factory=dict)
     assistant_agent_prompts: dict[str, str | None] = Field(default_factory=dict)
 
 
@@ -354,6 +349,7 @@ class DatabaseInfoRead(BaseModel):
     total_size_bytes: int | None = None
     total_size_label: str | None = None
     tables: list[DatabaseTableSummaryRead]
+    agno_tables: list[DatabaseTableSummaryRead] = Field(default_factory=list)
     dangling_tables: list[DanglingTableSummaryRead]
 
 

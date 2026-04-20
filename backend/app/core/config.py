@@ -62,6 +62,22 @@ class Settings(BaseSettings):
     zoning_embedder_requests_per_minute: float = 0.0
     zoning_agent_llm_model_id: str = "gemini-2.0-flash-001"
     zoning_agent_llm_api_key: str | None = None
+    agno_sessions_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AGNO_SESSIONS_ENABLED", "UZONE_AGNO_SESSIONS_ENABLED"),
+    )
+    agno_session_table: str = Field(
+        default="aos_sessions",
+        validation_alias=AliasChoices("AGNO_SESSION_TABLE", "UZONE_AGNO_SESSION_TABLE"),
+    )
+    agno_store_history_messages: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGNO_STORE_HISTORY_MESSAGES", "UZONE_AGNO_STORE_HISTORY_MESSAGES"),
+    )
+    agno_num_history_runs: int = Field(
+        default=5,
+        validation_alias=AliasChoices("AGNO_NUM_HISTORY_RUNS", "UZONE_AGNO_NUM_HISTORY_RUNS"),
+    )
 
 
 settings = Settings()

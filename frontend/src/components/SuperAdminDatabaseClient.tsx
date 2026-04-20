@@ -45,12 +45,14 @@ export function SuperAdminDatabaseClient({
 
   const resolvedInfo = state.databaseInfo || databaseInfo
   const sortedTables = sortTablesAlpha(resolvedInfo?.tables)
+  const sortedAgnoTables = sortTablesAlpha(resolvedInfo?.agno_tables)
   const sortedDanglingTables = sortTablesAlpha(resolvedInfo?.dangling_tables)
   const sortedCleanupTables = sortTablesAlpha(state.cleanupResult?.deleted_by_table)
   const totalSizeLabel = resolvedInfo?.total_size_label || 'Unavailable'
   const totalDanglingRows = countDanglingRows(resolvedInfo)
   const danglingTableCount = sortedDanglingTables.length
   const tableCount = sortedTables.length
+  const agnoTableCount = sortedAgnoTables.length
   const canClean = Boolean(totalDanglingRows > 0)
 
   return (
@@ -84,6 +86,10 @@ export function SuperAdminDatabaseClient({
         <div className="super-admin-metric">
           <span>Tables</span>
           <strong>{tableCount}</strong>
+        </div>
+        <div className="super-admin-metric">
+          <span>Agno tables</span>
+          <strong>{agnoTableCount}</strong>
         </div>
         <div className="super-admin-metric">
           <span>Dangling tables</span>
@@ -123,6 +129,38 @@ export function SuperAdminDatabaseClient({
           <div className="super-admin-empty-inline">
             <strong>No table data available.</strong>
             <span>Unable to load the database summary.</span>
+          </div>
+        )}
+      </section>
+
+      <section className="super-admin-section-shell">
+        <div className="super-admin-section-head">
+          <div className="admin-list-heading super-admin-section-heading">Agno tables</div>
+          <div className="super-admin-section-meta">{agnoTableCount} total</div>
+        </div>
+        {sortedAgnoTables.length ? (
+          <table className="table super-admin-table">
+            <thead>
+              <tr>
+                <th>Table</th>
+                <th className="is-numeric">Rows</th>
+                <th className="is-numeric">Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedAgnoTables.map((table) => (
+                <tr key={table.table_name}>
+                  <td>{table.table_name}</td>
+                  <td className="is-numeric">{table.row_count}</td>
+                  <td className="is-numeric">{formatSizeLabel(table)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="super-admin-empty-inline">
+            <strong>No Agno tables found.</strong>
+            <span>AgentOS has not provisioned session storage in this environment yet.</span>
           </div>
         )}
       </section>

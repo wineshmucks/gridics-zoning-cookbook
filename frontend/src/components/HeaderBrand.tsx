@@ -110,7 +110,8 @@ function StaticHeaderBrand({
   const showSubtitle = Boolean(departmentName.trim())
   const isGridicsBrand = brandVariant === 'gridics'
   const useGridicsFallback = isGridicsBrand || Boolean(currentOrgId)
-  const resolvedTitle = currentProduct === 'assistant' ? cityName : title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
+  const resolvedTitle =
+    currentProduct === 'assistant' ? title?.trim() || 'Gridics AI Zoning Assistant' : title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
   const subtitle = currentProduct === 'assistant' || isGridicsBrand ? '' : departmentName
 
   return (
@@ -169,14 +170,16 @@ function ClerkHeaderBrand({
     resolvedAdminMemberships.find((membership) => membership.organizationId === selectedAdminOrganizationId) ||
     null
   const resolvedCustomerName = currentCustomerName || selectedMembership?.organizationName || cityName
+  const isAssistantRoute = currentProduct === 'assistant'
   const resolvedTitle = isSuperAdminRoute
     ? 'SUPER ADMIN'
-    : isJurisdictionPickerRoute
-      ? title?.trim() || 'Gridics AI Assistant'
-      : isAdminRoute
-        ? selectedMembership?.organizationName || resolvedCustomerName
-        : resolvedCustomerName
-  const isAssistantRoute = currentProduct === 'assistant'
+    : isAssistantRoute
+      ? title?.trim() || 'Gridics AI Zoning Assistant'
+      : isJurisdictionPickerRoute
+        ? title?.trim() || 'Gridics AI Zoning Assistant'
+        : isAdminRoute
+          ? selectedMembership?.organizationName || resolvedCustomerName
+          : resolvedCustomerName
   const subtitle = isSuperAdminRoute || isJurisdictionPickerRoute || isAssistantRoute ? '' : departmentName
   const superAdminSubtitle = isSuperAdminRoute && (superAdminCustomerId || currentOrgId || superAdminCustomerName)
     ? {

@@ -152,45 +152,6 @@ class AssistantMessageFeedback(Base, TimestampMixin):
     metadata_json: Mapped[dict | None] = mapped_column(JSON)
 
 
-class AssistantTurnEvent(Base, TimestampMixin):
-    __tablename__ = "agentic_assistant_turn_events"
-
-    id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("shared_tenant_clients.id"))
-    conversation_id: Mapped[str | None] = mapped_column(String(255))
-    message_id: Mapped[str | None] = mapped_column(String(255))
-    run_id: Mapped[str | None] = mapped_column(String(255))
-    agent_id: Mapped[str | None] = mapped_column(String(100))
-    intent_type: Mapped[str | None] = mapped_column(String(50))
-    jurisdiction_status: Mapped[str | None] = mapped_column(String(50))
-    policy_decision: Mapped[str | None] = mapped_column(String(50))
-    reason_code: Mapped[str | None] = mapped_column(String(100))
-    payload_json: Mapped[dict | None] = mapped_column(JSON)
-
-
-class AssistantRunTelemetry(Base, TimestampMixin):
-    __tablename__ = "agentic_assistant_run_telemetry"
-
-    id: Mapped[str] = uuid_pk()
-    tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("shared_tenant_clients.id"))
-    run_scope: Mapped[str] = mapped_column(String(50), nullable=False, default="team")
-    agent_id: Mapped[str | None] = mapped_column(String(100))
-    conversation_id: Mapped[str | None] = mapped_column(String(255))
-    message_id: Mapped[str | None] = mapped_column(String(255))
-    run_id: Mapped[str | None] = mapped_column(String(255))
-    session_id: Mapped[str | None] = mapped_column(String(255))
-    model_provider: Mapped[str | None] = mapped_column(String(100))
-    model_name: Mapped[str | None] = mapped_column(String(100))
-    model_id: Mapped[str | None] = mapped_column(String(255))
-    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
-    time_to_first_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
-    duration_seconds: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
-    metrics_json: Mapped[dict | None] = mapped_column(JSON)
-
-
 class ZoningCodeIngestionRun(Base, TimestampMixin):
     __tablename__ = "agentic_zoning_code_ingestion_runs"
 
@@ -507,13 +468,13 @@ class Delivery(Base, TimestampMixin):
 
 
 class EmailTemplate(Base, TimestampMixin):
-    __tablename__ = "shared_email_templates"
+    __tablename__ = "letters_email_templates"
 
     id: Mapped[str] = uuid_pk()
     jurisdiction_id: Mapped[str | None] = mapped_column(ForeignKey("shared_jurisdictions.id"))
     tenant_client_id: Mapped[str | None] = mapped_column(ForeignKey("shared_tenant_clients.id"))
     owner_organization_id: Mapped[str | None] = mapped_column(String(255))
-    base_template_id: Mapped[str | None] = mapped_column(ForeignKey("shared_email_templates.id"))
+    base_template_id: Mapped[str | None] = mapped_column(ForeignKey("letters_email_templates.id"))
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     trigger_state: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -528,7 +489,7 @@ class EmailTemplate(Base, TimestampMixin):
 
 
 class JurisdictionHomePageContent(Base, TimestampMixin):
-    __tablename__ = "shared_jurisdiction_home_page_content"
+    __tablename__ = "letters_jurisdiction_home_page_content"
 
     id: Mapped[str] = uuid_pk()
     jurisdiction_id: Mapped[str] = mapped_column(ForeignKey("shared_jurisdictions.id"), nullable=False, unique=True)
@@ -540,11 +501,11 @@ class JurisdictionHomePageContent(Base, TimestampMixin):
 
 
 class EmailEvent(Base):
-    __tablename__ = "shared_email_events"
+    __tablename__ = "letters_email_events"
 
     id: Mapped[str] = uuid_pk()
     request_id: Mapped[str | None] = mapped_column(ForeignKey("letters_requests.id"))
-    template_id: Mapped[str | None] = mapped_column(ForeignKey("shared_email_templates.id"))
+    template_id: Mapped[str | None] = mapped_column(ForeignKey("letters_email_templates.id"))
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
     subject_rendered: Mapped[str] = mapped_column(Text, nullable=False)
     body_rendered: Mapped[str] = mapped_column(Text, nullable=False)
@@ -557,7 +518,7 @@ class EmailEvent(Base):
 
 
 class AuditLog(Base):
-    __tablename__ = "shared_audit_log"
+    __tablename__ = "letters_audit_log"
 
     id: Mapped[str] = uuid_pk()
     actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("shared_users.id"))

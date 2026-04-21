@@ -8,13 +8,13 @@ import types
 
 
 def _reload_customer_zoning_agent_module(monkeypatch):
-    captured: dict[str, object] = {}
+    captured_calls: list[dict[str, object]] = []
 
     def fake_create_agent(**kwargs):
-        captured["kwargs"] = kwargs
+        captured_calls.append(kwargs)
         return types.SimpleNamespace(**kwargs)
 
-    def fake_build_agent_model(*, model_id_override=None):
+    def fake_build_agent_model(*, model_id_override=None, **kwargs):
         return types.SimpleNamespace(id=model_id_override or "default-model")
 
     monkeypatch.setattr("app.agents.factory.create_agent", fake_create_agent)
@@ -22,7 +22,8 @@ def _reload_customer_zoning_agent_module(monkeypatch):
 
     sys.modules.pop("app.agents.customer_zoning_agent", None)
     module = importlib.import_module("app.agents.customer_zoning_agent")
-    return module, captured["kwargs"]
+    customer_agent_kwargs = next(kwargs for kwargs in captured_calls if kwargs.get("id") == "customer-zoning-agent")
+    return module, customer_agent_kwargs
 
 
 def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> None:
@@ -35,9 +36,11 @@ def test_customer_zoning_agent_uses_history_not_agentic_state(monkeypatch) -> No
     assert kwargs["add_history_to_context"] is True
     assert kwargs["num_history_runs"] == 5
     assert kwargs["max_tool_calls_from_history"] == 1
+    assert kwargs["add_dependencies_to_context"] is True
     assert kwargs["enable_agentic_state"] is False
     assert kwargs["compress_tool_results"] is True
     assert kwargs["tool_call_limit"] == 3
+    assert kwargs["tool_choice"] == "required"
     assert kwargs["use_instruction_tags"] is True
     assert "specialist" in kwargs["description"].lower()
     assert "Zoning Memorandum" in kwargs["expected_output"]
@@ -130,9 +133,9 @@ def test_customer_zoning_agent_analyze_request_reuses_recent_standardized_addres
     captured: dict[str, object] = {}
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             captured["gridics"] = {
-                "state_env": state_env,
+                "state_code": state_code,
                 "address": address,
                 "zip_code": zip_code,
             }
@@ -190,7 +193,7 @@ def test_customer_zoning_agent_analyze_request_reuses_recent_standardized_addres
 
     assert result["question_type"] == "specific_address"
     assert captured["gridics"] == {
-        "state_env": "fl",
+        "state_code": "fl",
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
@@ -202,15 +205,13 @@ def test_run_grounded_zoning_chat_uses_selected_property_context(monkeypatch) ->
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(module, "_load_tenant_client", lambda client_id: types.SimpleNamespace(city_name="Miami"))
-
-    class FakeOrchestrator:
-        def handle(self, request):
-            captured["request"] = request
-            return types.SimpleNamespace(
-                answer="Direct answer:\nGrounded response\n\nReferences:\n- Code section",
-            )
-
-    monkeypatch.setattr(module, "zoning_chat_orchestrator", FakeOrchestrator())
+    monkeypatch.setitem(
+        sys.modules,
+        "app.agents.zoning_agent_new",
+        types.SimpleNamespace(
+            run_experimental_zoning_chat=lambda **kwargs: captured.update(kwargs) or "Direct answer:\nExperimental response"
+        ),
+    )
 
     run_context = types.SimpleNamespace(
         metadata={},
@@ -229,14 +230,18 @@ def test_run_grounded_zoning_chat_uses_selected_property_context(monkeypatch) ->
         run_context=run_context,
     )
 
-    assert "Grounded response" in result
-    request = captured["request"]
-    assert request.jurisdiction_id == "miami"
-    assert request.jurisdiction_name == "Miami"
-    assert request.property_selected is True
-    assert request.property_address == "3148 Mary St"
-    assert request.property_lat == 25.7
-    assert request.property_lng == -80.2
+    assert "Experimental response" in result
+    assert captured == {
+        "question": "What are the setback requirements for this property?",
+        "jurisdiction_id": "miami",
+        "jurisdiction_name": "Miami",
+        "lat": 25.7,
+        "lng": -80.2,
+        "address": "3148 Mary St",
+        "session_id": None,
+    }
+    assert run_context.session_state["active_property_context"]["jurisdiction_id"] == "miami"
+    assert run_context.session_state["active_property_context"]["jurisdiction_name"] == "Miami"
 
 
 def test_run_grounded_zoning_chat_reuses_active_property_context_from_session(monkeypatch) -> None:
@@ -244,13 +249,13 @@ def test_run_grounded_zoning_chat_reuses_active_property_context_from_session(mo
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(module, "_load_tenant_client", lambda client_id: types.SimpleNamespace(city_name="Miami"))
-
-    class FakeOrchestrator:
-        def handle(self, request):
-            captured["request"] = request
-            return types.SimpleNamespace(answer="Direct answer:\nGrounded follow-up")
-
-    monkeypatch.setattr(module, "zoning_chat_orchestrator", FakeOrchestrator())
+    monkeypatch.setitem(
+        sys.modules,
+        "app.agents.zoning_agent_new",
+        types.SimpleNamespace(
+            run_experimental_zoning_chat=lambda **kwargs: captured.update(kwargs) or "Direct answer:\nExperimental follow-up"
+        ),
+    )
 
     run_context = types.SimpleNamespace(
         metadata={},
@@ -270,9 +275,57 @@ def test_run_grounded_zoning_chat_reuses_active_property_context_from_session(mo
         run_context=run_context,
     )
 
-    assert "Grounded follow-up" in result
-    request = captured["request"]
-    assert request.property_selected is True
-    assert request.property_address == "3148 Mary St"
-    assert request.property_lat == 25.7
-    assert request.property_lng == -80.2
+    assert "Experimental follow-up" in result
+    assert captured == {
+        "question": "How high can I build a fence?",
+        "jurisdiction_id": "miami",
+        "jurisdiction_name": "Miami",
+        "lat": 25.7,
+        "lng": -80.2,
+        "address": "3148 Mary St",
+        "session_id": None,
+    }
+    assert run_context.session_state["active_property_context"]["jurisdiction_id"] == "miami"
+    assert run_context.session_state["active_property_context"]["jurisdiction_name"] == "Miami"
+
+
+def test_run_grounded_zoning_chat_uses_experimental_agent_when_enabled(monkeypatch) -> None:
+    module = importlib.import_module("app.agents.customer_zoning_agent")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(module, "_load_tenant_client", lambda client_id: types.SimpleNamespace(city_name="Miami"))
+    monkeypatch.setitem(
+        sys.modules,
+        "app.agents.zoning_agent_new",
+        types.SimpleNamespace(
+            run_experimental_zoning_chat=lambda **kwargs: captured.update(kwargs) or "Direct answer:\nExperimental response"
+        ),
+    )
+
+    run_context = types.SimpleNamespace(
+        metadata={"session_id": "sess-123"},
+        dependencies={
+            "client_id": "miami",
+            "property": {
+                "place_name": "3148 Mary St",
+                "center": [-80.2, 25.7],
+            },
+        },
+        session_state={},
+    )
+
+    result = module.run_grounded_zoning_chat(
+        query="What can I build here?",
+        run_context=run_context,
+    )
+
+    assert "Experimental response" in result
+    assert captured == {
+        "question": "What can I build here?",
+        "jurisdiction_id": "miami",
+        "jurisdiction_name": "Miami",
+        "lat": 25.7,
+        "lng": -80.2,
+        "address": "3148 Mary St",
+        "session_id": "sess-123",
+    }

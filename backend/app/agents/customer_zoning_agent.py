@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -31,6 +32,18 @@ ASSISTANT_TARGET_IDS = [
     "customer_zoning_team",
     "customer-zoning-agent",
 ]
+
+logger = logging.getLogger(__name__)
+
+
+def _emit_agentos_console_log(message: str) -> None:
+    logger.warning(message)
+    print(message, flush=True)
+
+
+def _trim_for_log(value: Any, limit: int = 240) -> str:
+    text = str(value or "").strip()
+    return text[:limit]
 
 
 def _build_default_agent_model(target_id: str) -> Any:
@@ -66,6 +79,22 @@ def _get_run_context(target: Any = None, **kwargs: Any) -> Any:
             dependencies=kwargs.get("dependencies") or {},
             session_state=kwargs.get("session_state") or {},
         )
+    return None
+
+
+def _resolve_agentos_target_id(run_context: Any = None, target: Any = None, **kwargs: Any) -> str | None:
+    candidate_targets = (
+        target,
+        kwargs.get("agent"),
+        kwargs.get("team"),
+        getattr(run_context, "agent", None),
+        getattr(run_context, "team", None),
+        getattr(run_context, "target", None),
+    )
+    for candidate in candidate_targets:
+        target_id = str(getattr(candidate, "id", "") or "").strip()
+        if target_id:
+            return target_id
     return None
 
 
@@ -119,6 +148,12 @@ def _store_active_property_context(property_context: dict[str, Any] | None, run_
         return
     latitude, longitude = _coordinates_from_property(property_context)
     address = _address_from_property(property_context)
+    jurisdiction_id = _get_client_id(run_context, **kwargs)
+    jurisdiction_name = (
+        str(property_context.get("jurisdiction_name")).strip()
+        if isinstance(property_context.get("jurisdiction_name"), str) and str(property_context.get("jurisdiction_name")).strip()
+        else _resolve_jurisdiction_name(jurisdiction_id) if jurisdiction_id else None
+    )
     if latitude is None and longitude is None and not address:
         return
     session_state["active_property_context"] = {
@@ -129,6 +164,8 @@ def _store_active_property_context(property_context: dict[str, Any] | None, run_
         "longitude": longitude,
         "center": [longitude, latitude] if latitude is not None and longitude is not None else property_context.get("center"),
         "id": property_context.get("id"),
+        "jurisdiction_id": jurisdiction_id,
+        "jurisdiction_name": jurisdiction_name,
     }
 
 
@@ -137,7 +174,10 @@ def _resolve_effective_property_context(run_context: Any = None, **kwargs: Any) 
     if isinstance(property_context, dict):
         _store_active_property_context(property_context, run_context, **kwargs)
         return property_context
-    return _get_active_property_context(run_context, **kwargs)
+    property_context = _get_active_property_context(run_context, **kwargs)
+    if isinstance(property_context, dict):
+        _store_active_property_context(property_context, run_context, **kwargs)
+    return property_context
 
 
 def _coerce_context_float(value: Any) -> float | None:
@@ -232,7 +272,7 @@ def _sync_tool_module() -> None:
 def analyze_customer_zoning_request(
     query: str | None = None,
     address: str | None = None,
-    state_env: str | None = None,
+    state_code: str | None = None,
     zip_code: str | int | None = None,
     latitude: float | int | str | None = None,
     longitude: float | int | str | None = None,
@@ -255,7 +295,7 @@ def analyze_customer_zoning_request(
     return tool_module.analyze_customer_zoning_request(
         query=query,
         address=address,
-        state_env=state_env,
+        state_code=state_code,
         zip_code=zip_code,
         latitude=latitude,
         longitude=longitude,
@@ -283,8 +323,16 @@ def run_grounded_zoning_chat(
     """Run the new grounded zoning orchestration inside the AgentOS flow."""
 
     effective_run_context = run_context or kwargs.get("run_context")
+    active_target_id = _resolve_agentos_target_id(effective_run_context, **kwargs) or "customer_zoning_team"
     client_id = _get_client_id(effective_run_context, dependencies=kwargs.get("dependencies"))
     if not client_id:
+        _emit_agentos_console_log(
+            "[AgentOS] zoning run "
+            f"target={active_target_id} "
+            "client_id=missing "
+            f"property_selected={bool(_resolve_effective_property_context(effective_run_context, **kwargs))} "
+            f"query={str(query or '').strip()[:160]!r}"
+        )
         return (
             "Direct answer:\n"
             "I couldn't identify the active jurisdiction for this assistant run.\n\n"
@@ -301,20 +349,47 @@ def run_grounded_zoning_chat(
     property_context = _resolve_effective_property_context(effective_run_context, **kwargs)
     latitude, longitude = _coordinates_from_property(property_context)
     address = _address_from_property(property_context)
-
-    response = zoning_chat_orchestrator.handle(
-        ChatRequest(
-            jurisdiction_id=client_id,
-            jurisdiction_name=_resolve_jurisdiction_name(client_id),
-            question=str(query or "").strip(),
-            property_selected=property_context is not None,
-            property_address=address,
-            property_lat=latitude,
-            property_lng=longitude,
-            conversation_history=[],
-        )
+    dependencies = kwargs.get("dependencies")
+    metadata = kwargs.get("metadata")
+    _emit_agentos_console_log(
+        "[AgentOS] zoning run "
+        f"target={active_target_id} "
+        f"client_id={client_id} "
+        f"property_selected={property_context is not None} "
+        f"lat={latitude} lng={longitude} "
+        f"address={address!r} "
+        f"query={str(query or '').strip()[:160]!r}"
     )
-    return response.answer
+    _emit_agentos_console_log(
+        "[AgentOS] runtime context "
+        f"dependencies={_trim_for_log(dependencies)} "
+        f"metadata={_trim_for_log(metadata)} "
+        f"session_state={_trim_for_log(_get_session_state(effective_run_context, **kwargs))}"
+    )
+
+    from app.agents.zoning_agent_new import run_experimental_zoning_chat
+
+    session_id = None
+    effective_metadata = metadata
+    if not isinstance(effective_metadata, dict):
+        effective_metadata = getattr(effective_run_context, "metadata", None)
+    if isinstance(effective_metadata, dict):
+        session_id = (
+            str(effective_metadata.get("session_id") or "").strip()
+            or str(effective_metadata.get("conversation_id") or "").strip()
+            or str(effective_metadata.get("thread_id") or "").strip()
+            or None
+        )
+    print('[run_grounded_zoning_chat] Extracted session_id: {session_id}')
+    return run_experimental_zoning_chat(
+        question=str(query or "").strip(),
+        jurisdiction_id=client_id,
+        jurisdiction_name=_resolve_jurisdiction_name(client_id),
+        lat=latitude,
+        lng=longitude,
+        address=address,
+        session_id=session_id,
+    )
 
 
 def build_customer_zoning_team():
@@ -353,11 +428,13 @@ def build_customer_zoning_agent():
         add_history_to_context=AGNO_SESSION_KWARGS["add_history_to_context"],
         num_history_runs=AGNO_SESSION_KWARGS["num_history_runs"],
         store_history_messages=AGNO_SESSION_KWARGS["store_history_messages"],
+        add_dependencies_to_context=True,
         session_state={"active_property_context": None},
         add_session_state_to_context=True,
         compress_tool_results=True,
         max_tool_calls_from_history=1,
         tool_call_limit=3,
+        tool_choice="required",
         enable_agentic_state=False,
         markdown=True,
         use_instruction_tags=True,

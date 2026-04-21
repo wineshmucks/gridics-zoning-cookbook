@@ -323,7 +323,7 @@ def query_customer_zoning_code(
 def analyze_customer_zoning_request(
     query: str | None = None,
     address: str | None = None,
-    state_env: str | None = None,
+    state_code: str | None = None,
     zip_code: str | int | None = None,
     latitude: float | int | str | None = None,
     longitude: float | int | str | None = None,
@@ -347,7 +347,7 @@ def analyze_customer_zoning_request(
         result = _runtime.analyze_customer_zoning_request(
             query=query,
             address=address,
-            state_env=state_env,
+            state_code=state_code,
             zip_code=zip_code,
             latitude=latitude,
             longitude=longitude,

@@ -1,5 +1,6 @@
 """Direct Gridics proxy routes exposed from the UZone backend."""
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -7,6 +8,61 @@ from fastapi import APIRouter, HTTPException, Query
 from app.services.gridics_client import _build_gridics_client
 
 router = APIRouter()
+_STATE_CODE_PATTERN = re.compile(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?(?:\b|$)")
+_ZIP_CODE_PATTERN = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+_STATE_NAME_TO_CODE = {
+    "alabama": "al",
+    "alaska": "ak",
+    "arizona": "az",
+    "arkansas": "ar",
+    "california": "ca",
+    "colorado": "co",
+    "connecticut": "ct",
+    "delaware": "de",
+    "district of columbia": "dc",
+    "florida": "fl",
+    "georgia": "ga",
+    "hawaii": "hi",
+    "idaho": "id",
+    "illinois": "il",
+    "indiana": "in",
+    "iowa": "ia",
+    "kansas": "ks",
+    "kentucky": "ky",
+    "louisiana": "la",
+    "maine": "me",
+    "maryland": "md",
+    "massachusetts": "ma",
+    "michigan": "mi",
+    "minnesota": "mn",
+    "mississippi": "ms",
+    "missouri": "mo",
+    "montana": "mt",
+    "nebraska": "ne",
+    "nevada": "nv",
+    "new hampshire": "nh",
+    "new jersey": "nj",
+    "new mexico": "nm",
+    "new york": "ny",
+    "north carolina": "nc",
+    "north dakota": "nd",
+    "ohio": "oh",
+    "oklahoma": "ok",
+    "oregon": "or",
+    "pennsylvania": "pa",
+    "rhode island": "ri",
+    "south carolina": "sc",
+    "south dakota": "sd",
+    "tennessee": "tn",
+    "texas": "tx",
+    "utah": "ut",
+    "vermont": "vt",
+    "virginia": "va",
+    "washington": "wa",
+    "west virginia": "wv",
+    "wisconsin": "wi",
+    "wyoming": "wy",
+}
 
 
 def _first_present(*values: Any) -> Any:
@@ -49,6 +105,34 @@ def _find_key_like(value: Any, candidates: set[str]) -> Any:
             if found not in (None, ""):
                 return found
     return None
+
+
+def _infer_state_code_from_address(address: str | None) -> str | None:
+    normalized = str(address or "").strip()
+    if not normalized:
+        return None
+
+    upper_address = normalized.upper()
+    code_match = _STATE_CODE_PATTERN.search(upper_address)
+    if code_match:
+        return code_match.group(1).lower()
+
+    lower_address = normalized.lower()
+    for state_name, state_code in _STATE_NAME_TO_CODE.items():
+        if state_name in lower_address:
+            return state_code
+
+    return None
+
+
+def _infer_zip_code_from_address(address: str | None) -> str | None:
+    normalized = str(address or "").strip()
+    if not normalized:
+        return None
+    match = _ZIP_CODE_PATTERN.search(normalized)
+    if not match:
+        return None
+    return match.group(1)
 
 
 def _summarize_property_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +207,8 @@ def _summarize_property_record(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/property-record")
 def get_property_record(
-    state_env: str = Query(...),
+    state_code: str | None = Query(None),
+    legacy_state_env: str | None = Query(None, alias="state_env", include_in_schema=False),
     address: str | None = Query(None),
     zip_code: str | None = Query(None, alias="zipCode"),
     lat: float | None = Query(None),
@@ -131,18 +216,20 @@ def get_property_record(
 ) -> dict:
     try:
         client = _build_gridics_client()
+        resolved_state_code = state_code or legacy_state_env
         if isinstance(lat, (float, int)) and isinstance(lon, (float, int)):
             return client.get_property_record_by_coordinates(
-                state_env=state_env,
                 latitude=lat,
                 longitude=lon,
             )
         if address is None:
             raise ValueError("Provide either lat and lon, or address and zipCode.")
+        if resolved_state_code is None:
+            raise ValueError("state_code is required when address lookup is used.")
         if zip_code is None:
             raise ValueError("zipCode is required when address lookup is used.")
         return client.get_property_record(
-            state_env=state_env,
+            state_code=resolved_state_code,
             address=address,
             zip_code=zip_code,
         )
@@ -152,17 +239,31 @@ def get_property_record(
 
 @router.get("/property-summary")
 def get_property_summary(
-    state_env: str = Query(...),
+    address: str | None = Query(None),
     lat: float = Query(...),
     lon: float = Query(...),
 ) -> dict:
     try:
         client = _build_gridics_client()
-        payload = client.get_property_record_by_coordinates(
-            state_env=state_env,
-            latitude=lat,
-            longitude=lon,
-        )
+        try:
+            payload = client.get_property_record_by_coordinates(
+                latitude=lat,
+                longitude=lon,
+            )
+        except Exception as exc:
+            message = str(exc)
+            state_code = _infer_state_code_from_address(address)
+            zip_code = _infer_zip_code_from_address(address)
+            normalized_message = message.lower()
+            if "state_env" not in normalized_message or "required" not in normalized_message:
+                raise
+            if not state_code:
+                raise
+            payload = client.get_property_record(
+                state_code=state_code,
+                address=address or "",
+                zip_code=zip_code,
+            )
         return _summarize_property_record(payload)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

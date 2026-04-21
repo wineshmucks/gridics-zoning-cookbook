@@ -75,22 +75,22 @@ class GridicsClient:
     def get_markets(self) -> Dict[str, Any]:
         return self._get("/markets", {})
 
-    def get_property_record(self, state_env: str, address: str, zip_code: str) -> Dict[str, Any]:
+    def get_property_record(self, state_code: str, address: str, zip_code: str) -> Dict[str, Any]:
         return self._get(
             "/property-record",
-            {"state_env": state_env, "address": address, "zipCode": zip_code},
+            {"state_env": state_code, "address": address, "zipCode": zip_code},
         )
 
-    def get_property_record_by_coordinates(self, state_env: str, latitude: float, longitude: float) -> Dict[str, Any]:
+    def get_property_record_by_coordinates(self, latitude: float, longitude: float) -> Dict[str, Any]:
         return self._get(
             "/property-record",
-            {"state_env": state_env, "lat": latitude, "lon": longitude},
+            {"lat": latitude, "lon": longitude},
         )
 
-    def get_property_record_by_group_id(self, state_env: str, group_id: str) -> Dict[str, Any]:
+    def get_property_record_by_group_id(self, state_code: str, group_id: str) -> Dict[str, Any]:
         return self._get(
             "/property-record",
-            {"state_env": state_env, "groupId": group_id},
+            {"state_env": state_code, "groupId": group_id},
         )
 
     def _normalize_search_polygon(self, search_polygon: Any) -> str:

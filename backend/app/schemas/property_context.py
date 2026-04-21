@@ -24,6 +24,7 @@ class PropertyContextResult(BaseModel):
 
     status: PropertyLookupStatus = "unavailable"
     jurisdiction_id: str
+    jurisdiction_name: str | None = None
     address: str | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -46,4 +47,3 @@ class PropertyContextResult(BaseModel):
     facts_for_prompt: list[PropertyContextFact] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
     error_message: str | None = None
-

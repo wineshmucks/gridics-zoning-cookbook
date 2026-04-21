@@ -18,14 +18,19 @@ PUBLIC_CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS = (
     "customer-zoning-team",
     "customer-zoning-agent",
 )
-CUSTOMER_ZONING_TEAM_ROUTE_PREFIX = "/teams/customer_zoning_team"
+CUSTOMER_ZONING_AGENT_ROUTE_PREFIX = "/agents/customer-zoning-agent"
 
 logger = logging.getLogger(__name__)
 
 
+def _emit_agentos_console_log(message: str) -> None:
+    logger.warning(message)
+    print(message, flush=True)
+
+
 def _rewrite_scope_path(request, prefix: str) -> None:
     original_path = request.scope["path"]
-    rewritten = request.scope["path"].replace(prefix, CUSTOMER_ZONING_TEAM_ROUTE_PREFIX, 1)
+    rewritten = request.scope["path"].replace(prefix, CUSTOMER_ZONING_AGENT_ROUTE_PREFIX, 1)
     request.scope["path"] = rewritten
     if request.scope.get("raw_path") is not None:
         request.scope["raw_path"] = rewritten.encode()
@@ -71,16 +76,25 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
         path = request.scope.get("path", "")
         debug_enabled = request.query_params.get("debug") == "1" or request.headers.get("x-uzone-debug") == "1"
         is_agent_path = path.startswith("/agents/") or path.startswith("/api/agents/")
+        is_team_path = path.startswith("/teams/") or path.startswith("/api/teams/")
         started_at = time.perf_counter() if is_agent_path else None
-        if is_agent_path:
+        if is_agent_path or is_team_path:
+            route_parts = [part for part in path.split("/") if part]
+            route_kind = route_parts[0] if route_parts else None
+            route_target = route_parts[1] if len(route_parts) > 1 else None
             logger.debug(
-                "AgentOS request start method=%s path=%s query=%s debug=%s client=%s agent_os=%s",
+                "AgentOS request start method=%s path=%s route_kind=%s route_target=%s query=%s debug=%s client=%s agent_os=%s",
                 request.method,
                 path,
+                route_kind,
+                route_target,
                 request.scope.get("query_string", b"").decode(errors="ignore"),
                 debug_enabled,
                 request.client.host if request.client else None,
                 request.headers.get("x-uzone-clientid"),
+            )
+            _emit_agentos_console_log(
+                f"[AgentOS] request routed to {route_kind}={route_target} path={path}"
             )
         try:
             response = await call_next(request)

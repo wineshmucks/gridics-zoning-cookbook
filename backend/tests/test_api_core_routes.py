@@ -61,20 +61,19 @@ def test_dev_identities_switches_with_auth_provider(monkeypatch) -> None:
 
 def test_gridics_property_record_proxy_success_and_failure(monkeypatch) -> None:
     class FakeClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str) -> dict:
-            return {"state_env": state_env, "address": address, "zip_code": zip_code}
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str) -> dict:
+            return {"state_code": state_code, "address": address, "zip_code": zip_code}
 
-        def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float) -> dict:
-            return {"state_env": state_env, "latitude": latitude, "longitude": longitude}
+        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict:
+            return {"latitude": latitude, "longitude": longitude}
 
     monkeypatch.setattr(gridics, "_build_gridics_client", lambda: FakeClient())
-    assert gridics.get_property_record("il", "100 Main", "12345") == {
-        "state_env": "il",
+    assert gridics.get_property_record(state_code="il", address="100 Main", zip_code="12345") == {
+        "state_code": "il",
         "address": "100 Main",
         "zip_code": "12345",
     }
-    assert gridics.get_property_record("fl", None, None, 25.728, -80.243) == {
-        "state_env": "fl",
+    assert gridics.get_property_record(lat=25.728, lon=-80.243) == {
         "latitude": 25.728,
         "longitude": -80.243,
     }
@@ -84,7 +83,7 @@ def test_gridics_property_record_proxy_success_and_failure(monkeypatch) -> None:
 
     monkeypatch.setattr(gridics, "_build_gridics_client", _boom)
     try:
-        gridics.get_property_record("il", "100 Main", "12345")
+        gridics.get_property_record(state_code="il", address="100 Main", zip_code="12345")
     except HTTPException as exc:
         assert exc.status_code == 502
     else:
@@ -95,9 +94,8 @@ def test_gridics_property_summary_uses_coordinates_and_extracts_card_fields(monk
     captured: dict[str, object] = {}
 
     class FakeClient:
-        def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float) -> dict:
+        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict:
             captured["coordinates"] = {
-                "state_env": state_env,
                 "latitude": latitude,
                 "longitude": longitude,
             }
@@ -143,10 +141,9 @@ def test_gridics_property_summary_uses_coordinates_and_extracts_card_fields(monk
 
     monkeypatch.setattr(gridics, "_build_gridics_client", lambda: FakeClient())
 
-    result = gridics.get_property_summary("fl", 25.732787, -80.239989)
+    result = gridics.get_property_summary("3148 Mary Street, Miami, Florida 33133, United States", 25.732787, -80.239989)
 
     assert captured["coordinates"] == {
-        "state_env": "fl",
         "latitude": 25.732787,
         "longitude": -80.239989,
     }
@@ -204,12 +201,65 @@ def test_gridics_property_summary_translates_upstream_errors(monkeypatch) -> Non
     monkeypatch.setattr(gridics, "_build_gridics_client", _boom)
 
     try:
-        gridics.get_property_summary("fl", 25.7, -80.2)
+        gridics.get_property_summary(None, 25.7, -80.2)
     except HTTPException as exc:
         assert exc.status_code == 502
         assert "upstream failed" in str(exc.detail)
     else:
         raise AssertionError("Gridics summary should translate upstream errors into a 502.")
+
+
+def test_gridics_property_summary_retries_with_inferred_state_code_when_upstream_requires_it(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict:
+            captured["coordinates"] = {
+                "latitude": latitude,
+                "longitude": longitude,
+            }
+            raise RuntimeError('Gridics HTTP 400: {"status":"ERROR","message":"\\"state_env\\" is required"}')
+
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str | None) -> dict:
+            captured["fallback"] = {
+                "state_code": state_code,
+                "address": address,
+                "zip_code": zip_code,
+            }
+            return {
+                "data": [
+                    {
+                        "Address": "3148 MARY ST # 1",
+                        "City": "Miami",
+                        "State": "FL",
+                        "ZipCode": "33133",
+                        "Buildings": [
+                            {
+                                "ZoningAllowance": {"ZoneCombinationName": "T3-O"},
+                                "Envelope": {},
+                                "Overlays": [],
+                                "UsesStatistic": {},
+                                "Uses": [],
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(gridics, "_build_gridics_client", lambda: FakeClient())
+
+    result = gridics.get_property_summary("3148 Mary Street, Miami, Florida 33133, United States", 25.732787, -80.239989)
+
+    assert captured["coordinates"] == {
+        "latitude": 25.732787,
+        "longitude": -80.239989,
+    }
+    assert captured["fallback"] == {
+        "state_code": "fl",
+        "address": "3148 Mary Street, Miami, Florida 33133, United States",
+        "zip_code": "33133",
+    }
+    assert result["zoning_code"] == "T3-O"
 
 
 def test_download_document_success_and_missing_cases(tmp_path: Path) -> None:

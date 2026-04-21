@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -13,8 +14,68 @@ from app.services.gridics_client import _build_gridics_client, extract_compresse
 class PropertyLookupAdapter(Protocol):
     """Interface for property lookup providers."""
 
-    def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float) -> dict[str, Any]:
+    def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict[str, Any]:
         ...
+
+    def get_property_record(self, *, state_code: str, address: str, zip_code: str) -> dict[str, Any]:
+        ...
+
+
+_STATE_CODE_PATTERN = re.compile(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?(?:\b|$)")
+_ZIP_CODE_PATTERN = re.compile(r"\b(\d{5})(?:-\d{4})?\b")
+_STATE_NAME_TO_CODE = {
+    "alabama": "al",
+    "alaska": "ak",
+    "arizona": "az",
+    "arkansas": "ar",
+    "california": "ca",
+    "colorado": "co",
+    "connecticut": "ct",
+    "delaware": "de",
+    "district of columbia": "dc",
+    "florida": "fl",
+    "georgia": "ga",
+    "hawaii": "hi",
+    "idaho": "id",
+    "illinois": "il",
+    "indiana": "in",
+    "iowa": "ia",
+    "kansas": "ks",
+    "kentucky": "ky",
+    "louisiana": "la",
+    "maine": "me",
+    "maryland": "md",
+    "massachusetts": "ma",
+    "michigan": "mi",
+    "minnesota": "mn",
+    "mississippi": "ms",
+    "missouri": "mo",
+    "montana": "mt",
+    "nebraska": "ne",
+    "nevada": "nv",
+    "new hampshire": "nh",
+    "new jersey": "nj",
+    "new mexico": "nm",
+    "new york": "ny",
+    "north carolina": "nc",
+    "north dakota": "nd",
+    "ohio": "oh",
+    "oklahoma": "ok",
+    "oregon": "or",
+    "pennsylvania": "pa",
+    "rhode island": "ri",
+    "south carolina": "sc",
+    "south dakota": "sd",
+    "tennessee": "tn",
+    "texas": "tx",
+    "utah": "ut",
+    "vermont": "vt",
+    "virginia": "va",
+    "washington": "wa",
+    "west virginia": "wv",
+    "wisconsin": "wi",
+    "wyoming": "wy",
+}
 
 
 @dataclass(slots=True)
@@ -29,49 +90,55 @@ class GridicsPropertyContextService:
         lat: float,
         lng: float,
         jurisdiction_id: str,
+        jurisdiction_name: str | None = None,
         address: str | None = None,
     ) -> PropertyContextResult:
+        print(f'[GridicsPropertyContextService] Fetching property context for coordinates: ({lat}, {lng}) in jurisdiction {jurisdiction_name} (ID: {jurisdiction_id})')
         client = self.adapter or _build_gridics_client()
-        state_env = self._state_env_from_jurisdiction(jurisdiction_id)
-
-        try:
-            raw_response = client.get_property_record_by_coordinates(
-                state_env=state_env,
-                latitude=lat,
-                longitude=lng,
-            )
-        except Exception as exc:
-            return PropertyContextResult(
-                status="unavailable",
-                jurisdiction_id=jurisdiction_id,
-                address=address,
-                latitude=lat,
-                longitude=lng,
-                error_message=str(exc),
-                missing_fields=["parcel lookup"],
-            )
+        
+        raw_response = client.get_property_record_by_coordinates(
+            latitude=lat,
+            longitude=lng,
+        )
+        print(f'[GridicsPropertyContextService] response successfully retrieved from adapter/client: {bool(raw_response)}')
 
         return self._normalize(
             jurisdiction_id=jurisdiction_id,
+            jurisdiction_name=jurisdiction_name,
             address=address,
             lat=lat,
             lng=lng,
             raw_response=raw_response,
         )
 
-    @staticmethod
-    def _state_env_from_jurisdiction(jurisdiction_id: str) -> str:
-        normalized = (jurisdiction_id or "").strip().lower()
-        if len(normalized) == 2:
-            return normalized
-        if "-" in normalized:
-            return normalized.rsplit("-", 1)[-1][:2]
-        return normalized[:2] or "fl"
+    def _retry_with_address_lookup(
+        self,
+        *,
+        client: PropertyLookupAdapter,
+        address: str | None,
+        lookup_error: Exception,
+    ) -> dict[str, Any] | None:
+        message = str(lookup_error)
+        normalized_message = message.lower()
+        if "state_env" not in normalized_message or "required" not in normalized_message:
+            return None
+
+        state_code = self._infer_state_code_from_address(address)
+        zip_code = self._infer_zip_code_from_address(address)
+        if not address or not state_code or not zip_code:
+            return None
+
+        return client.get_property_record(
+            state_code=state_code,
+            address=address,
+            zip_code=zip_code,
+        )
 
     def _normalize(
         self,
         *,
         jurisdiction_id: str,
+        jurisdiction_name: str | None,
         address: str | None,
         lat: float,
         lng: float,
@@ -82,6 +149,7 @@ class GridicsPropertyContextService:
             return PropertyContextResult(
                 status="partial" if raw_response.get("data") else "not_found",
                 jurisdiction_id=jurisdiction_id,
+                jurisdiction_name=jurisdiction_name,
                 address=address,
                 latitude=lat,
                 longitude=lng,
@@ -96,7 +164,15 @@ class GridicsPropertyContextService:
                         metadata={"status": "partial"},
                     )
                 ],
-                facts_for_prompt=self._build_prompt_facts(address=address, lat=lat, lng=lng, zoning_district=None, future_land_use=None, overlays=[]),
+                facts_for_prompt=self._build_prompt_facts(
+                    jurisdiction_name=jurisdiction_name,
+                    address=address,
+                    lat=lat,
+                    lng=lng,
+                    zoning_district=None,
+                    future_land_use=None,
+                    overlays=[],
+                ),
             )
 
         property_info = summary.get("property_info") or {}
@@ -114,6 +190,7 @@ class GridicsPropertyContextService:
             missing_fields.append("height")
 
         facts = self._build_prompt_facts(
+            jurisdiction_name=jurisdiction_name,
             address=address or self._as_text(property_info.get("address")),
             lat=lat,
             lng=lng,
@@ -125,6 +202,7 @@ class GridicsPropertyContextService:
         return PropertyContextResult(
             status="success" if not missing_fields else "partial",
             jurisdiction_id=jurisdiction_id,
+            jurisdiction_name=jurisdiction_name,
             address=address or self._as_text(property_info.get("address")),
             latitude=lat,
             longitude=lng,
@@ -164,6 +242,7 @@ class GridicsPropertyContextService:
     @staticmethod
     def _build_prompt_facts(
         *,
+        jurisdiction_name: str | None,
         address: str | None,
         lat: float,
         lng: float,
@@ -171,10 +250,15 @@ class GridicsPropertyContextService:
         future_land_use: str | None,
         overlays: list[str],
     ) -> list[PropertyContextFact]:
-        facts = [
-            PropertyContextFact(label="Address", value=address or "Unknown"),
-            PropertyContextFact(label="Coordinates", value=f"{lat:.6f}, {lng:.6f}"),
-        ]
+        facts: list[PropertyContextFact] = []
+        if jurisdiction_name:
+            facts.append(PropertyContextFact(label="Jurisdiction", value=jurisdiction_name))
+        facts.extend(
+            [
+                PropertyContextFact(label="Address", value=address or "Unknown"),
+                PropertyContextFact(label="Coordinates", value=f"{lat:.6f}, {lng:.6f}"),
+            ]
+        )
         if zoning_district:
             facts.append(PropertyContextFact(label="Zoning district", value=zoning_district))
         if future_land_use:
@@ -201,3 +285,30 @@ class GridicsPropertyContextService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _infer_state_code_from_address(address: str | None) -> str | None:
+        normalized = str(address or "").strip()
+        if not normalized:
+            return None
+
+        upper_address = normalized.upper()
+        code_match = _STATE_CODE_PATTERN.search(upper_address)
+        if code_match:
+            return code_match.group(1).lower()
+
+        lower_address = normalized.lower()
+        for state_name, state_code in _STATE_NAME_TO_CODE.items():
+            if state_name in lower_address:
+                return state_code
+
+        return None
+
+    @staticmethod
+    def _infer_zip_code_from_address(address: str | None) -> str | None:
+        normalized = str(address or "").strip()
+        if not normalized:
+            return None
+        match = _ZIP_CODE_PATTERN.search(normalized)
+        if not match:
+            return None
+        return match.group(1)

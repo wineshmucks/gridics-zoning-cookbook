@@ -30,6 +30,11 @@ AGNO_SESSION_KWARGS = build_agno_session_kwargs(enable_history=True)
 _PROMPT_DIR = Path(__file__).with_name("prompts")
 
 
+def _emit_orchestrator_log(message: str) -> None:
+    logger.warning(message)
+    print(message, flush=True)
+
+
 def _render_conversation_history(request: ChatRequest) -> str:
     if not request.conversation_history:
         return "No prior conversation history."
@@ -139,6 +144,27 @@ class AgnoAnswerComposer:
             evidence=evidence,
             property_context=property_context,
         )
+        # Emit debug logs showing the property context and rendered prompt
+        try:
+            pc_dump = property_context.model_dump() if property_context is not None else None
+        except Exception:
+            try:
+                pc_dump = property_context.dict() if hasattr(property_context, "dict") else str(property_context)
+            except Exception:
+                pc_dump = str(property_context)
+        _emit_orchestrator_log(
+            "[AgnoAnswerComposer] composing answer "
+            f"jurisdiction={getattr(request, 'jurisdiction_id', None)!r} "
+            f"property_status={getattr(property_context, 'status', None)!r} "
+            f"property_context={pc_dump!r}"
+        )
+        _emit_orchestrator_log(
+            "[AgnoAnswerComposer] rendered_property_block=" + _render_property_prompt_block(property_context)[:2000]
+        )
+        _emit_orchestrator_log(
+            "[AgnoAnswerComposer] evidence_counts="
+            f"citations={len(evidence.citations)} knowledge_summary={len(evidence.knowledge_summary)}"
+        )
         response = self.agent.run(
             payload,
             output_schema=AnswerDraft,
@@ -149,6 +175,12 @@ class AgnoAnswerComposer:
             additional_context=additional_context,
         )
         content = getattr(response, "content", response)
+        # Log a short preview of the model response for debugging
+        try:
+            preview = content.model_dump_json() if hasattr(content, "model_dump_json") else str(content)
+        except Exception:
+            preview = str(content)
+        _emit_orchestrator_log("[AgnoAnswerComposer] model_response_preview=" + preview[:1000])
         if isinstance(content, AnswerDraft):
             return content
         if isinstance(content, dict):
@@ -166,6 +198,16 @@ class ZoningChatOrchestrator:
     grounding_service: GroundingService
 
     def handle(self, request: ChatRequest) -> ChatResponse:
+        _emit_orchestrator_log(
+            "[ZoningOrchestrator] request "
+            f"jurisdiction_id={request.jurisdiction_id} "
+            f"jurisdiction_name={request.jurisdiction_name!r} "
+            f"property_selected={request.property_selected} "
+            f"property_address={request.property_address!r} "
+            f"property_lat={request.property_lat} "
+            f"property_lng={request.property_lng} "
+            f"question={request.question[:200]!r}"
+        )
         guardrail = evaluate_zoning_scope(request.question)
         if not guardrail.in_scope:
             return ChatResponse(
@@ -189,6 +231,7 @@ class ZoningChatOrchestrator:
                 lat=request.property_lat,
                 lng=request.property_lng,
                 jurisdiction_id=request.jurisdiction_id,
+                jurisdiction_name=request.jurisdiction_name,
                 address=request.property_address,
             )
         elif request.property_selected:
@@ -200,7 +243,23 @@ class ZoningChatOrchestrator:
                 error_message="A property was selected, but coordinates were not provided.",
             )
 
+        _emit_orchestrator_log(
+            "[ZoningOrchestrator] property context "
+            f"status={getattr(property_context, 'status', None)!r} "
+            f"address={getattr(property_context, 'address', None)!r} "
+            f"zoning_district={getattr(property_context, 'zoning_district', None)!r} "
+            f"overlays={getattr(property_context, 'overlays', [])!r} "
+            f"missing_fields={getattr(property_context, 'missing_fields', [])!r}"
+        )
+
         evidence = self._build_evidence(knowledge_payload=knowledge_payload, property_context=property_context)
+        _emit_orchestrator_log(
+            "[ZoningOrchestrator] evidence "
+            f"knowledge_results={len(knowledge_payload.get('results') or [])} "
+            f"citations={len(evidence.citations)} "
+            f"property_summary_items={len(evidence.property_context_summary)} "
+            f"knowledge_summary_items={len(evidence.knowledge_summary)}"
+        )
         draft = self.composer.compose(
             request=request,
             guardrail=guardrail,

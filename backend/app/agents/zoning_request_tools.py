@@ -132,7 +132,7 @@ class _ResolvedAddress:
     provided_address: str | None
     detected_address: str | None
     standardized_address: str | None
-    state_env: str | None
+    state_code: str | None
     zip_code: str | None
     address_source: str | None
     reused_active_property: bool
@@ -146,9 +146,9 @@ class _ResolvedAddress:
 
     @property
     def lookup_ready(self) -> bool:
-        # Gridics can resolve from either Mapbox coordinates or an address/state context.
+        # Gridics can resolve from coordinates alone, or from an address/state context.
         has_coordinates = self.latitude is not None and self.longitude is not None
-        return bool(self.state_env and (has_coordinates or self.standardized_address))
+        return bool(has_coordinates or (self.state_code and self.standardized_address))
 
 
 @dataclass
@@ -209,16 +209,16 @@ class _GridicsClient:
             self.call_log.append(trace_entry)
             raise RuntimeError(f"Gridics connection error: {exc.reason}") from exc
 
-    def get_property_record(self, *, state_env: str, address: str, zip_code: str | None) -> dict[str, Any]:
+    def get_property_record(self, *, state_code: str, address: str, zip_code: str | None) -> dict[str, Any]:
         return self._get(
             "/property-record",
-            {"state_env": state_env, "address": address, "zipCode": zip_code},
+            {"state_env": state_code, "address": address, "zipCode": zip_code},
         )
 
-    def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float) -> dict[str, Any]:
+    def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict[str, Any]:
         return self._get(
             "/property-record",
-            {"state_env": state_env, "lat": latitude, "lon": longitude},
+            {"lat": latitude, "lon": longitude},
         )
 
 
@@ -381,7 +381,7 @@ def _set_active_property_context(
     run_context: Any,
     *,
     standardized_address: str,
-    state_env: str,
+    state_code: str | None,
     zip_code: str,
     zoning_summary: dict[str, Any],
     latitude: float | None = None,
@@ -391,9 +391,8 @@ def _set_active_property_context(
     if not isinstance(session_state, dict):
         return
 
-    session_state[_ACTIVE_PROPERTY_SESSION_KEY] = {
+    active_context: dict[str, Any] = {
         "standardized_address": standardized_address,
-        "state_env": state_env,
         "zip_code": zip_code,
         "zone_combination_name": zoning_summary.get("zone_combination_name"),
         "typology": zoning_summary.get("typology"),
@@ -401,6 +400,9 @@ def _set_active_property_context(
         "latitude": latitude,
         "longitude": longitude,
     }
+    if state_code:
+        active_context["state_code"] = state_code
+    session_state[_ACTIVE_PROPERTY_SESSION_KEY] = active_context
 
 
 def _set_pending_property_confirmation(
@@ -408,7 +410,7 @@ def _set_pending_property_confirmation(
     *,
     requested_address: str | None,
     resolved_address: str | None,
-    state_env: str | None,
+    state_code: str | None,
     zip_code: str | None,
 ) -> None:
     session_state = getattr(run_context, "session_state", None)
@@ -417,7 +419,7 @@ def _set_pending_property_confirmation(
     session_state[_PENDING_PROPERTY_CONFIRMATION_SESSION_KEY] = {
         "requested_address": requested_address,
         "resolved_address": resolved_address,
-        "state_env": state_env,
+        "state_code": state_code,
         "zip_code": zip_code,
     }
 
@@ -528,7 +530,7 @@ def _addresses_differ(requested: str | None, resolved: str | None) -> bool:
     return requested_normalized != resolved_normalized
 
 
-def _infer_state_env(address: str) -> str | None:
+def _infer_state_code(address: str) -> str | None:
     match = re.search(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?$", address.upper())
     if not match:
         return None
@@ -598,7 +600,7 @@ def _address_resolution_payload(resolution: _ResolvedAddress) -> dict[str, Any]:
     payload = {
         "input_address": resolution.detected_address,
         "standardized_address": resolution.standardized_address,
-        "resolved_state_env": resolution.state_env,
+        "resolved_state_code": resolution.state_code,
         "resolved_zip_code": resolution.zip_code,
         "address_source": resolution.address_source,
         "lookup_ready": resolution.lookup_ready,
@@ -613,7 +615,7 @@ def _follow_up_context_payload(
     *,
     question_type: str,
     standardized_address: str | None = None,
-    state_env: str | None = None,
+    state_code: str | None = None,
     zip_code: str | None = None,
     zoning_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -636,7 +638,7 @@ def _follow_up_context_payload(
         "context_type": "specific_address",
         "active_location": {
             "standardized_address": standardized_address,
-            "state_env": state_env,
+            "state_code": state_code,
             "zip_code": zip_code,
             "zone_combination_name": zoning_summary.get("zone_combination_name") if zoning_summary else None,
             "typology": zoning_summary.get("typology") if zoning_summary else None,
@@ -778,7 +780,7 @@ def _format_constraint_value(value: float | None, *, suffix: str = "") -> str:
 def _build_memo_context(
     *,
     standardized_address: str,
-    state_env: str,
+    state_code: str | None,
     zip_code: str,
     zoning_summary: dict[str, Any],
     sources: list[dict[str, Any]] | None = None,
@@ -786,8 +788,10 @@ def _build_memo_context(
     constraints = zoning_summary.get("constraints") or {}
     envelope_metrics = zoning_summary.get("envelope_metrics") or {}
     resolved_address = zoning_summary.get("resolved_address") or standardized_address
-    address_suffix = f"{state_env.upper()} {zip_code}"
-    if not str(resolved_address).upper().endswith(address_suffix):
+    resolved_state = str(zoning_summary.get("resolved_state") or "").strip().upper() or None
+    suffix_parts = [part for part in [resolved_state or (state_code.upper() if state_code else None), zip_code] if part]
+    address_suffix = " ".join(suffix_parts)
+    if address_suffix and not str(resolved_address).upper().endswith(address_suffix):
         resolved_address = f"{resolved_address}, {address_suffix}"
     max_height_ft = constraints.get("max_height_ft")
     max_height_stories = envelope_metrics.get("max_height_stories")
@@ -994,7 +998,7 @@ def _resolve_address_context(
     *,
     query: str,
     address: str | None,
-    state_env: str | None,
+    state_code: str | None,
     zip_code: str | int | None,
     run_context: Any,
     latitude: float | int | str | None = None,
@@ -1006,24 +1010,18 @@ def _resolve_address_context(
         raise ValueError("Query text is required.")
 
     tenant_settings = getattr(tenant_client, "settings_json", {}) or {}
-    tenant_default_state = str(tenant_settings.get("state") or "").strip().lower() or None
     tenant_default_zip = str(tenant_settings.get("default_zip_code") or "").strip() or None
 
     provided_address = address.strip() if isinstance(address, str) and address.strip() else None
     resolved_latitude = _coerce_float(latitude)
     resolved_longitude = _coerce_float(longitude)
     if resolved_latitude is not None and resolved_longitude is not None:
-        resolved_state_env = (
-            state_env.strip().lower()
-            if isinstance(state_env, str) and state_env.strip()
-            else _infer_state_env(provided_address or "") or tenant_default_state
-        )
         return _ResolvedAddress(
             question_type="specific_address",
             provided_address=provided_address,
             detected_address=provided_address,
             standardized_address=provided_address or "selected property",
-            state_env=resolved_state_env,
+            state_code=None,
             zip_code=_normalize_zip_code(zip_code) or tenant_default_zip,
             address_source="mapbox_coordinates",
             reused_active_property=False,
@@ -1075,7 +1073,7 @@ def _resolve_address_context(
                     provided_address=provided_address,
                     detected_address=None,
                     standardized_address=None,
-                    state_env=None,
+                    state_code=None,
                     zip_code=None,
                     address_source="confirmation",
                     reused_active_property=False,
@@ -1089,6 +1087,10 @@ def _resolve_address_context(
     if not resolved_address and _should_reuse_active_property(question, active_property_context):
         resolved_address = str(active_property_context.get("standardized_address") or "").strip() or None
         reused_active_property = bool(resolved_address)
+        if resolved_latitude is None:
+            resolved_latitude = _coerce_float(active_property_context.get("latitude"))
+        if resolved_longitude is None:
+            resolved_longitude = _coerce_float(active_property_context.get("longitude"))
 
     recent_standardized_address = _get_recent_standardized_address(run_context)
     reused_recent_standardized_address = False
@@ -1104,21 +1106,23 @@ def _resolve_address_context(
             provided_address=provided_address,
             detected_address=None,
             standardized_address=None,
-            state_env=None,
+            state_code=None,
             zip_code=None,
             address_source=None,
             reused_active_property=reused_active_property,
         )
 
     standardized_address = _standardize_address(resolved_address or "")
-    if isinstance(state_env, str) and state_env.strip():
-        resolved_state_env = state_env.strip().lower()
-    elif reused_pending_confirmation and pending_property_confirmation and pending_property_confirmation.get("state_env"):
-        resolved_state_env = str(pending_property_confirmation.get("state_env")).strip().lower()
-    elif reused_active_property and active_property_context and active_property_context.get("state_env"):
-        resolved_state_env = str(active_property_context.get("state_env")).strip().lower()
+    if resolved_latitude is not None and resolved_longitude is not None:
+        resolved_state_code = None
+    elif isinstance(state_code, str) and state_code.strip():
+        resolved_state_code = state_code.strip().lower()
+    elif reused_pending_confirmation and pending_property_confirmation and pending_property_confirmation.get("state_code"):
+        resolved_state_code = str(pending_property_confirmation.get("state_code")).strip().lower()
+    elif reused_active_property and active_property_context and active_property_context.get("state_code"):
+        resolved_state_code = str(active_property_context.get("state_code")).strip().lower()
     else:
-        resolved_state_env = _infer_state_env(standardized_address) or tenant_default_state
+        resolved_state_code = _infer_state_code(standardized_address)
 
     normalized_zip_code = _normalize_zip_code(zip_code)
     if normalized_zip_code:
@@ -1148,10 +1152,12 @@ def _resolve_address_context(
         provided_address=provided_address,
         detected_address=resolved_address,
         standardized_address=standardized_address,
-        state_env=resolved_state_env,
+        state_code=resolved_state_code,
         zip_code=resolved_zip_code,
         address_source=address_source,
         reused_active_property=reused_active_property,
+        latitude=resolved_latitude,
+        longitude=resolved_longitude,
     )
 
 
@@ -1188,7 +1194,7 @@ def _specific_address_context_payload(resolution: _ResolvedAddress) -> dict[str,
         "address_source": resolution.address_source,
         "detected_address": resolution.detected_address,
         "standardized_address": resolution.standardized_address,
-        "state_env": resolution.state_env,
+        "state_code": resolution.state_code,
         "zip_code": resolution.zip_code,
     }
     if resolution.latitude is not None and resolution.longitude is not None:
@@ -1343,13 +1349,13 @@ def _pending_confirmation_response(
             "address_source": "confirmation",
             "detected_address": resolution.confirmation_resolved_address,
             "standardized_address": resolution.confirmation_resolved_address,
-            "state_env": resolution.state_env,
+            "state_code": resolution.state_code,
             "zip_code": resolution.zip_code,
         },
         "address_resolution": {
             "input_address": resolution.confirmation_requested_address,
             "standardized_address": resolution.confirmation_resolved_address,
-            "resolved_state_env": resolution.state_env,
+            "resolved_state_code": resolution.state_code,
             "resolved_zip_code": resolution.zip_code,
             "address_source": "confirmation",
             "lookup_ready": False,
@@ -1375,7 +1381,7 @@ def _pending_confirmation_response(
         "follow_up_context": _follow_up_context_payload(
             question_type="specific_address",
             standardized_address=resolution.confirmation_resolved_address,
-            state_env=resolution.state_env,
+            state_code=resolution.state_code,
             zip_code=resolution.zip_code,
             zoning_summary=None,
         ),
@@ -1424,7 +1430,7 @@ def _missing_lookup_details_response(
         "follow_up_context": _follow_up_context_payload(
             question_type="specific_address",
             standardized_address=resolution.standardized_address,
-            state_env=resolution.state_env,
+            state_code=resolution.state_code,
             zip_code=resolution.zip_code,
             zoning_summary=None,
         ),
@@ -1460,7 +1466,7 @@ def _jurisdiction_block_response(
         "follow_up_context": _follow_up_context_payload(
             question_type="specific_address",
             standardized_address=resolution.standardized_address,
-            state_env=resolution.state_env,
+            state_code=resolution.state_code,
             zip_code=resolution.zip_code,
             zoning_summary=zoning_summary,
         ),
@@ -1503,7 +1509,7 @@ def _property_insufficient_evidence_response(
         "follow_up_context": _follow_up_context_payload(
             question_type="specific_address",
             standardized_address=resolution.standardized_address,
-            state_env=resolution.state_env,
+            state_code=resolution.state_code,
             zip_code=resolution.zip_code,
             zoning_summary=zoning_summary,
         ),
@@ -1554,7 +1560,7 @@ def _property_success_response(
         "follow_up_context": _follow_up_context_payload(
             question_type="specific_address",
             standardized_address=resolution.standardized_address,
-            state_env=resolution.state_env,
+            state_code=resolution.state_code,
             zip_code=resolution.zip_code,
             zoning_summary=zoning_summary,
         ),
@@ -1643,13 +1649,12 @@ def _analyze_customer_zoning_request_once(
     gridics_lookup_address = resolution.standardized_address or ""
     if resolution.latitude is not None and resolution.longitude is not None:
         property_record = client.get_property_record_by_coordinates(
-            state_env=resolution.state_env or "",
             latitude=resolution.latitude,
             longitude=resolution.longitude,
         )
     else:
         property_record = client.get_property_record(
-            state_env=resolution.state_env or "",
+            state_code=resolution.state_code or "",
             address=gridics_lookup_address,
             zip_code=resolution.zip_code or None,
         )
@@ -1751,7 +1756,7 @@ def _analyze_customer_zoning_request_once(
     _set_active_property_context(
         run_context,
         standardized_address=resolution.standardized_address or "",
-        state_env=resolution.state_env or "",
+        state_code=resolution.state_code,
         zip_code=resolution.zip_code or "",
         zoning_summary=zoning_summary,
         latitude=resolution.latitude,
@@ -1766,7 +1771,7 @@ def _analyze_customer_zoning_request_once(
 
     memo_context = _build_memo_context(
         standardized_address=resolution.standardized_address or "",
-        state_env=resolution.state_env or "",
+        state_code=resolution.state_code,
         zip_code=resolution.zip_code or "",
         zoning_summary=zoning_summary,
         sources=source_references,
@@ -1795,7 +1800,7 @@ def _analyze_customer_zoning_request_once(
 def analyze_customer_zoning_request(
     query: str | None = None,
     address: str | None = None,
-    state_env: str | None = None,
+    state_code: str | None = None,
     zip_code: str | int | None = None,
     latitude: float | int | str | None = None,
     longitude: float | int | str | None = None,
@@ -1829,7 +1834,7 @@ def analyze_customer_zoning_request(
             resolution = _resolve_address_context(
                 query=effective_query,
                 address=address,
-                state_env=state_env,
+                state_code=state_code,
                 zip_code=zip_code,
                 latitude=latitude,
                 longitude=longitude,
@@ -1886,7 +1891,7 @@ def analyze_customer_zoning_request(
                         "address_source": resolution.address_source,
                         "detected_address": resolution.detected_address,
                         "standardized_address": resolution.standardized_address,
-                        "state_env": resolution.state_env,
+                        "state_code": resolution.state_code,
                         "zip_code": resolution.zip_code,
                     }
                     if resolution and resolution.question_type == "specific_address"

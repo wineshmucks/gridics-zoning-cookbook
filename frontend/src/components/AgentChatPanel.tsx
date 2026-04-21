@@ -14,6 +14,7 @@ import {
   type PropertySummary,
 } from '../lib/property-summary'
 import AssistantLanding from './AssistantLanding'
+import { BuildingLogo } from './BuildingLogo'
 
 type AgentRunResponse = {
   session_id?: string
@@ -1319,6 +1320,7 @@ export function AgentChatPanel({
   agentId,
   backendBase,
   customerName,
+  assistantLogoUrl = null,
   clientId,
   defaultModelId = "",
   surface,
@@ -1337,6 +1339,7 @@ export function AgentChatPanel({
   agentId: string
   backendBase: string
   customerName: string
+  assistantLogoUrl?: string | null
   clientId: string | null
   defaultModelId?: string
   surface: string
@@ -1629,6 +1632,16 @@ export function AgentChatPanel({
     }
 
     body.set("metadata", JSON.stringify(metadataPayload))
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[assistant] runtime context payload", {
+        agentId,
+        sessionId: sessionIdRef.current,
+        message: trimmed,
+        dependencies: dependenciesPayload,
+        metadata: metadataPayload,
+      })
+    }
 
     let textContent = ""
     let runSteps = initialSteps
@@ -2279,8 +2292,8 @@ export function AgentChatPanel({
                 data-message-id={message.id}
               >
                 {message.role === "assistant" ? (
-                  <div className="agent-chat-message-avatar" aria-hidden="true">
-                    {customerName.slice(0, 1)}
+                  <div className={`agent-chat-message-avatar${assistantLogoUrl ? " has-image" : ""}`} aria-hidden="true">
+                    <BuildingLogo logoUrl={assistantLogoUrl} alt={`${customerName} logo`} />
                   </div>
                 ) : null}
                 <div className={`agent-chat-message agent-chat-message-${message.role}`}>

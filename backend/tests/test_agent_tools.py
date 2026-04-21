@@ -187,9 +187,9 @@ def test_analyze_customer_zoning_request_falls_back_when_query_is_missing(monkey
     captured: dict[str, object] = {}
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             captured["gridics"] = {
-                "state_env": state_env,
+                "state_code": state_code,
                 "address": address,
                 "zip_code": zip_code,
             }
@@ -237,7 +237,7 @@ def test_analyze_customer_zoning_request_falls_back_when_query_is_missing(monkey
 
     assert result["question_type"] == "specific_address"
     assert captured["gridics"] == {
-        "state_env": "fl",
+        "state_code": "fl",
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
@@ -248,9 +248,8 @@ def test_analyze_customer_zoning_request_uses_mapbox_coordinates_from_context(mo
     captured: dict[str, object] = {}
 
     class FakeGridicsClient:
-        def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float):
+        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float):
             captured["gridics"] = {
-                "state_env": state_env,
                 "latitude": latitude,
                 "longitude": longitude,
             }
@@ -307,7 +306,6 @@ def test_analyze_customer_zoning_request_uses_mapbox_coordinates_from_context(mo
     assert result["question_type"] == "specific_address"
     assert result["address_context"]["address_source"] == "mapbox_coordinates"
     assert captured["gridics"] == {
-        "state_env": "fl",
         "latitude": 25.728,
         "longitude": -80.243,
     }
@@ -319,9 +317,9 @@ def test_analyze_customer_zoning_request_reuses_recent_standardized_address(monk
     run_context = DummyRunContext({"client_id": "springfield"})
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             captured["gridics"] = {
-                "state_env": state_env,
+                "state_code": state_code,
                 "address": address,
                 "zip_code": zip_code,
             }
@@ -370,7 +368,7 @@ def test_analyze_customer_zoning_request_reuses_recent_standardized_address(monk
 
     assert result["question_type"] == "specific_address"
     assert captured["gridics"] == {
-        "state_env": "fl",
+        "state_code": "fl",
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
@@ -384,9 +382,9 @@ def test_analyze_customer_zoning_request_reuses_recent_standardized_address_from
     run_context = DummyRunContext({"client_id": "springfield"})
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             captured["gridics"] = {
-                "state_env": state_env,
+                "state_code": state_code,
                 "address": address,
                 "zip_code": zip_code,
             }
@@ -436,7 +434,7 @@ def test_analyze_customer_zoning_request_reuses_recent_standardized_address_from
 
     assert result["question_type"] == "specific_address"
     assert captured["gridics"] == {
-        "state_env": "fl",
+        "state_code": "fl",
         "address": "3148 Mary St, Miami, FL 33133",
         "zip_code": "33133",
     }
@@ -448,10 +446,10 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
     knowledge_calls: list[dict[str, object]] = []
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -511,13 +509,13 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
         "address_source": "query",
         "detected_address": "123 Main Street Apt 4, Springfield, IL 62704",
         "standardized_address": "123 Main Street, Springfield, IL 62704",
-        "state_env": "il",
+        "state_code": "il",
         "zip_code": "62704",
     }
     assert result["address_resolution"] == {
         "input_address": "123 Main Street Apt 4, Springfield, IL 62704",
         "standardized_address": "123 Main Street, Springfield, IL 62704",
-        "resolved_state_env": "il",
+        "resolved_state_code": "il",
         "resolved_zip_code": "62704",
         "address_source": "query",
         "lookup_ready": True,
@@ -526,7 +524,7 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
         "context_type": "specific_address",
         "active_location": {
             "standardized_address": "123 Main Street, Springfield, IL 62704",
-            "state_env": "il",
+            "state_code": "il",
             "zip_code": "62704",
             "zone_combination_name": "R-3 Mixed",
             "typology": "Residential",
@@ -572,7 +570,7 @@ def test_analyze_customer_zoning_request_enriches_address_questions_with_gridics
     }
     assert gridics_calls == [
         {
-            "state_env": "il",
+            "state_code": "il",
             "address": "123 Main Street, Springfield, IL 62704",
             "zip_code": "62704",
         }
@@ -599,7 +597,7 @@ def test_analyze_customer_zoning_request_continues_when_gridics_resolves_differe
     run_context = DummyRunContext({"client_id": "springfield"})
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             return {"mock": "payload"}
 
     def fake_build_gridics_client():
@@ -659,10 +657,10 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_con
     run_context = DummyRunContext({"client_id": "springfield"})
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -718,7 +716,7 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_con
     run_context.session_state["pending_property_confirmation"] = {
         "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
         "resolved_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33137",
     }
 
@@ -732,13 +730,13 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_con
         "address_source": "confirmation",
         "detected_address": "4729 NE MIAMI PL",
         "standardized_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33137",
     }
     assert second_result["address_resolution"] == {
         "input_address": "4729 NE MIAMI PL",
         "standardized_address": "4729 NE MIAMI PL",
-        "resolved_state_env": "fl",
+        "resolved_state_code": "fl",
         "resolved_zip_code": "33137",
         "address_source": "confirmation",
         "lookup_ready": True,
@@ -747,12 +745,12 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_when_user_con
     assert second_result["follow_up_context"]["active_location"]["standardized_address"] == "4729 NE MIAMI PL"
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "2060 Biscayne Blvd, Miami, FL 33137",
             "zip_code": "33137",
         },
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "4729 NE MIAMI PL",
             "zip_code": "33137",
         },
@@ -768,15 +766,15 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_for_affirmati
     run_context.session_state["pending_property_confirmation"] = {
         "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
         "resolved_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33137",
     }
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -832,14 +830,14 @@ def test_analyze_customer_zoning_request_uses_pending_confirmation_for_affirmati
         "address_source": "confirmation",
         "detected_address": "4729 NE MIAMI PL",
         "standardized_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33137",
     }
     assert result["assistant_turn"]["needs_clarification"] is False
     assert result["follow_up_context"]["active_location"]["standardized_address"] == "4729 NE MIAMI PL"
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "4729 NE MIAMI PL",
             "zip_code": "33137",
         }
@@ -856,7 +854,7 @@ def test_analyze_customer_zoning_request_keeps_pending_confirmation_open_when_re
     run_context.session_state["pending_property_confirmation"] = {
         "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
         "resolved_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33137",
     }
 
@@ -890,7 +888,7 @@ def test_analyze_customer_zoning_request_keeps_pending_confirmation_open_when_re
     assert run_context.session_state["pending_property_confirmation"] == {
         "requested_address": "2060 Biscayne Blvd, Miami, FL 33137",
         "resolved_address": "4729 NE MIAMI PL",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33137",
     }
 
@@ -914,12 +912,12 @@ def test_analyze_customer_zoning_request_requests_full_address_when_location_det
         "reason": "A property address was detected, but it was missing enough location detail for a Gridics lookup.",
     }
     assert result["address_context"]["standardized_address"] == "123 Main Street"
-    assert result["address_context"]["state_env"] is None
+    assert result["address_context"]["state_code"] is None
     assert result["address_context"]["zip_code"] is None
     assert result["address_resolution"] == {
         "input_address": "123 Main Street",
         "standardized_address": "123 Main Street",
-        "resolved_state_env": None,
+        "resolved_state_code": None,
         "resolved_zip_code": None,
         "address_source": "query",
         "lookup_ready": False,
@@ -928,7 +926,7 @@ def test_analyze_customer_zoning_request_requests_full_address_when_location_det
         "context_type": "specific_address",
         "active_location": {
             "standardized_address": "123 Main Street",
-            "state_env": None,
+            "state_code": None,
             "zip_code": None,
             "zone_combination_name": None,
             "typology": None,
@@ -946,10 +944,10 @@ def test_analyze_customer_zoning_request_accepts_integer_zip_code(monkeypatch) -
     gridics_calls: list[dict[str, str]] = []
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -986,7 +984,7 @@ def test_analyze_customer_zoning_request_accepts_integer_zip_code(monkeypatch) -
     result = analyze_customer_zoning_request(
         query="What can I build here?",
         address="123 Main Street, Miami, FL",
-        state_env="fl",
+        state_code="fl",
         zip_code=33138,
         run_context=DummyRunContext({"client_id": "springfield"}),
     )
@@ -995,7 +993,7 @@ def test_analyze_customer_zoning_request_accepts_integer_zip_code(monkeypatch) -
     assert result["address_resolution"]["resolved_zip_code"] == "33138"
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "123 Main Street, Miami, FL",
             "zip_code": "33138",
         }
@@ -1008,7 +1006,7 @@ def test_analyze_customer_zoning_request_runs_constraints_lookup_only_when_prima
     class FakeGridicsClient:
         call_log: list[dict[str, object]] = []
 
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             return {"mock": "payload"}
 
     def fake_build_gridics_client():
@@ -1058,7 +1056,7 @@ def test_analyze_customer_zoning_request_reuses_active_property_for_story_follow
     run_context = DummyRunContext({"client_id": "springfield"})
     run_context.session_state["active_property_context"] = {
         "standardized_address": "614 S Miami Ave, Miami, FL 33130",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33130",
         "zone_combination_name": "T6-48B-O",
         "typology": "Mixed Use",
@@ -1068,10 +1066,10 @@ def test_analyze_customer_zoning_request_reuses_active_property_for_story_follow
     }
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -1132,13 +1130,87 @@ def test_analyze_customer_zoning_request_reuses_active_property_for_story_follow
     assert result["follow_up_context"]["active_location"]["max_height_stories"] == 4
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "614 S Miami Ave, Miami, FL 33130",
             "zip_code": "33130",
         }
     ]
     assert knowledge_calls
     assert "614 S Miami Ave, Miami, FL 33130" in knowledge_calls[0]
+
+
+def test_analyze_customer_zoning_request_reuses_active_property_coordinates_without_state_code(monkeypatch) -> None:
+    gridics_calls: list[dict[str, float]] = []
+    knowledge_calls: list[str] = []
+    run_context = DummyRunContext({"client_id": "springfield"})
+    run_context.session_state["active_property_context"] = {
+        "standardized_address": "3148 Mary St, Miami, FL 33133",
+        "zip_code": "33133",
+        "latitude": 25.732787,
+        "longitude": -80.239989,
+        "zone_combination_name": "T3-O",
+        "typology": "Residential",
+        "constraints": {
+            "max_height_ft": 35,
+        },
+    }
+
+    class FakeGridicsClient:
+        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float):
+            gridics_calls.append(
+                {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                }
+            )
+            return {"mock": "payload"}
+
+    def fake_extract_gridics_zoning_summary(payload):
+        assert payload == {"mock": "payload"}
+        return {
+            "resolved_address": "3148 Mary St",
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "T3-O",
+            "typology": "Residential",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 0.8,
+                "max_units": 1,
+                "max_height_ft": 35,
+                "front_setback_ft": 20,
+                "side_setback_ft": 5,
+                "rear_setback_ft": 15,
+            },
+        }
+
+    def fake_query_customer_zoning_code(*, query: str, limit: int, client_id: str, run_context=None):
+        knowledge_calls.append(query)
+        return {"query": query, "results": [{"name": "Fence", "content": "Fence rules."}]}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr("app.agents.tools._extract_gridics_zoning_summary", fake_extract_gridics_zoning_summary)
+    monkeypatch.setattr("app.agents.tools.query_customer_zoning_code", fake_query_customer_zoning_code)
+
+    result = analyze_customer_zoning_request(
+        query="How high can I build a fence here?",
+        run_context=run_context,
+    )
+
+    assert result["question_type"] == "specific_address"
+    assert result["address_context"]["address_source"] == "session"
+    assert result["address_context"]["state_code"] is None
+    assert result["address_context"]["latitude"] == 25.732787
+    assert result["address_context"]["longitude"] == -80.239989
+    assert gridics_calls == [
+        {
+            "latitude": 25.732787,
+            "longitude": -80.239989,
+        }
+    ]
+    assert knowledge_calls
+    assert "3148 Mary St, Miami, FL 33133" in knowledge_calls[0]
 
 
 def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeypatch) -> None:
@@ -1151,13 +1223,13 @@ def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeyp
         def __init__(self) -> None:
             self.call_log: list[dict[str, object]] = []
 
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             attempts["count"] += 1
             self.call_log.append(
                 {
                     "request": {
                         "path": "/property-record",
-                        "params": {"state_env": state_env, "address": address, "zipCode": zip_code},
+                        "params": {"state_code": state_code, "address": address, "zipCode": zip_code},
                     }
                 }
             )
@@ -1207,7 +1279,7 @@ def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeyp
         "address_source": "query",
         "detected_address": "123 Main Street, Springfield, IL 62704",
         "standardized_address": "123 Main Street, Springfield, IL 62704",
-        "state_env": "il",
+        "state_code": "il",
         "zip_code": "62704",
     }
     assert result["retry_debug"]["failed_attempts"][0]["gridics_call_log"] == [
@@ -1215,7 +1287,7 @@ def test_analyze_customer_zoning_request_retries_and_returns_retry_debug(monkeyp
             "request": {
                     "path": "/property-record",
                     "params": {
-                        "state_env": "il",
+                        "state_code": "il",
                         "address": "123 Main Street, Springfield, IL 62704",
                         "zipCode": "62704",
                     },
@@ -1232,12 +1304,12 @@ def test_analyze_customer_zoning_request_returns_graceful_failure_payload_after_
         def __init__(self) -> None:
             self.call_log: list[dict[str, object]] = []
 
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             self.call_log.append(
                 {
                     "request": {
                         "path": "/property-record",
-                        "params": {"state_env": state_env, "address": address, "zipCode": zip_code},
+                        "params": {"state_code": state_code, "address": address, "zipCode": zip_code},
                     },
                     "error": "simulated upstream failure",
                 }
@@ -1266,7 +1338,7 @@ def test_analyze_customer_zoning_request_returns_graceful_failure_payload_after_
             "request": {
                     "path": "/property-record",
                     "params": {
-                        "state_env": "il",
+                        "state_code": "il",
                         "address": "123 Main Street, Springfield, IL 62704",
                         "zipCode": "62704",
                     },
@@ -1316,8 +1388,8 @@ def test_analyze_customer_zoning_request_uses_tenant_default_zip_for_lookup(monk
     class FakeGridicsClient:
         call_log: list[dict[str, object]] = []
 
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
-            gridics_calls.append({"state_env": state_env, "address": address, "zip_code": zip_code})
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
+            gridics_calls.append({"state_code": state_code, "address": address, "zip_code": zip_code})
             return {"mock": "payload"}
 
     monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
@@ -1358,7 +1430,7 @@ def test_analyze_customer_zoning_request_uses_tenant_default_zip_for_lookup(monk
     assert result["address_context"]["address_source"] == "tenant_default_zip"
     assert gridics_calls == [
         {
-            "state_env": "il",
+            "state_code": "il",
             "address": "123 Main Street, Springfield, IL",
             "zip_code": "62704",
         }
@@ -1371,8 +1443,8 @@ def test_analyze_customer_zoning_request_allows_zipless_lookup_when_city_and_sta
     class FakeGridicsClient:
         call_log: list[dict[str, object]] = []
 
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str | None):
-            gridics_calls.append({"state_env": state_env, "address": address, "zip_code": zip_code})
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str | None):
+            gridics_calls.append({"state_code": state_code, "address": address, "zip_code": zip_code})
             return {"mock": "payload"}
 
     monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
@@ -1406,11 +1478,11 @@ def test_analyze_customer_zoning_request_allows_zipless_lookup_when_city_and_sta
     )
 
     assert result["question_type"] == "specific_address"
-    assert result["address_context"]["state_env"] == "fl"
+    assert result["address_context"]["state_code"] == "fl"
     assert result["address_context"]["zip_code"] is None
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "3148 Mary St, Miami, FL",
             "zip_code": None,
         }
@@ -1421,10 +1493,10 @@ def test_analyze_customer_zoning_request_exact_address_skips_confirmation(monkey
     gridics_calls: list[dict[str, str | None]] = []
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str | None):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str | None):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -1466,7 +1538,7 @@ def test_analyze_customer_zoning_request_exact_address_skips_confirmation(monkey
         "address_source": "query",
         "detected_address": "3148 Mary St, Miami, FL 33133",
         "standardized_address": "3148 Mary St, Miami, FL 33133",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33133",
     }
     assert result["address_resolution"]["lookup_ready"] is True
@@ -1474,7 +1546,7 @@ def test_analyze_customer_zoning_request_exact_address_skips_confirmation(monkey
     assert result["assistant_turn"]["needs_clarification"] is False
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "3148 Mary St, Miami, FL 33133",
             "zip_code": "33133",
         }
@@ -1486,10 +1558,10 @@ def test_analyze_customer_zoning_request_fence_question_is_answer_ready(monkeypa
     knowledge_calls: list[dict[str, object]] = []
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str | None):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str | None):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -1544,7 +1616,7 @@ def test_analyze_customer_zoning_request_fence_question_is_answer_ready(monkeypa
     assert knowledge_calls
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "3148 Mary St, Miami, FL 33133",
             "zip_code": "33133",
         }
@@ -1556,10 +1628,10 @@ def test_analyze_customer_zoning_request_exact_standardized_address_skips_gridic
     knowledge_calls: list[dict[str, object]] = []
 
     class FakeGridicsClient:
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str | None):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str | None):
             gridics_calls.append(
                 {
-                    "state_env": state_env,
+                    "state_code": state_code,
                     "address": address,
                     "zip_code": zip_code,
                 }
@@ -1610,7 +1682,7 @@ def test_analyze_customer_zoning_request_exact_standardized_address_skips_gridic
         "address_source": "query",
         "detected_address": "3148 Mary St, Miami, FL 33133",
         "standardized_address": "3148 Mary St, Miami, FL 33133",
-        "state_env": "fl",
+        "state_code": "fl",
         "zip_code": "33133",
     }
     assert result["assistant_turn"]["needs_clarification"] is False
@@ -1620,7 +1692,7 @@ def test_analyze_customer_zoning_request_exact_standardized_address_skips_gridic
     assert "3148 Mary St, Miami, FL 33133" in str(knowledge_calls[0]["query"])
     assert gridics_calls == [
         {
-            "state_env": "fl",
+            "state_code": "fl",
             "address": "3148 Mary St, Miami, FL 33133",
             "zip_code": "33133",
         }
@@ -1631,7 +1703,7 @@ def test_analyze_customer_zoning_request_respects_jurisdiction_lock(monkeypatch)
     class FakeGridicsClient:
         call_log: list[dict[str, object]] = []
 
-        def get_property_record(self, *, state_env: str, address: str, zip_code: str):
+        def get_property_record(self, *, state_code: str, address: str, zip_code: str):
             return {"mock": "payload"}
 
     monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())

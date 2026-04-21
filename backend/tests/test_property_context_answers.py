@@ -55,6 +55,7 @@ class FakePropertyService:
         return PropertyContextResult(
             status="partial",
             jurisdiction_id="miami",
+            jurisdiction_name="Miami",
             address="3148 Mary St",
             latitude=25.7,
             longitude=-80.2,
@@ -109,6 +110,7 @@ def test_property_specific_question_uses_property_context() -> None:
             "lat": 25.7,
             "lng": -80.2,
             "jurisdiction_id": "miami",
+            "jurisdiction_name": "Miami",
             "address": "3148 Mary St",
         }
     ]
@@ -147,6 +149,7 @@ def test_property_context_is_rendered_into_prompt_input() -> None:
     assert "Property context:" in prompt
     assert "Address: 3148 Mary St" in prompt
     assert "Coordinates: 25.700000, -80.200000" in prompt
+    assert "Jurisdiction: Miami" in prompt
     assert "Zoning district: T4" in prompt
     assert "Property data status: partial" in prompt
     assert "Missing property fields: rear setback" in prompt

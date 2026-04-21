@@ -13,6 +13,21 @@ from app.services.compat import build_with_supported_kwargs
 
 def create_agent(**kwargs: Any) -> Agent:
     """Construct an Agent, omitting unsupported keyword args for older Agno builds."""
+    # If the model attached to the agent is a Gemini model, avoid passing the
+    # `tool_choice` string through to the underlying provider client because
+    # different provider libraries expect different enum/enum-like types and
+    # sending the raw legacy string can trigger validation errors (Gemini).
+    tool_choice = kwargs.get("tool_choice")
+    model = kwargs.get("model")
+    try:
+        provider = getattr(model, "_uzone_model_provider", None)
+    except Exception:
+        provider = None
+    if isinstance(tool_choice, str) and provider == "gemini":
+        # Remove the key so the provider client constructs its own function
+        # calling config rather than receiving an invalid literal string.
+        kwargs.pop("tool_choice", None)
+
     return build_with_supported_kwargs(Agent, **kwargs)
 
 

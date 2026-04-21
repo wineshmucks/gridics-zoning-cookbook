@@ -56,7 +56,7 @@ def test_build_agent_os_app_configures_persistent_db(monkeypatch) -> None:
     assert app.state.agent_os_kwargs["agents"] == ["agent-sentinel"]
 
 
-def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_registered_team(monkeypatch) -> None:
+def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_registered_agent(monkeypatch) -> None:
     class FakeAgentOS:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -64,8 +64,8 @@ def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_re
         def get_app(self):
             app = FastAPI()
 
-            @app.get("/teams/customer_zoning_team/runs")
-            def team_runs(request: Request):
+            @app.get("/agents/customer-zoning-agent/runs")
+            def agent_runs(request: Request):
                 return {"path": request.scope["path"]}
 
             return app
@@ -80,10 +80,10 @@ def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_re
     response = client.get("/api/agents/customer-zoning-team/runs")
 
     assert response.status_code == 200
-    assert response.json()["path"] == "/teams/customer_zoning_team/runs"
+    assert response.json()["path"] == "/agents/customer-zoning-agent/runs"
 
 
-def test_build_agent_os_app_rewrites_canonical_customer_zoning_team_path_to_registered_team(monkeypatch) -> None:
+def test_build_agent_os_app_rewrites_canonical_customer_zoning_team_path_to_registered_agent(monkeypatch) -> None:
     class FakeAgentOS:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -91,8 +91,8 @@ def test_build_agent_os_app_rewrites_canonical_customer_zoning_team_path_to_regi
         def get_app(self):
             app = FastAPI()
 
-            @app.get("/teams/customer_zoning_team/runs")
-            def team_runs(request: Request):
+            @app.get("/agents/customer-zoning-agent/runs")
+            def agent_runs(request: Request):
                 return {"path": request.scope["path"]}
 
             return app
@@ -107,7 +107,7 @@ def test_build_agent_os_app_rewrites_canonical_customer_zoning_team_path_to_regi
     response = client.get("/api/agents/customer_zoning_team/runs")
 
     assert response.status_code == 200
-    assert response.json()["path"] == "/teams/customer_zoning_team/runs"
+    assert response.json()["path"] == "/agents/customer-zoning-agent/runs"
 
 
 def test_build_agent_os_app_keeps_legacy_customer_zoning_agent_alias_working(monkeypatch) -> None:
@@ -118,8 +118,8 @@ def test_build_agent_os_app_keeps_legacy_customer_zoning_agent_alias_working(mon
         def get_app(self):
             app = FastAPI()
 
-            @app.get("/teams/customer_zoning_team/runs")
-            def team_runs(request: Request):
+            @app.get("/agents/customer-zoning-agent/runs")
+            def agent_runs(request: Request):
                 return {"path": request.scope["path"]}
 
             return app
@@ -134,7 +134,7 @@ def test_build_agent_os_app_keeps_legacy_customer_zoning_agent_alias_working(mon
     response = client.get("/agents/customer-zoning-agent/runs")
 
     assert response.status_code == 200
-    assert response.json()["path"] == "/teams/customer_zoning_team/runs"
+    assert response.json()["path"] == "/agents/customer-zoning-agent/runs"
 
 
 def test_build_agent_os_app_preserves_non_agent_routes(monkeypatch) -> None:

@@ -6,6 +6,13 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getAssistantContent, getAssistantContentDebug, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent'
 import { buildAssistantApiUrl } from '../lib/assistant-api'
+import {
+  buildPropertySummaryChips,
+  buildPropertySummaryUrl,
+  getMapboxCoordinates,
+  type MapboxFeature,
+  type PropertySummary,
+} from '../lib/property-summary'
 import AssistantLanding from './AssistantLanding'
 
 type AgentRunResponse = {
@@ -158,6 +165,114 @@ type AssistantToolbarState = {
   subtitle: string | null
   canCopy: boolean
   canNewChat: boolean
+}
+
+function AssistantPropertyBanner({
+  selectedProperty,
+  onClearProperty,
+}: {
+  selectedProperty: SelectedProperty
+  onClearProperty: () => void
+}) {
+  const MAPBOX_TOKEN = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').replace(/^"|"$/g, '')
+  const [propertySummary, setPropertySummary] = useState<PropertySummary | null>(null)
+  const [propertySummaryLoading, setPropertySummaryLoading] = useState(false)
+
+  function buildStaticMapUrl(center?: number[] | undefined) {
+    if (!center || center.length < 2 || !MAPBOX_TOKEN) return null
+    const [lng, lat] = center
+    const marker = `pin-s+2563eb(${lng},${lat})`
+    const zoom = 15
+    const size = '320x120@2x'
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${encodeURIComponent(marker)}/${lng},${lat},${zoom},0,0/${size}?access_token=${encodeURIComponent(
+      MAPBOX_TOKEN,
+    )}`
+  }
+
+  useEffect(() => {
+    if (!selectedProperty?.center || selectedProperty.center.length < 2) {
+      setPropertySummary(null)
+      setPropertySummaryLoading(false)
+      return
+    }
+
+    const summaryUrl = buildPropertySummaryUrl(selectedProperty as MapboxFeature)
+    if (!summaryUrl) return
+
+    const controller = new AbortController()
+    setPropertySummaryLoading(true)
+    fetch(summaryUrl, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Gridics summary request failed (${response.status}).`)
+        }
+        return response.json() as Promise<PropertySummary>
+      })
+      .then((summary) => setPropertySummary(summary))
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setPropertySummary(null)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPropertySummaryLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedProperty])
+
+  const propertyChips = buildPropertySummaryChips(propertySummary)
+  const mapImageUrl = buildStaticMapUrl(selectedProperty.center)
+
+  return (
+    <div className="agent-chat-property-banner assistant-property-card">
+      <div className="assistant-property-thumb">
+        {mapImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={mapImageUrl} alt={`Map of ${selectedProperty.place_name}`} loading="lazy" />
+        ) : (
+          <div className="assistant-property-thumb-placeholder" />
+        )}
+        {mapImageUrl ? <div className="assistant-property-thumb-marker" aria-hidden="true" /> : null}
+      </div>
+
+      <div className="assistant-property-content">
+        <div className="assistant-property-title-row">
+          <span className="assistant-property-location-icon" aria-hidden="true" />
+          <div className="assistant-property-card-address">{propertySummary?.address || selectedProperty.place_name}</div>
+          <button type="button" className="assistant-property-change-link" onClick={onClearProperty}>
+            Change
+          </button>
+        </div>
+        {propertySummaryLoading ? (
+          <div className="assistant-property-summary-status">Loading Gridics parcel summary...</div>
+        ) : propertyChips.length ? (
+          <div className="assistant-property-chips" aria-label="Gridics parcel summary">
+            {propertyChips.slice(0, 5).map((chip) => (
+              <span key={chip} className="assistant-property-chip">
+                {chip}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="assistant-property-actions">
+        <button
+          type="button"
+          className="button secondary assistant-property-map-button"
+          onClick={() => {
+            if (selectedProperty.center && selectedProperty.center.length >= 2) {
+              const { lng, lat } = getMapboxCoordinates(selectedProperty)
+              window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank')
+            }
+          }}
+        >
+          <span className="assistant-property-map-icon" aria-hidden="true" />
+          View on Map
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function summarizeToolResultForExport(rawResult: unknown): unknown {
@@ -1475,9 +1590,17 @@ export function AgentChatPanel({
       customer_name: customerName,
     }
     if (selectedProperty) {
+      const [longitude, latitude] =
+        Array.isArray(selectedProperty.center) && selectedProperty.center.length >= 2
+          ? selectedProperty.center
+          : [null, null]
       dependenciesPayload.property = {
+        id: selectedProperty.id,
         place_name: selectedProperty.place_name,
+        text: selectedProperty.text,
         center: selectedProperty.center || null,
+        latitude,
+        longitude,
       }
     }
 
@@ -1491,9 +1614,17 @@ export function AgentChatPanel({
       embed_token: embedSessionToken || undefined,
     }
     if (selectedProperty) {
+      const [longitude, latitude] =
+        Array.isArray(selectedProperty.center) && selectedProperty.center.length >= 2
+          ? selectedProperty.center
+          : [null, null]
       metadataPayload.property = {
+        id: selectedProperty.id,
         place_name: selectedProperty.place_name,
+        text: selectedProperty.text,
         center: selectedProperty.center || null,
+        latitude,
+        longitude,
       }
     }
 
@@ -1971,10 +2102,13 @@ export function AgentChatPanel({
     sessionIdRef.current = null
     runIdRef.current = null
     setMessages([])
+    setSelectedProperty(null)
     setInput("")
     setComposerError(null)
     setIsStreaming(false)
     setMessageFeedback({})
+    setCopyState("idle")
+    setCopyMessage(null)
   }
 
   const handleCopyConversation = async () => {
@@ -2126,6 +2260,9 @@ export function AgentChatPanel({
         </div>
         ) : null}
         <div ref={viewportRef} className={`agent-chat-log agent-chat-log-${variant}`}>
+          {selectedProperty && messages.length > 0 ? (
+            <AssistantPropertyBanner selectedProperty={selectedProperty} onClearProperty={() => setSelectedProperty(null)} />
+          ) : null}
           {messages.length === 0 ? (
             <AssistantLanding
               customerName={customerName}
@@ -2141,24 +2278,31 @@ export function AgentChatPanel({
                 className={`agent-chat-message-row agent-chat-message-row-${message.role}`}
                 data-message-id={message.id}
               >
-                <div className={`agent-chat-message agent-chat-message-${message.role}`}>
-                  <div className="agent-chat-message-header">
-                    <div className="agent-chat-message-role-block">
-                      <div className="agent-chat-message-role">
-                        {message.role === "user" ? "You" : `${customerName} Assistant`}
-                      </div>
-                      {message.role === "assistant" && message.status === "streaming" ? (
-                        <div className="agent-chat-message-status">
-                          <span className="assistant-streaming-dots" aria-hidden="true">
-                            <span />
-                            <span />
-                            <span />
-                          </span>
-                          Streaming
-                        </div>
-                      ) : null}
-                    </div>
+                {message.role === "assistant" ? (
+                  <div className="agent-chat-message-avatar" aria-hidden="true">
+                    {customerName.slice(0, 1)}
                   </div>
+                ) : null}
+                <div className={`agent-chat-message agent-chat-message-${message.role}`}>
+                  {variant === "chatgpt" ? null : (
+                    <div className="agent-chat-message-header">
+                      <div className="agent-chat-message-role-block">
+                        <div className="agent-chat-message-role">
+                          {message.role === "user" ? "You" : `${customerName} Assistant`}
+                        </div>
+                        {message.role === "assistant" && message.status === "streaming" ? (
+                          <div className="agent-chat-message-status">
+                            <span className="assistant-streaming-dots" aria-hidden="true">
+                              <span />
+                              <span />
+                              <span />
+                            </span>
+                            Streaming
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
                   <div className="assistant-ui-message-content">
                     {message.role === "user" ? (
                       <div className="assistant-ui-user-content">{message.content}</div>
@@ -2254,7 +2398,7 @@ export function AgentChatPanel({
                 name="input"
                 className="assistant-ui-input"
                 rows={1}
-                placeholder="Ask about setbacks, overlays, parking, lot coverage, or permitted uses"
+                placeholder={selectedProperty ? "Ask about this property..." : "Ask a general zoning question..."}
                 value={input}
                 disabled={isStreaming}
                 onChange={(event) => setInput(event.target.value)}
@@ -2276,6 +2420,11 @@ export function AgentChatPanel({
               >
                 {isStreaming ? "..." : "↑"}
               </button>
+              {!embeddedLayout ? (
+                <div className="assistant-ui-composer-hint assistant-ui-composer-hint-inbox">
+                  Press Enter to send • Shift+Enter for new line
+                </div>
+              ) : null}
             </label>
           </div>
           {showModelControls || !embeddedLayout ? (

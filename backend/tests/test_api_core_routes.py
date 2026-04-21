@@ -64,11 +64,19 @@ def test_gridics_property_record_proxy_success_and_failure(monkeypatch) -> None:
         def get_property_record(self, *, state_env: str, address: str, zip_code: str) -> dict:
             return {"state_env": state_env, "address": address, "zip_code": zip_code}
 
+        def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float) -> dict:
+            return {"state_env": state_env, "latitude": latitude, "longitude": longitude}
+
     monkeypatch.setattr(gridics, "_build_gridics_client", lambda: FakeClient())
     assert gridics.get_property_record("il", "100 Main", "12345") == {
         "state_env": "il",
         "address": "100 Main",
         "zip_code": "12345",
+    }
+    assert gridics.get_property_record("fl", None, None, 25.728, -80.243) == {
+        "state_env": "fl",
+        "latitude": 25.728,
+        "longitude": -80.243,
     }
 
     def _boom():
@@ -81,6 +89,127 @@ def test_gridics_property_record_proxy_success_and_failure(monkeypatch) -> None:
         assert exc.status_code == 502
     else:
         raise AssertionError("Gridics proxy should translate errors into a 502.")
+
+
+def test_gridics_property_summary_uses_coordinates_and_extracts_card_fields(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float) -> dict:
+            captured["coordinates"] = {
+                "state_env": state_env,
+                "latitude": latitude,
+                "longitude": longitude,
+            }
+            return {
+                "data": [
+                    {
+                        "Address": "3148 MARY ST # 1",
+                        "City": "Miami",
+                        "State": "FL",
+                        "ZipCode": "33133",
+                        "FolioNumber": "0141210900010",
+                        "GroupId": "2223af79c5324f8fe",
+                        "Buildings": [
+                            {
+                                "ZoningAllowance": {
+                                    "ZoneCombinationName": "T3-O",
+                                    "ZoningRegulationName": "Miami 21 Code",
+                                    "ZoningRegulationLink": "https://codehub.gridics.com/us/fl/miami",
+                                    "BuildingTypologyId": None,
+                                },
+                                "Envelope": {
+                                    "FloorAreaRatio": "0.8",
+                                    "DensityUnits": 3,
+                                    "TotalBuildingHeightFeet": 25,
+                                    "LotAreaFeet": "9,200",
+                                },
+                                "Overlays": [
+                                    {"Name": "City Future Land Use Duplex Residential"},
+                                    {"Name": "NCD-3 Coconut Grove"},
+                                    {"Name": "Transit Corridor"},
+                                ],
+                                "UsesStatistic": {"allowed": 10},
+                                "Uses": [
+                                    {"AllowedUsesName": "Allowed", "CalibrationUsesLabel": "Single-family"},
+                                    {"AllowedUsesName": "Allowed", "CalibrationUsesLabel": "Single-family"},
+                                    {"AllowedUsesName": "Not Allowed", "CalibrationUsesLabel": "Industrial"},
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(gridics, "_build_gridics_client", lambda: FakeClient())
+
+    result = gridics.get_property_summary("fl", 25.732787, -80.239989)
+
+    assert captured["coordinates"] == {
+        "state_env": "fl",
+        "latitude": 25.732787,
+        "longitude": -80.239989,
+    }
+    assert result == {
+        "address": "3148 MARY ST # 1, Miami, FL, 33133",
+        "folio_number": "0141210900010",
+        "group_id": "2223af79c5324f8fe",
+        "zoning_code": "T3-O",
+        "zoning_regulation_name": "Miami 21 Code",
+        "zoning_regulation_link": "https://codehub.gridics.com/us/fl/miami",
+        "land_use": "Duplex Residential",
+        "typology": None,
+        "overlays": ["NCD-3 Coconut Grove", "Transit Corridor"],
+        "max_far": 0.8,
+        "max_units": 3,
+        "max_height_ft": 25,
+        "lot_area_sqft": 9200.0,
+        "allowed_use_count": 10,
+        "allowed_uses": ["Single-family"],
+    }
+
+
+def test_gridics_property_summary_prefers_explicit_land_use_field(monkeypatch) -> None:
+    payload = {
+        "data": [
+            {
+                "Address": "100 MAIN ST",
+                "City": "Miami",
+                "State": "FL",
+                "ZipCode": "33130",
+                "FutureLandUse": "Urban Core",
+                "Buildings": [
+                    {
+                        "ZoningAllowance": {"ZoneCombinationName": "T6-8-O"},
+                        "Envelope": {},
+                        "Overlays": [{"Name": "City Future Land Use Duplex Residential"}, {"Name": "TOD Area"}],
+                        "UsesStatistic": {},
+                        "Uses": [],
+                    }
+                ],
+            }
+        ]
+    }
+
+    result = gridics._summarize_property_record(payload)
+
+    assert result["land_use"] == "Urban Core"
+    assert result["overlays"] == ["TOD Area"]
+
+
+def test_gridics_property_summary_translates_upstream_errors(monkeypatch) -> None:
+    def _boom():
+        raise RuntimeError("upstream failed")
+
+    monkeypatch.setattr(gridics, "_build_gridics_client", _boom)
+
+    try:
+        gridics.get_property_summary("fl", 25.7, -80.2)
+    except HTTPException as exc:
+        assert exc.status_code == 502
+        assert "upstream failed" in str(exc.detail)
+    else:
+        raise AssertionError("Gridics summary should translate upstream errors into a 502.")
 
 
 def test_download_document_success_and_missing_cases(tmp_path: Path) -> None:

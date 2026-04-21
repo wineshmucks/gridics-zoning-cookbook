@@ -149,14 +149,13 @@ function AuthControls({
             <button
               className="assistant-chat-toolbar-icon-button assistant-header-control-button"
               type="button"
-              aria-label="Copy chat"
-              title={assistantToolbarState.canCopy ? 'Copy chat' : 'No conversation to copy yet'}
-              disabled={!assistantToolbarState.canCopy}
+              aria-label="Open assistant help"
+              title="Assistant help"
               onClick={() => {
-                window.dispatchEvent(new CustomEvent('uzone-assistant-toolbar-action', { detail: { action: 'copy' } }))
+                window.open('https://gridics.com/contact/', '_blank', 'noopener,noreferrer')
               }}
             >
-              <span aria-hidden="true">⎘</span>
+              <span aria-hidden="true">?</span>
             </button>
             <button
               className="assistant-chat-toolbar-button assistant-header-control-button"
@@ -188,14 +187,13 @@ function AuthControls({
           <button
             className="assistant-chat-toolbar-icon-button assistant-header-control-button"
             type="button"
-            aria-label="Copy chat"
-            title={assistantToolbarState.canCopy ? 'Copy chat' : 'No conversation to copy yet'}
-            disabled={!assistantToolbarState.canCopy}
+            aria-label="Open assistant help"
+            title="Assistant help"
             onClick={() => {
-              window.dispatchEvent(new CustomEvent('uzone-assistant-toolbar-action', { detail: { action: 'copy' } }))
+              window.open('https://gridics.com/contact/', '_blank', 'noopener,noreferrer')
             }}
           >
-            <span aria-hidden="true">⎘</span>
+            <span aria-hidden="true">?</span>
           </button>
           <button
             className="assistant-chat-toolbar-button assistant-header-control-button"

@@ -244,6 +244,76 @@ def test_analyze_customer_zoning_request_falls_back_when_query_is_missing(monkey
     assert "3148 Mary St, Miami, FL 33133" in str(captured["knowledge_query"]["query"])
 
 
+def test_analyze_customer_zoning_request_uses_mapbox_coordinates_from_context(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeGridicsClient:
+        def get_property_record_by_coordinates(self, *, state_env: str, latitude: float, longitude: float):
+            captured["gridics"] = {
+                "state_env": state_env,
+                "latitude": latitude,
+                "longitude": longitude,
+            }
+            return {"mock": "payload"}
+
+    monkeypatch.setattr("app.agents.tools._build_gridics_client", lambda: FakeGridicsClient())
+    monkeypatch.setattr(
+        "app.agents.tools._extract_gridics_zoning_summary",
+        lambda payload: {
+            "resolved_city": "Miami",
+            "resolved_state": "FL",
+            "zone_combination_name": "CI",
+            "typology": "Civic",
+            "calculation_status": "ok",
+            "notes": [],
+            "constraints": {
+                "max_far": 0.0,
+                "max_units": 0,
+                "max_height_ft": 5,
+                "front_setback_ft": 10,
+                "side_setback_ft": 0,
+                "rear_setback_ft": None,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "app.agents.tools.query_customer_zoning_code",
+        lambda *, query, limit, client_id, run_context=None: captured.setdefault(
+            "knowledge_query",
+            {
+                "query": query,
+                "limit": limit,
+                "client_id": client_id,
+            },
+        )
+        or {"results": [{"name": "Fence", "content": "Fence rules."}]},
+    )
+
+    run_context = DummyRunContext(
+        {
+            "client_id": "springfield",
+            "property": {
+                "place_name": "3148 Mary St, Miami, FL 33133",
+                "center": [-80.243, 25.728],
+            },
+        }
+    )
+
+    result = analyze_customer_zoning_request(
+        query="What can I build here?",
+        run_context=run_context,
+    )
+
+    assert result["question_type"] == "specific_address"
+    assert result["address_context"]["address_source"] == "mapbox_coordinates"
+    assert captured["gridics"] == {
+        "state_env": "fl",
+        "latitude": 25.728,
+        "longitude": -80.243,
+    }
+    assert "3148 Mary St, Miami, FL 33133" in str(captured["knowledge_query"]["query"])
+
+
 def test_analyze_customer_zoning_request_reuses_recent_standardized_address(monkeypatch) -> None:
     captured: dict[str, object] = {}
     run_context = DummyRunContext({"client_id": "springfield"})

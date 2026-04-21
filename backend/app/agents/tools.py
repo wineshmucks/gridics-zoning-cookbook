@@ -1,9 +1,8 @@
-"""Compatibility layer for Agno zoning tools.
+"""Primary zoning tool module used by the Agno assistant stack.
 
-The backend tests still monkeypatch a handful of private helper names directly
-off `app.agents.tools`, so this module keeps those names available while
-delegating the heavy lifting to the richer legacy implementation in
-`legacy_tools`.
+This module keeps a stable public surface for the backend and test suite while
+delegating the heavy zoning-request analysis flow to the dedicated runtime
+implementation in `zoning_request_tools`.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agents import legacy_tools as _legacy
+from app.agents import zoning_request_tools as _runtime
 from app.services.confirmation_service import (
     build_pending_confirmation_prompt,
     classify_pending_property_confirmation_response,
@@ -26,14 +25,14 @@ from app.services.response_templates import (
 )
 
 
-_ANALYZE_RETRY_ATTEMPTS = _legacy._ANALYZE_RETRY_ATTEMPTS
-_ANALYZE_RETRY_DELAY_SECONDS = _legacy._ANALYZE_RETRY_DELAY_SECONDS
-_build_gridics_client = _legacy._build_gridics_client
-_extract_gridics_zoning_summary = _legacy._extract_gridics_zoning_summary
-_extract_gridics_street_address = _legacy._extract_gridics_street_address
-_load_tenant_client = _legacy._load_tenant_client
-_standardize_address = _legacy._standardize_address
-_legacy_query_customer_zoning_code = _legacy.query_customer_zoning_code
+_ANALYZE_RETRY_ATTEMPTS = _runtime._ANALYZE_RETRY_ATTEMPTS
+_ANALYZE_RETRY_DELAY_SECONDS = _runtime._ANALYZE_RETRY_DELAY_SECONDS
+_build_gridics_client = _runtime._build_gridics_client
+_extract_gridics_zoning_summary = _runtime._extract_gridics_zoning_summary
+_extract_gridics_street_address = _runtime._extract_gridics_street_address
+_load_tenant_client = _runtime._load_tenant_client
+_standardize_address = _runtime._standardize_address
+_runtime_query_customer_zoning_code = _runtime.query_customer_zoning_code
 _RECENT_STANDARDIZED_ADDRESS_SESSION_KEY = "recent_standardized_address"
 
 
@@ -125,6 +124,49 @@ def _get_session_state(run_context: Any = None, **kwargs: Any) -> dict[str, Any]
     return session_state if isinstance(session_state, dict) else None
 
 
+def _get_context_property(run_context: Any = None, **kwargs: Any) -> dict[str, Any] | None:
+    for source in (getattr(run_context, "dependencies", None), getattr(run_context, "metadata", None), kwargs.get("dependencies"), kwargs.get("metadata")):
+        if not isinstance(source, dict):
+            continue
+        property_context = source.get("property")
+        if isinstance(property_context, dict):
+            return property_context
+    return None
+
+
+def _coerce_context_float(value: Any) -> float | None:
+    if isinstance(value, (float, int)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _coordinates_from_property(property_context: dict[str, Any] | None) -> tuple[float | None, float | None]:
+    if not property_context:
+        return None, None
+    latitude = _coerce_context_float(property_context.get("latitude"))
+    longitude = _coerce_context_float(property_context.get("longitude"))
+    center = property_context.get("center")
+    if (latitude is None or longitude is None) and isinstance(center, list) and len(center) >= 2:
+        longitude = _coerce_context_float(center[0])
+        latitude = _coerce_context_float(center[1])
+    return latitude, longitude
+
+
+def _address_from_property(property_context: dict[str, Any] | None) -> str | None:
+    if not property_context:
+        return None
+    for key in ("place_name", "address", "text"):
+        value = property_context.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _normalize_address_text(address: str | None) -> str:
     if not isinstance(address, str):
         return ""
@@ -175,24 +217,24 @@ def _prefer_recent_standardized_address(address: str | None, run_context: Any = 
     return normalized_address
 
 
-def _sync_legacy_helpers() -> None:
-    _legacy.query_customer_zoning_code = query_customer_zoning_code
-    _legacy._build_gridics_client = _build_gridics_client
-    _legacy._extract_gridics_zoning_summary = _extract_gridics_zoning_summary
-    _legacy._extract_gridics_street_address = _extract_gridics_street_address
-    _legacy._load_tenant_client = _load_tenant_client
-    _legacy._ANALYZE_RETRY_ATTEMPTS = _ANALYZE_RETRY_ATTEMPTS
-    _legacy._ANALYZE_RETRY_DELAY_SECONDS = _ANALYZE_RETRY_DELAY_SECONDS
-    _legacy.classify_pending_property_confirmation_response = classify_pending_property_confirmation_response
-    _legacy.build_pending_confirmation_prompt = build_pending_confirmation_prompt
-    _legacy.build_evidence_pack = build_evidence_pack
-    _legacy.citation_completeness_report = citation_completeness_report
-    _legacy.grounding_verdict = grounding_verdict
-    _legacy.evaluate_policy_decision = evaluate_policy_decision
-    _legacy.resolve_jurisdiction_for_property_request = resolve_jurisdiction_for_property_request
-    _legacy.insufficient_evidence_message = insufficient_evidence_message
-    _legacy.jurisdiction_lock_message = jurisdiction_lock_message
-    _legacy.missing_address_details_message = missing_address_details_message
+def _sync_runtime_helpers() -> None:
+    _runtime.query_customer_zoning_code = query_customer_zoning_code
+    _runtime._build_gridics_client = _build_gridics_client
+    _runtime._extract_gridics_zoning_summary = _extract_gridics_zoning_summary
+    _runtime._extract_gridics_street_address = _extract_gridics_street_address
+    _runtime._load_tenant_client = _load_tenant_client
+    _runtime._ANALYZE_RETRY_ATTEMPTS = _ANALYZE_RETRY_ATTEMPTS
+    _runtime._ANALYZE_RETRY_DELAY_SECONDS = _ANALYZE_RETRY_DELAY_SECONDS
+    _runtime.classify_pending_property_confirmation_response = classify_pending_property_confirmation_response
+    _runtime.build_pending_confirmation_prompt = build_pending_confirmation_prompt
+    _runtime.build_evidence_pack = build_evidence_pack
+    _runtime.citation_completeness_report = citation_completeness_report
+    _runtime.grounding_verdict = grounding_verdict
+    _runtime.evaluate_policy_decision = evaluate_policy_decision
+    _runtime.resolve_jurisdiction_for_property_request = resolve_jurisdiction_for_property_request
+    _runtime.insufficient_evidence_message = insufficient_evidence_message
+    _runtime.jurisdiction_lock_message = jurisdiction_lock_message
+    _runtime.missing_address_details_message = missing_address_details_message
 
 def standardize_address(address: str, **kwargs: Any) -> dict[str, Any]:
     normalized = str(address or "").strip()
@@ -208,7 +250,7 @@ def standardize_address(address: str, **kwargs: Any) -> dict[str, Any]:
 
 
 def confirm_pending_address(*, query: str | None = None, run_context: Any = None, **kwargs: Any) -> dict[str, Any]:
-    from app.agents.legacy_tools import _clear_pending_property_confirmation, _get_pending_property_confirmation
+    from app.agents.zoning_request_tools import _clear_pending_property_confirmation, _get_pending_property_confirmation
     from app.services.confirmation_service import (
         build_pending_confirmation_prompt,
         classify_pending_property_confirmation_response,
@@ -262,7 +304,7 @@ def query_customer_zoning_code(
     **kwargs: Any,
 ) -> dict:
     try:
-        return _legacy_query_customer_zoning_code(
+        return _runtime_query_customer_zoning_code(
             query=query,
             limit=limit,
             client_id=client_id,
@@ -283,21 +325,35 @@ def analyze_customer_zoning_request(
     address: str | None = None,
     state_env: str | None = None,
     zip_code: str | int | None = None,
+    latitude: float | int | str | None = None,
+    longitude: float | int | str | None = None,
     knowledge_limit: int = 5,
     client_id: str | None = None,
     run_context: Any = None,
     **kwargs: Any,
 ) -> dict:
-    _sync_legacy_helpers()
+    _sync_runtime_helpers()
+    effective_run_context = run_context or kwargs.get("run_context")
+    property_context = _get_context_property(effective_run_context, **kwargs)
+    context_latitude, context_longitude = _coordinates_from_property(property_context)
+    if latitude is None:
+        latitude = context_latitude
+    if longitude is None:
+        longitude = context_longitude
+    if not address and latitude is not None and longitude is not None:
+        address = _address_from_property(property_context)
+
     try:
-        result = _legacy.analyze_customer_zoning_request(
+        result = _runtime.analyze_customer_zoning_request(
             query=query,
             address=address,
             state_env=state_env,
             zip_code=zip_code,
+            latitude=latitude,
+            longitude=longitude,
             knowledge_limit=knowledge_limit,
             client_id=client_id,
-            run_context=run_context,
+            run_context=effective_run_context,
         )
     except Exception as exc:
         return _build_graceful_failure_payload(
@@ -306,7 +362,7 @@ def analyze_customer_zoning_request(
             query=query,
             client_id=client_id,
             address=address,
-            run_context=run_context,
+            run_context=effective_run_context,
         )
 
     return result

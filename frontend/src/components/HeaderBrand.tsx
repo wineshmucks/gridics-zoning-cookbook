@@ -28,13 +28,6 @@ type Props = {
   selectedAdminOrganizationId: string | null
 }
 
-type AssistantToolbarState = {
-  title: string
-  subtitle: string | null
-  canCopy: boolean
-  canNewChat: boolean
-}
-
 export function HeaderBrand({
   clerkEnabled,
   cityName,
@@ -61,6 +54,7 @@ export function HeaderBrand({
         superAdminCustomerId={superAdminCustomerId}
         logoUrl={logoUrl}
         brandVariant={brandVariant}
+        currentScopePath={currentScopePath}
         currentOrgId={currentOrgId}
         currentProduct={currentProduct}
       />
@@ -94,6 +88,7 @@ function StaticHeaderBrand({
   superAdminCustomerId,
   logoUrl,
   brandVariant,
+  currentScopePath,
   currentOrgId,
   currentProduct,
 }: {
@@ -104,15 +99,16 @@ function StaticHeaderBrand({
   superAdminCustomerId?: string | null
   logoUrl: string | null
   brandVariant: 'tenant' | 'gridics'
+  currentScopePath?: string | null
   currentProduct?: UzoneProduct
   currentOrgId?: string | null
 }) {
-  const showSubtitle = Boolean(departmentName.trim())
   const isGridicsBrand = brandVariant === 'gridics'
   const useGridicsFallback = isGridicsBrand || Boolean(currentOrgId)
   const resolvedTitle =
-    currentProduct === 'assistant' ? title?.trim() || 'Gridics AI Zoning Assistant' : title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
-  const subtitle = currentProduct === 'assistant' || isGridicsBrand ? '' : departmentName
+    currentProduct === 'assistant' ? 'Zoning Assistant' : title?.trim() || (isGridicsBrand ? 'Gridics' : cityName)
+  const subtitle = currentProduct === 'assistant' ? formatAssistantSubtitle(cityName, currentScopePath) : isGridicsBrand ? '' : departmentName
+  const showSubtitle = Boolean(subtitle.trim())
 
   return (
     <div className="brand brand-header">
@@ -131,6 +127,16 @@ function StaticHeaderBrand({
       </div>
     </div>
   )
+}
+
+function formatAssistantSubtitle(cityName: string, scopePath?: string | null): string {
+  const trimmedCityName = cityName.trim()
+  if (!trimmedCityName || trimmedCityName.includes(',')) {
+    return trimmedCityName
+  }
+
+  const stateSegment = scopePath?.split('/').filter(Boolean)[1]
+  return stateSegment ? `${trimmedCityName}, ${stateSegment.toUpperCase()}` : trimmedCityName
 }
 
 function ClerkHeaderBrand({
@@ -156,7 +162,6 @@ function ClerkHeaderBrand({
   const [pendingOrganizationId, setPendingOrganizationId] = useState<string | null>(null)
   const resolvedAdminMemberships = Array.isArray(adminMemberships) ? adminMemberships : []
   const useGridicsFallback = brandVariant === 'gridics' || Boolean(currentOrgId)
-  const [assistantToolbarState, setAssistantToolbarState] = useState<AssistantToolbarState | null>(null)
 
   const currentScopedPathname =
     currentScopePath && pathname && pathname.startsWith(currentScopePath)
@@ -174,54 +179,23 @@ function ClerkHeaderBrand({
   const resolvedTitle = isSuperAdminRoute
     ? 'SUPER ADMIN'
     : isAssistantRoute
-      ? title?.trim() || 'Gridics AI Zoning Assistant'
+      ? 'Zoning Assistant'
       : isJurisdictionPickerRoute
         ? title?.trim() || 'Gridics AI Zoning Assistant'
         : isAdminRoute
           ? selectedMembership?.organizationName || resolvedCustomerName
           : resolvedCustomerName
-  const subtitle = isSuperAdminRoute || isJurisdictionPickerRoute || isAssistantRoute ? '' : departmentName
+  const subtitle = isAssistantRoute
+    ? formatAssistantSubtitle(resolvedCustomerName, currentScopePath)
+    : isSuperAdminRoute || isJurisdictionPickerRoute
+      ? ''
+      : departmentName
   const superAdminSubtitle = isSuperAdminRoute && (superAdminCustomerId || currentOrgId || superAdminCustomerName)
     ? {
         name: superAdminCustomerName || resolvedCustomerName,
         id: superAdminCustomerId || currentOrgId || null,
       }
     : null
-
-  useEffect(() => {
-    const handleToolbarState = (event: Event) => {
-      const detail = (event as CustomEvent<AssistantToolbarState | null>).detail
-      if (!detail || !detail.title?.trim()) {
-        setAssistantToolbarState(null)
-        return
-      }
-
-      setAssistantToolbarState({
-        title: detail.title.trim(),
-        subtitle: detail.subtitle?.trim() || null,
-        canCopy: Boolean(detail.canCopy),
-        canNewChat: Boolean(detail.canNewChat),
-      })
-    }
-
-    const windowWithToolbarState = window as Window & {
-      __uzoneAssistantToolbarState?: AssistantToolbarState | null
-    }
-    const initialState = windowWithToolbarState.__uzoneAssistantToolbarState
-    if (initialState?.title?.trim()) {
-      setAssistantToolbarState({
-        title: initialState.title.trim(),
-        subtitle: initialState.subtitle?.trim() || null,
-        canCopy: Boolean(initialState.canCopy),
-        canNewChat: Boolean(initialState.canNewChat),
-      })
-    }
-
-    window.addEventListener('uzone-assistant-toolbar-state', handleToolbarState as EventListener)
-    return () => {
-      window.removeEventListener('uzone-assistant-toolbar-state', handleToolbarState as EventListener)
-    }
-  }, [])
 
   async function switchOrganization(nextOrganizationId: string) {
     if (!nextOrganizationId || nextOrganizationId === selectedAdminOrganizationId) {
@@ -272,13 +246,6 @@ function ClerkHeaderBrand({
         <div className="brand-title-row">
           <div>
             <div className="brand-title">{resolvedTitle}</div>
-            {isAssistantRoute && assistantToolbarState ? (
-              <div className="brand-assistant-copy">
-                <div className="assistant-chat-toolbar-title brand-assistant-toolbar-title">
-                  {assistantToolbarState.title}
-                </div>
-              </div>
-            ) : null}
             {superAdminSubtitle ? (
               <div className="brand-super-admin-meta">
                 <div className="brand-subtitle brand-super-admin-name">{superAdminSubtitle.name}</div>

@@ -36,34 +36,31 @@ def agent_os_health(request: Request):
 @router.get("/routes")
 def routes() -> dict:
     route_map = {
-        "health": [
+        "shared": [
             "GET /api/health",
             "GET /health",
             "GET /api/health/agent-os",
             "GET /health/agent-os",
             "GET /routes",
-        ],
-        "auth": [
             "POST /api/auth/register",
             "POST /api/auth/login",
             "GET /api/auth/me",
-        ],
-        "documents": [
-            "GET /api/documents/{version_id}/download",
-        ],
-        "dev": [
             "GET /api/dev/identities",
-        ],
-        "payments": [
-            "POST /api/payments/webhook/stripe",
-        ],
-        "properties": [
+            "GET /api/gridics/property-record",
+            "GET /api/gridics/property-summary",
+            "PUT /api/public/assistant-feedback",
+            "GET /api/public/client-config",
+            "GET /api/public/customers",
+            "GET /api/public/path-alias",
+            "POST /api/public/embed/sessions",
+            "GET /api/public/embed/session",
             "POST /api/properties",
             "GET /api/properties/search",
             "GET /api/properties/{property_id}",
             "POST /api/properties/{property_id}/snapshots",
         ],
-        "requests": [
+        "letters": [
+            "GET /api/documents/{version_id}/download",
             "POST /api/requests",
             "GET /api/requests",
             "GET /api/requests/{request_id}",
@@ -73,8 +70,6 @@ def routes() -> dict:
             "GET /api/requests/{request_id}/quote",
             "POST /api/requests/{request_id}/checkout",
             "POST /api/requests/{request_id}/payment-received",
-        ],
-        "staff_requests": [
             "GET /api/staff/requests",
             "GET /api/staff/requests/{request_id}",
             "GET /api/staff/requests/{request_id}/status-events",
@@ -85,8 +80,10 @@ def routes() -> dict:
             "POST /api/staff/requests/{request_id}/drafts",
             "POST /api/staff/requests/{request_id}/approve",
             "POST /api/staff/requests/{request_id}/deliver",
+            "POST /api/payments/webhook/stripe",
+            "GET /api/reports/summary",
         ],
-        "admin": [
+        "agentic": [
             "GET /api/admin/jurisdictions",
             "POST /api/admin/jurisdictions",
             "GET /api/admin/fees",

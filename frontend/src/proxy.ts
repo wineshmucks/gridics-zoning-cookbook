@@ -93,7 +93,7 @@ async function runMiddlewareLogic(req: NextRequest, auth?: any) {
   const isSuperAdminRootRoute = pathname === '/super-admin'
   const isSuperAdminCustomerRoute =
     pathname.startsWith('/super-admin/') &&
-    !['assistant', 'assistant-setup', 'database', 'gridics-debug', 'new', 'customers'].includes(secondSegment)
+    !['assistant', 'assistant-setup', 'assistant-tests', 'database', 'gridics-debug', 'new', 'customers'].includes(secondSegment)
   const isExcludedRoute = EXCLUDED_ROUTE_PREFIXES.includes(firstSegment)
   const isHomepage = pathname === '/'
   const isUnscopedCustomerRoute = UNSCOPED_ROUTE_PREFIXES.includes(firstSegment)

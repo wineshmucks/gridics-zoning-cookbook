@@ -10,6 +10,7 @@ type EmbedSession = {
   client_id: string
   city_name: string
   department_name: string
+  market?: string | null
   logo_path?: string | null
   assistant_disclaimer_text: string
   widget_title: string
@@ -198,6 +199,7 @@ export function EmbedAssistantWidget({ backendBase }: Props) {
                 <PublicAssistantExperience
                   backendBase={backendBase}
                   customerName={customerName}
+                  market={session.market || null}
                   clientId={session.client_id}
                   disclaimerText={session.assistant_disclaimer_text}
                   disclaimerScopeId={session.client_id}

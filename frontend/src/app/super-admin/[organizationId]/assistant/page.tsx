@@ -1,12 +1,12 @@
 import { notFound } from 'next/navigation'
 
 import { AgentChatPanel } from '../../../../components/AgentChatPanel'
-import { CUSTOMER_ZONING_ASSISTANT_ROUTE_ID } from '../../../../components/assistantRouteIds'
 import { SuperAdminCustomerHeader } from '../../../../components/SuperAdminCustomerIcons'
-import { fetchCustomerZoningKnowledgeStatus } from '../../../admin/actions'
+import { fetchCustomerRecord, fetchCustomerZoningKnowledgeStatus } from '../../../admin/actions'
 import { getServerBackendOrigin } from '../../../../lib/backend'
 import { getClerkManagementClient } from '../../../../lib/clerk'
 import { getPermissionContext } from '../../../../lib/permissions'
+import { DEFAULT_ASSISTANT_TARGET_ID } from '../../../../components/assistantTargetIds'
 
 type PageProps = {
   params: Promise<{
@@ -18,6 +18,7 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
   const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
   const permissions = await getPermissionContext(clerkEnabled)
   const backendBase = getServerBackendOrigin()
+  const agentId = DEFAULT_ASSISTANT_TARGET_ID
 
   if (!permissions.isSuperAdmin || !clerkEnabled) {
     return (
@@ -37,6 +38,7 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
     limit: 100,
   })
   const organization = organizations.data.find((item) => item.id === organizationId)
+  const tenantRecord = await fetchCustomerRecord(organizationId)
 
   if (!organization) {
     notFound()
@@ -44,6 +46,13 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
 
   const displayName = organization.name
   const zoningKnowledgeStatus = await fetchCustomerZoningKnowledgeStatus(organizationId)
+  const market =
+    tenantRecord?.settings_json && typeof tenantRecord.settings_json.market === 'string'
+      ? tenantRecord.settings_json.market
+      : tenantRecord?.settings_json &&
+          typeof (tenantRecord.settings_json as Record<string, unknown>).marketName === 'string'
+        ? ((tenantRecord.settings_json as Record<string, unknown>).marketName as string)
+        : null
 
   return (
     <div className="panel-stack">
@@ -57,9 +66,10 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
       </section>
 
       <AgentChatPanel
-        agentId={CUSTOMER_ZONING_ASSISTANT_ROUTE_ID}
+        agentId={agentId}
         backendBase={backendBase}
         customerName={displayName}
+        market={market}
         clientId={zoningKnowledgeStatus.client_id}
         surface="super-admin-customer-assistant"
         title=""

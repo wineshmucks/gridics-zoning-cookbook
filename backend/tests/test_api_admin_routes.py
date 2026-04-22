@@ -381,6 +381,86 @@ def test_agno_session_usage_route(monkeypatch) -> None:
     assert excinfo.value.status_code == 503
 
 
+def test_run_assistant_test_route_builds_property_session_state(monkeypatch) -> None:
+    db = make_db()
+    captured: dict[str, object] = {}
+
+    class FakeRunResponse:
+        content = "Use the T3-O setback table for this property."
+        run_id = "run-test-1"
+        session_id = "session-test-1"
+
+    def fake_run_customer_zoning_team(payload, *, session_state, dependencies, metadata, session_id):
+        captured["payload"] = payload
+        captured["session_state"] = session_state
+        captured["dependencies"] = dependencies
+        captured["metadata"] = metadata
+        captured["session_id"] = session_id
+        return FakeRunResponse()
+
+    try:
+        add_tenant_client(
+            db,
+            id="tenant-miami",
+            client_id="miami",
+            clerk_organization_id="org_miami",
+            jurisdiction_id="jur-miami",
+            city_name="City of Miami",
+            settings_json={"market": "Miami, FL"},
+        )
+        monkeypatch.setattr(admin, "_run_customer_zoning_team_for_assistant_test", fake_run_customer_zoning_team)
+        monkeypatch.setattr(
+            admin,
+            "resolve_tenant_public_config_by_identifier",
+            lambda db, *, client_id=None, jurisdiction_id=None: SimpleNamespace(
+                client_id="miami",
+                city_name="City of Miami",
+                jurisdiction_id="jur-miami",
+                clerk_organization_id="org_miami",
+                market_served="Miami, FL",
+            ),
+        )
+
+        response = admin.run_assistant_test_route(
+            admin.AssistantTestRunRequest(
+                question="What are the setbacks?",
+                client_id="miami",
+                property_context=admin.AssistantTestPropertyContext(
+                    address="3148 Mary St #1, Miami, FL 33133",
+                    latitude=25.732787,
+                    longitude=-80.239989,
+                ),
+                session_id="session-test-1",
+            ),
+            db=db,
+        )
+
+        assert response.content == "Use the T3-O setback table for this property."
+        assert response.run_id == "run-test-1"
+        assert response.session_id == "session-test-1"
+        assert response.session_state["active_property_context"] == {
+            "address": "3148 Mary St #1, Miami, FL 33133",
+            "latitude": 25.732787,
+            "longitude": -80.239989,
+            "state_env": "fl",
+            "jurisdiction_id": "jur-miami",
+            "jurisdiction_name": "City of Miami",
+        }
+        assert "[System Note: A property is currently selected at 25.732787, -80.239989.]" in response.payload
+        assert response.payload.endswith("User question: What are the setbacks?")
+        assert captured["dependencies"] == {
+            "client_id": "miami",
+            "customer_name": "City of Miami",
+            "jurisdiction_name": "City of Miami",
+            "jurisdiction_id": "jur-miami",
+            "market_served": "Miami, FL",
+            "organization_id": "org_miami",
+            "state_env": "fl",
+        }
+    finally:
+        db.close()
+
+
 def test_tenant_conversation_routes_scope_to_current_org(monkeypatch) -> None:
     db = make_db()
     try:

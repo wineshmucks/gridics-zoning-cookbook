@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import EmailEvent, PropertySnapshot, Request, TenantClient
-from app.services.email_template_service import get_active_email_template_for_client
-from app.services.template_service import render_template
+from app.services.letters.email_template_service import get_active_email_template_for_client
+from app.services.shared.template_service import render_template
 
 
 @dataclass

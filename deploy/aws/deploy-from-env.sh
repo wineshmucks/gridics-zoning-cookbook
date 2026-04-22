@@ -321,8 +321,8 @@ backend_environment = {
   UZONE_DEFAULT_PAYMENT_PROVIDER = $(escape_hcl_string "${UZONE_DEFAULT_PAYMENT_PROVIDER:-manual}")
   UZONE_EMAIL_PROVIDER = $(escape_hcl_string "${UZONE_EMAIL_PROVIDER:-console}")
   UZONE_EMAIL_FROM = $(escape_hcl_string "${UZONE_EMAIL_FROM:-noreply@example.com}")
-  UZONE_CLERK_JWKS_URL = $(escape_hcl_string "${UZONE_CLERK_JWKS_URL:-}")
-  UZONE_CLERK_AUTHORIZED_PARTIES = $(escape_hcl_string "${UZONE_CLERK_AUTHORIZED_PARTIES:-${APP_ALLOWED_ORIGINS}}")
+  CLERK_JWKS_URL = $(escape_hcl_string "${CLERK_JWKS_URL:-}")
+  CLERK_AUTHORIZED_PARTIES = $(escape_hcl_string "${CLERK_AUTHORIZED_PARTIES:-${APP_ALLOWED_ORIGINS}}")
   UZONE_ARTIFACTS_DIR = $(escape_hcl_string "${UZONE_ARTIFACTS_DIR:-/app/artifacts}")
 $(emit_kv_if_set "UZONE_ZONING_EMBEDDER_REQUESTS_PER_MINUTE" "${UZONE_ZONING_EMBEDDER_REQUESTS_PER_MINUTE:-}")
 $(emit_kv_if_set "UZONE_REQUIRE_AGENT_OS" "${REQUIRE_AGENT_OS}")
@@ -336,7 +336,8 @@ $(emit_kv_if_set "AGENTIC_PUBLIC_BASE_URL" "${AGENTIC_PUBLIC_BASE_URL:-}")
 $(emit_kv_if_set "LETTERS_PUBLIC_BASE_URL" "${LETTERS_PUBLIC_BASE_URL:-}")
 $(emit_kv_if_set "NEXT_PUBLIC_AGENTIC_PUBLIC_BASE_URL" "${AGENTIC_PUBLIC_BASE_URL:-}")
 $(emit_kv_if_set "NEXT_PUBLIC_LETTERS_PUBLIC_BASE_URL" "${LETTERS_PUBLIC_BASE_URL:-}")
-$(emit_kv_if_set "NEXT_PUBLIC_CLERK_JWKS_URL" "${UZONE_CLERK_JWKS_URL:-}")
+$(emit_kv_if_set "NEXT_PUBLIC_MAPBOX_TOKEN" "${NEXT_PUBLIC_MAPBOX_TOKEN:-${MAPBOX_API_KEY:-}}")
+$(emit_kv_if_set "NEXT_PUBLIC_CLERK_JWKS_URL" "${CLERK_JWKS_URL:-}")
 }
 
 backend_secret_arns = {
@@ -705,7 +706,7 @@ echo "frontend_ecr_repository_url: ${FRONTEND_REPO_URL}"
 
 if [[ "${SKIP_IMAGE_PUSH}" != "1" ]]; then
   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}"
-  export NEXT_PUBLIC_CLERK_JWKS_URL="${UZONE_CLERK_JWKS_URL:-}"
+  export NEXT_PUBLIC_CLERK_JWKS_URL="${CLERK_JWKS_URL:-}"
   export NEXT_PUBLIC_APP_VERSION="${NEXT_PUBLIC_APP_VERSION:-${IMAGE_TAG}}"
   export FORCE_NO_CACHE="${FORCE_NO_CACHE:-0}"
   echo "building and pushing frontend/backend images with tag ${IMAGE_TAG}"

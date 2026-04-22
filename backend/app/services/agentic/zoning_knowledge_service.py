@@ -28,8 +28,8 @@ from app.db.models import (
     ZoningCodeSection,
 )
 from app.core.config import settings
-from app.services.tenant_service import ZONING_CODE_URL_SETTING_KEY
-from app.services.compat import build_with_supported_kwargs
+from app.services.shared.tenant_service import ZONING_CODE_URL_SETTING_KEY
+from app.services.shared.compat import build_with_supported_kwargs
 
 VECTOR_SCHEMA = "ai"
 VECTOR_TABLE = "agentic_customer_zoning_chunks"

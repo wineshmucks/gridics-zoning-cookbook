@@ -23,8 +23,8 @@ from app.db.models import (
     UserRole,
 )
 from app.db.session import SessionLocal
-from app.services.auth_service import hash_password
-from app.services.email_template_service import ensure_default_email_templates
+from app.services.shared.auth_service import hash_password
+from app.services.letters.email_template_service import ensure_default_email_templates
 
 ADMIN_EMAIL = "admin@uzone.example.com"
 STAFF_EMAIL = "staff@uzone.example.com"

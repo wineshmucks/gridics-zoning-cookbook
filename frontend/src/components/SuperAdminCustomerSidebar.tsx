@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   buildAssistantHref,
   buildSuperAdminCustomerAssistantSetupPath,
+  buildSuperAdminCustomerAssistantTestsPath,
   buildSuperAdminCustomerConversationsPath,
   buildSuperAdminCustomerPath,
 } from '../lib/org-url'
@@ -25,6 +26,7 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
   const searchParams = useSearchParams()
   const baseHref = buildSuperAdminCustomerPath(customer.id)
   const assistantSetupHref = buildSuperAdminCustomerAssistantSetupPath(customer.id)
+  const assistantTestsHref = buildSuperAdminCustomerAssistantTestsPath(customer.id)
   const conversationsHref = buildSuperAdminCustomerConversationsPath(customer.id)
   const normalizedPathAlias =
     customer.pathAlias?.trim() ? (customer.pathAlias.startsWith('/') ? customer.pathAlias : `/${customer.pathAlias}`) : null
@@ -36,10 +38,11 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
     currentPathname === assistantSetupHref || currentPathname.startsWith(`${assistantSetupHref}/`)
   const isConversationsRoute =
     currentPathname === conversationsHref || currentPathname.startsWith(`${conversationsHref}/`)
+  const isAssistantTestsRoute =
+    currentPathname === assistantTestsHref || currentPathname.startsWith(`${assistantTestsHref}/`)
   const isGeneralActive = currentPathname === baseHref && activeSection === 'general'
   const isAdminUsersActive = currentPathname === baseHref && activeSection === 'admin-users'
   const agenticSetupItems = [
-    { href: `${assistantSetupHref}?section=agents`, label: 'Agents', icon: 'assistant' as const },
     { href: `${assistantSetupHref}?section=api-keys`, label: 'API Keys', icon: 'assistant-setup' as const },
     { href: `${assistantSetupHref}?section=knowledge`, label: 'Knowledge', icon: 'assistant' as const },
     { href: `${assistantSetupHref}?section=integrations`, label: 'Integrations', icon: 'assistant-setup' as const },
@@ -67,6 +70,12 @@ export function SuperAdminCustomerSidebar({ customer }: { customer: SelectedCust
               />
             ))}
           </AdminSidebarGroup>
+          <AdminSidebarItem
+            href={assistantTestsHref}
+            label="Assistant Tests"
+            active={isAssistantTestsRoute}
+            icon="assistant-setup"
+          />
           <AdminSidebarItem
             href={conversationsHref}
             label="Conversations"

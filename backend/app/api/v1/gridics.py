@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services.gridics_client import _build_gridics_client
+from app.services.shared.gridics_client import _build_gridics_client
 
 router = APIRouter()
 _STATE_CODE_PATTERN = re.compile(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?(?:\b|$)")
@@ -125,16 +125,6 @@ def _infer_state_code_from_address(address: str | None) -> str | None:
     return None
 
 
-def _infer_zip_code_from_address(address: str | None) -> str | None:
-    normalized = str(address or "").strip()
-    if not normalized:
-        return None
-    match = _ZIP_CODE_PATTERN.search(normalized)
-    if not match:
-        return None
-    return match.group(1)
-
-
 def _summarize_property_record(payload: dict[str, Any]) -> dict[str, Any]:
     data = payload.get("data") if isinstance(payload, dict) else None
     row = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else {}
@@ -206,64 +196,27 @@ def _summarize_property_record(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/property-record")
-def get_property_record(
-    state_code: str | None = Query(None),
-    legacy_state_env: str | None = Query(None, alias="state_env", include_in_schema=False),
-    address: str | None = Query(None),
-    zip_code: str | None = Query(None, alias="zipCode"),
-    lat: float | None = Query(None),
-    lon: float | None = Query(None),
+def get_property_record(    
+    lat: float = Query(...),
+    lon: float = Query(...),
+    state_env: str = Query(...),
 ) -> dict:
     try:
         client = _build_gridics_client()
-        resolved_state_code = state_code or legacy_state_env
-        if isinstance(lat, (float, int)) and isinstance(lon, (float, int)):
-            return client.get_property_record_by_coordinates(
-                latitude=lat,
-                longitude=lon,
-            )
-        if address is None:
-            raise ValueError("Provide either lat and lon, or address and zipCode.")
-        if resolved_state_code is None:
-            raise ValueError("state_code is required when address lookup is used.")
-        if zip_code is None:
-            raise ValueError("zipCode is required when address lookup is used.")
-        return client.get_property_record(
-            state_code=resolved_state_code,
-            address=address,
-            zip_code=zip_code,
-        )
+        return client.get_property_record_by_coordinates(
+            latitude=lat,
+            longitude=lon,
+            state_env=state_env,
+        )        
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/property-summary")
 def get_property_summary(
-    address: str | None = Query(None),
     lat: float = Query(...),
     lon: float = Query(...),
+    state_env: str = Query(...),
 ) -> dict:
-    try:
-        client = _build_gridics_client()
-        try:
-            payload = client.get_property_record_by_coordinates(
-                latitude=lat,
-                longitude=lon,
-            )
-        except Exception as exc:
-            message = str(exc)
-            state_code = _infer_state_code_from_address(address)
-            zip_code = _infer_zip_code_from_address(address)
-            normalized_message = message.lower()
-            if "state_env" not in normalized_message or "required" not in normalized_message:
-                raise
-            if not state_code:
-                raise
-            payload = client.get_property_record(
-                state_code=state_code,
-                address=address or "",
-                zip_code=zip_code,
-            )
-        return _summarize_property_record(payload)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    rec = get_property_record(lat=lat, lon=lon, state_env=state_env)
+    return _summarize_property_record(rec)

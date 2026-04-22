@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="UZONE_", env_file=".env", extra="ignore")
 
-    app_name: str = "UZone API"
+    app_name: str = "Gridics UZone API"
     app_version: str = "0.1.0"
     allowed_origins: str = (
         "http://localhost:3001,"
@@ -23,15 +23,24 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("UZONE_CLERK_SECRET_KEY", "CLERK_SECRET_KEY"),
     )
-    clerk_pem_public_key: str | None = None
-    clerk_jwks_url: str = "https://api.clerk.com/v1/jwks"
-    clerk_authorized_parties: str = (
+    clerk_pem_public_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("UZONE_CLERK_PEM_PUBLIC_KEY", "CLERK_PEM_PUBLIC_KEY"),
+    )
+    clerk_jwks_url: str = Field(
+        default="https://api.clerk.com/v1/jwks",
+        validation_alias=AliasChoices("UZONE_CLERK_JWKS_URL", "CLERK_JWKS_URL"),
+    )
+    clerk_authorized_parties: str = Field(
+        default=(
         "http://localhost:3001,"
         "http://127.0.0.1:3001,"
         "http://st1-agentic.gridics.local:3001,"
         "http://st1-zvl.gridics.local:3001,"
         "http://st1-agentic.gridics.test:3001,"
         "http://st1-zvl.gridics.test:3001"
+        ),
+        validation_alias=AliasChoices("UZONE_CLERK_AUTHORIZED_PARTIES", "CLERK_AUTHORIZED_PARTIES"),
     )
     gridics_clerk_organization_id: str | None = None
     payment_providers: str = "manual"
@@ -62,10 +71,6 @@ class Settings(BaseSettings):
     zoning_embedder_requests_per_minute: float = 0.0
     zoning_agent_llm_model_id: str = "gemini-2.0-flash-001"
     zoning_agent_llm_api_key: str | None = None
-    agno_sessions_enabled: bool = Field(
-        default=True,
-        validation_alias=AliasChoices("AGNO_SESSIONS_ENABLED", "UZONE_AGNO_SESSIONS_ENABLED"),
-    )
     agno_session_table: str = Field(
         default="aos_sessions",
         validation_alias=AliasChoices("AGNO_SESSION_TABLE", "UZONE_AGNO_SESSION_TABLE"),

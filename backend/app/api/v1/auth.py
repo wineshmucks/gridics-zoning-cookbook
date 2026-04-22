@@ -12,7 +12,7 @@ from app.core.security import AuthContext, require_auth
 from app.db.models import Session as UserSession
 from app.db.models import User
 from app.schemas import AuthSessionRead, LoginRequest, RegisterRequest, UserRead
-from app.services.auth_service import (
+from app.services.shared.auth_service import (
     hash_password,
     hash_session_token,
     new_session_token,

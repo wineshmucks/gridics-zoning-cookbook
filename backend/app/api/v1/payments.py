@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
 from app.db.models import Payment, PaymentEvent, Request, RequestStatusEvent
-from app.services.email_service import send_request_status_email
-from app.services.payment_service import verify_stripe_webhook
+from app.services.letters.email_service import send_request_status_email
+from app.services.letters.payment_service import verify_stripe_webhook
 
 router = APIRouter()
 

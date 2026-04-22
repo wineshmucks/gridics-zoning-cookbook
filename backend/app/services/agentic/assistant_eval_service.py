@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.services.jurisdiction_resolver import resolve_jurisdiction_for_property_request
-from app.services.policy_service import evaluate_policy_decision
+from app.services.agentic.jurisdiction_resolver import resolve_jurisdiction_for_property_request
+from app.services.agentic.policy_service import evaluate_policy_decision
 
 
 @dataclass

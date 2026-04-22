@@ -81,10 +81,10 @@ class GridicsClient:
             {"state_env": state_code, "address": address, "zipCode": zip_code},
         )
 
-    def get_property_record_by_coordinates(self, latitude: float, longitude: float) -> Dict[str, Any]:
+    def get_property_record_by_coordinates(self, latitude: float, longitude: float, state_env: str | None = None) -> Dict[str, Any]:
         return self._get(
             "/property-record",
-            {"lat": latitude, "lon": longitude},
+            {"lat": latitude, "lon": longitude, "state_env": state_env},
         )
 
     def get_property_record_by_group_id(self, state_code: str, group_id: str) -> Dict[str, Any]:

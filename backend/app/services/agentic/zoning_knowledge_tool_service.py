@@ -9,8 +9,8 @@ from sqlalchemy import or_, select
 
 from app.db.models import TenantClient
 from app.db.session import SessionLocal
-from app.services.citation_formatter import build_knowledge_citation
-from app.services.zoning_knowledge_service import query_customer_zoning_knowledge
+from app.services.shared.citation_formatter import build_knowledge_citation
+from app.services.agentic.zoning_knowledge_service import query_customer_zoning_knowledge
 
 
 @dataclass(slots=True)

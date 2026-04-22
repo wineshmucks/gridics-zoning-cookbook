@@ -33,7 +33,7 @@ def _clerk_public_keys() -> list[str]:
         if exc.response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Clerk JWKS endpoint rejected the backend request. Check UZONE_CLERK_JWKS_URL or UZONE_CLERK_PEM_PUBLIC_KEY.",
+                detail="Clerk JWKS endpoint rejected the backend request. Check CLERK_JWKS_URL or CLERK_PEM_PUBLIC_KEY.",
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -231,8 +231,8 @@ For an existing shared ALB, also set:
 For the current app configuration in [.env](/workspaces/gridics-zoning-cookbook/.env), also set:
 
 - `backend_environment.UZONE_AUTH_PROVIDER = "clerk"`
-- `backend_environment.UZONE_CLERK_JWKS_URL`
-- `backend_environment.UZONE_CLERK_AUTHORIZED_PARTIES`
+- `backend_environment.CLERK_JWKS_URL`
+- `backend_environment.CLERK_AUTHORIZED_PARTIES`
 - `backend_environment.UZONE_ASSETS_PREFIX`
 - `frontend_environment.GRIDICS_CLERK_ORGANIZATION_SLUG`
 - `frontend_environment.AGENTIC_PUBLIC_BASE_URL`
@@ -319,8 +319,8 @@ Use these values as the starting point, replacing local URLs with your real publ
 - `backend_environment.UZONE_DEFAULT_PAYMENT_PROVIDER = "manual"`
 - `backend_environment.UZONE_EMAIL_PROVIDER = "console"`
 - `backend_environment.UZONE_EMAIL_FROM = "noreply@your-domain.com"`
-- `backend_environment.UZONE_CLERK_JWKS_URL = "https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json"`
-- `backend_environment.UZONE_CLERK_AUTHORIZED_PARTIES = "https://uzone.example.com"`
+- `backend_environment.CLERK_JWKS_URL = "https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json"`
+- `backend_environment.CLERK_AUTHORIZED_PARTIES = "https://uzone.example.com"`
 - `frontend_environment.GRIDICS_CLERK_ORGANIZATION_SLUG = "gridics-1773003104274716658"` if you want to preserve the current slug-based behavior exactly
 
 Store these outside Terraform state when they are sensitive:
@@ -369,8 +369,8 @@ Common backend variables:
 - `UZONE_DEFAULT_PAYMENT_PROVIDER`
 - `UZONE_EMAIL_PROVIDER`
 - `UZONE_EMAIL_FROM`
-- `UZONE_CLERK_JWKS_URL`
-- `UZONE_CLERK_AUTHORIZED_PARTIES`
+- `CLERK_JWKS_URL`
+- `CLERK_AUTHORIZED_PARTIES`
 - `UZONE_DB_ENGINE_VERSION`
 - `AGENTIC_PUBLIC_BASE_URL`
 - `LETTERS_PUBLIC_BASE_URL`

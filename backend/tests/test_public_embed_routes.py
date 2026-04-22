@@ -33,6 +33,7 @@ def test_create_and_read_embed_session(monkeypatch) -> None:
         comprehensive_letter_fee_cents=0,
         expedited_fee_cents=0,
         settings_json={
+            "market": "Miami, FL",
             "assistant_disclaimer_text": "Please verify everything.",
             "assistant_embed": {
                 "secret_hash": hash_embed_secret("embed-secret"),
@@ -56,6 +57,7 @@ def test_create_and_read_embed_session(monkeypatch) -> None:
 
         assert response["client_id"] == "dream-town"
         assert response["city_name"] == "Dream Town"
+        assert response["market"] == "Miami, FL"
         assert response["assistant_disclaimer_text"] == "Please verify everything."
         assert response["origin"] == "https://example.com"
         assert response["widget_title"] == "Ask Dream Town"
@@ -64,6 +66,7 @@ def test_create_and_read_embed_session(monkeypatch) -> None:
             request=SimpleNamespace(headers={"x-uzone-embed-token": response["token"]})
         )
         assert session_response["client_id"] == "dream-town"
+        assert session_response["market"] == "Miami, FL"
         assert session_response["assistant_disclaimer_text"] == "Please verify everything."
         assert session_response["origin"] == "https://example.com"
     finally:

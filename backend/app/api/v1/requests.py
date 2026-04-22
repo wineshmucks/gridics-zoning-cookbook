@@ -31,9 +31,9 @@ from app.schemas import (
     RequestStatusEventRead,
     RequestSubmit,
 )
-from app.services.email_service import send_request_status_email
-from app.services.fee_service import build_quote_for_request
-from app.services.payment_service import get_payment_provider
+from app.services.letters.email_service import send_request_status_email
+from app.services.letters.fee_service import build_quote_for_request
+from app.services.letters.payment_service import get_payment_provider
 
 router = APIRouter()
 

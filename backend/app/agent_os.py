@@ -10,15 +10,21 @@ from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
 
 from app.agents.storage import get_agno_db
-from app.services.embed_service import decode_embed_session_token, parse_embed_token_from_header
+from app.agents.zoning_agent import build_customer_zoning_agent, build_customer_zoning_team
+from app.services.shared.embed_service import decode_embed_session_token, parse_embed_token_from_header
 from app.core.config import settings
 
-PUBLIC_CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS = (
-    "customer_zoning_team",
-    "customer-zoning-team",
-    "customer-zoning-agent",
+CUSTOMER_ZONING_ASSISTANT_TARGET_ID = "customer_zoning_team"
+LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = "customer-zoning-agent"
+PUBLIC_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = "customer-zoning-team"
+
+CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS = (
+    CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+    PUBLIC_CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
+    LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
 )
-CUSTOMER_ZONING_AGENT_ROUTE_PREFIX = "/agents/customer-zoning-agent"
+
+CUSTOMER_ZONING_AGENT_ROUTE_PREFIX = "/agents/customer-zoning-team"
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +45,7 @@ def _rewrite_scope_path(request, prefix: str) -> None:
 
 def _rewrite_customer_zoning_assistant_route(request) -> bool:
     path = request.scope.get("path", "")
-    for route_id in PUBLIC_CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS:
+    for route_id in CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS:
         for prefix in (f"/api/agents/{route_id}", f"/agents/{route_id}"):
             if path.startswith(prefix):
                 _rewrite_scope_path(request, prefix)
@@ -53,19 +59,15 @@ def _build_agent_os_db():
 
 def build_agent_os_app(base_app: FastAPI) -> FastAPI:
     from agno.os import AgentOS
-    from app.agents import registry as agent_registry
 
-    all_agents = getattr(agent_registry, "ALL_AGENTS", [])
-    all_teams = getattr(agent_registry, "ALL_TEAMS", [])
-    
     agent_os = AgentOS(
-        agents=all_agents,
-        teams=all_teams,
+        agents=[build_customer_zoning_agent()],
+        teams=[build_customer_zoning_team()],
         db=_build_agent_os_db(),
         base_app=base_app,
-        id="uzone-agent-os",
-        name="UZone Agents",
-        description="Agno runtime for UZone",
+        id="gridics-agent-os",
+        name="Gridics Agents",
+        description="Gridics Agents",
         tracing=True,
         auto_provision_dbs=True,
     )
@@ -151,7 +153,7 @@ def build_agent_os_app(base_app: FastAPI) -> FastAPI:
                 request.scope["raw_path"] = rewritten.encode()
         elif _rewrite_customer_zoning_assistant_route(request):
             pass
-        elif path.startswith("/api/agents"):
+        elif path.startswith("/api/agents") or path.startswith("/api/teams"):
             rewritten = path[4:]
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:

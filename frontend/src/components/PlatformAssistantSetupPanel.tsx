@@ -8,7 +8,6 @@ import { CompactSummaryHeader, FormSection } from './AdminSurfacePrimitives'
 import {
   assistantProviderKeyFields,
 } from './agenticSetupConfig'
-import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 
 type PlatformAssistantSettingsState = {
   error: string | null
@@ -35,12 +34,10 @@ export function PlatformAssistantSetupPanel({
 
   const currentSettings = settingsState.settings || initialSettings
   const providerKeys = currentSettings.assistant_provider_keys || {}
-  const agentPrompts = currentSettings.assistant_agent_prompts || {}
 
   const renderHiddenFields = (options: {
     includeDisclaimer?: boolean
     includeProviderKeys?: boolean
-    includeAgentPrompts?: boolean
   }) => (
     <>
       {options.includeDisclaimer ? (
@@ -53,27 +50,6 @@ export function PlatformAssistantSetupPanel({
               type="hidden"
               name={provider.fieldName}
               value={providerKeys[provider.id] || ''}
-            />
-          ))
-        : null}
-      {options.includeAgentPrompts
-        ? Object.entries(agentPrompts).map(([targetId, prompt]) => (
-            <input
-              key={targetId}
-              type="hidden"
-              name={(() => {
-                switch (targetId) {
-                  case CUSTOMER_ZONING_ASSISTANT_TARGET_ID:
-                    return 'promptCustomerZoningAgent'
-                  case 'parcel-data-agent':
-                    return 'promptParcelDataAgent'
-                  case 'code-researcher-agent':
-                    return 'promptCodeResearcherAgent'
-                  default:
-                    return `prompt-${targetId}`
-                }
-              })()}
-              value={prompt || ''}
             />
           ))
         : null}
@@ -106,12 +82,7 @@ export function PlatformAssistantSetupPanel({
       assistant_provider_keys: {
         gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
       },
-      assistant_agent_prompts: {
-        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
-          agentPrompts[CUSTOMER_ZONING_ASSISTANT_TARGET_ID] || null,
-        'parcel-data-agent': agentPrompts['parcel-data-agent'] || null,
-        'code-researcher-agent': agentPrompts['code-researcher-agent'] || null,
-      },
+      assistant_agent_prompts: {},
     }
 
     try {
@@ -171,7 +142,6 @@ export function PlatformAssistantSetupPanel({
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeProviderKeys: true,
-              includeAgentPrompts: true,
             })}
             <label className="field field-full">
               <span>Platform disclaimer</span>
@@ -199,7 +169,6 @@ export function PlatformAssistantSetupPanel({
           <form onSubmit={(event) => void handleSubmit(event)} className="admin-form admin-form-compact">
             {renderHiddenFields({
               includeDisclaimer: true,
-              includeAgentPrompts: true,
             })}
             <label className="api-key-toggle">
               <span className="api-key-toggle-copy">
@@ -243,12 +212,6 @@ export function PlatformAssistantSetupPanel({
           </form>
         </FormSection>
 
-        <FormSection title="Agent Prompts" icon="assistant">
-          <div className="admin-form-note">
-            Prompt editing is temporarily disabled. The platform currently uses the assistant
-            instructions checked into the codebase.
-          </div>
-        </FormSection>
       </section>
     </div>
   )

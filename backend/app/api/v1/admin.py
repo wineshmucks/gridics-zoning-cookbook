@@ -2,12 +2,15 @@
 
 import logging
 import re
+import time
 from mimetypes import guess_type
 from pathlib import Path
 from secrets import token_hex
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
@@ -64,11 +67,11 @@ from app.schemas import (
     ZoningKnowledgeStatusRead,
 )
 from app.core.config import settings
-from app.services.database_maintenance_service import cleanup_dangling_records, get_database_info
-from app.services.email_template_service import get_default_email_templates, get_effective_email_templates
-from app.services.cache_service import get_cache_service
-from app.services.clerk_service import get_clerk_organization
-from app.services.embed_service import (
+from app.services.shared.database_maintenance_service import cleanup_dangling_records, get_database_info
+from app.services.letters.email_template_service import get_default_email_templates, get_effective_email_templates
+from app.services.shared.cache_service import get_cache_service
+from app.services.shared.clerk_service import get_clerk_organization
+from app.services.shared.embed_service import (
     build_embed_widget_payload,
     generate_embed_secret,
     get_tenant_embed_settings,
@@ -76,19 +79,19 @@ from app.services.embed_service import (
     hash_embed_secret,
     merge_tenant_embed_settings,
 )
-from app.services.logo_storage import (
+from app.services.shared.logo_storage import (
     delete_asset,
     delete_asset_namespace,
     download_asset,
     is_asset_storage_enabled,
     upload_asset,
 )
-from app.services.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
-from app.services.clerk_service import delete_clerk_organization, update_clerk_organization
-from app.agents.storage import get_agno_db, get_agno_storage_config, get_session_usage_totals
+from app.services.letters.fee_service import ensure_active_fee_schedule_for_tenant, update_fee_structure_for_tenant
+from app.services.shared.clerk_service import delete_clerk_organization, update_clerk_organization
+from app.agents.storage import get_agno_db, get_session_usage_totals
 from app.agents.storage import get_tenant_conversation_session, list_tenant_conversation_sessions
-from app.services.platform_settings_service import get_platform_assistant_settings_json, set_platform_assistant_settings_json
-from app.services.tenant_service import (
+from app.services.shared.platform_settings_service import get_platform_assistant_settings_json, set_platform_assistant_settings_json
+from app.services.shared.tenant_service import (
     DEFAULT_ASSISTANT_DISCLAIMER_TEXT,
     get_effective_assistant_disclaimer_text,
     get_tenant_path_alias,
@@ -99,6 +102,8 @@ from app.services.tenant_service import (
     get_tenant_assistant_disclaimer_text,
     get_tenant_experience_settings,
     get_tenant_logo_path,
+    get_tenant_market,
+    resolve_tenant_public_config_by_identifier,
     has_home_page_content_storage,
     invalidate_tenant_cache,
     merge_tenant_branding_settings,
@@ -107,7 +112,7 @@ from app.services.tenant_service import (
     merge_tenant_experience_settings,
     normalize_tenant_path_alias,
 )
-from app.services.zoning_knowledge_service import (
+from app.services.agentic.zoning_knowledge_service import (
     build_zoning_knowledge_status,
     run_zoning_code_ingestion,
     start_zoning_code_ingestion,
@@ -235,6 +240,33 @@ class AgnoConversationListRead(BaseModel):
     items: list[SessionSchema] = Field(default_factory=list)
 
 
+class AssistantTestPropertyContext(BaseModel):
+    address: str = Field(min_length=1, max_length=500)
+    latitude: float
+    longitude: float
+
+
+class AssistantTestRunRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    client_id: str | None = Field(default=None, max_length=100)
+    organization_id: str | None = Field(default=None, max_length=255)
+    property_context: AssistantTestPropertyContext | None = None
+    prepend_property_note: bool = True
+    session_id: str | None = Field(default=None, max_length=255)
+
+
+class AssistantTestRunResponse(BaseModel):
+    payload: str
+    session_state: dict[str, Any]
+    dependencies: dict[str, Any]
+    metadata: dict[str, Any]
+    content: str | None = None
+    run_id: str | None = None
+    session_id: str | None = None
+    duration_ms: int
+    raw_response: Any = None
+
+
 def _admin_fee_structure_cache_key(tenant_client: TenantClient) -> str:
     return f"admin:fee-structure:{tenant_client.id}"
 
@@ -352,6 +384,66 @@ def _get_tenant_client_by_lookup(
             return tenant_client
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant client not found")
+
+
+def _jsonable_or_string(value: Any) -> Any:
+    try:
+        return jsonable_encoder(value)
+    except Exception:
+        logger.debug("Falling back to string serialization for assistant test response.", exc_info=True)
+        return str(value)
+
+
+def _get_value(source: Any, key: str) -> Any:
+    if isinstance(source, dict):
+        return source.get(key)
+    return getattr(source, key, None)
+
+
+def _stringify_assistant_test_content(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(_jsonable_or_string(value))
+
+
+def _extract_assistant_test_content(run_response: Any) -> str | None:
+    for key in ("content", "response", "data", "run_response"):
+        content = _get_value(run_response, key)
+        if content is not None:
+            return _stringify_assistant_test_content(content)
+    return _stringify_assistant_test_content(run_response)
+
+
+def _parse_assistant_test_state_env(market: str | None) -> str | None:
+    if not isinstance(market, str):
+        return None
+    parts = [part.strip() for part in market.split(",") if part.strip()]
+    candidate = parts[-1] if parts else market.strip()
+    normalized = candidate.lower()
+    return normalized if len(normalized) == 2 and normalized.isalpha() else None
+
+
+def _run_customer_zoning_team_for_assistant_test(
+    payload: str,
+    *,
+    session_state: dict[str, Any],
+    dependencies: dict[str, Any],
+    metadata: dict[str, Any],
+    session_id: str | None,
+) -> Any:
+    from app.agents.zoning_agent import build_customer_zoning_team
+
+    team = build_customer_zoning_team()
+    run_kwargs: dict[str, Any] = {
+        "session_state": session_state,
+        "dependencies": dependencies,
+        "metadata": metadata,
+    }
+    if session_id:
+        run_kwargs["session_id"] = session_id
+    return team.run(payload, **run_kwargs)
 
 
 def _tenant_asset_dir(namespace: str, asset_type: str) -> Path:
@@ -831,6 +923,111 @@ def update_platform_assistant_settings_route(
         assistant_provider_keys=assistant_provider_keys,
         assistant_agent_prompts=assistant_agent_prompts,
         raw_settings_json=merged_settings,
+    )
+
+
+@router.post("/assistant-tests/run", response_model=AssistantTestRunResponse)
+def run_assistant_test_route(
+    payload: AssistantTestRunRequest,
+    db: Session = Depends(get_db),
+) -> AssistantTestRunResponse:
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question is required")
+
+    tenant_client: TenantClient | None = None
+    if payload.client_id or payload.organization_id:
+        tenant_client = _get_tenant_client_by_lookup(
+            db,
+            organization_id=payload.organization_id.strip() if payload.organization_id else None,
+            client_id=payload.client_id.strip() if payload.client_id else None,
+        )
+
+    run_payload = f"User question: {question}"
+    session_state: dict[str, Any] = {"active_property_context": None}
+
+    if payload.property_context is not None:
+        property_context = {
+            "address": payload.property_context.address.strip(),
+            "latitude": payload.property_context.latitude,
+            "longitude": payload.property_context.longitude,
+        }
+        session_state["active_property_context"] = property_context
+        if payload.prepend_property_note:
+            run_payload = (
+                "[System Note: A property is currently selected at "
+                f"{payload.property_context.latitude}, {payload.property_context.longitude}.]\n\n"
+                f"{run_payload}"
+            )
+
+    dependencies: dict[str, Any] = {}
+    metadata: dict[str, Any] = {
+        "surface": "super-admin-assistant-tests",
+    }
+    if tenant_client is not None:
+        tenant_config = resolve_tenant_public_config_by_identifier(
+            db,
+            client_id=tenant_client.client_id,
+            jurisdiction_id=tenant_client.jurisdiction_id,
+        )
+        resolved_client_id = tenant_config.client_id if tenant_config is not None else tenant_client.client_id
+        resolved_city_name = tenant_config.city_name if tenant_config is not None else tenant_client.city_name
+        resolved_jurisdiction_id = (
+            tenant_config.jurisdiction_id if tenant_config is not None else tenant_client.jurisdiction_id
+        )
+        resolved_organization_id = (
+            tenant_config.clerk_organization_id if tenant_config is not None else tenant_client.clerk_organization_id
+        )
+        market_served = tenant_config.market_served if tenant_config is not None else get_tenant_market(tenant_client.settings_json)
+        state_env = _parse_assistant_test_state_env(market_served)
+        dependencies.update(
+            {
+                "client_id": resolved_client_id,
+                "customer_name": resolved_city_name,
+                "jurisdiction_name": resolved_city_name,
+                "jurisdiction_id": resolved_jurisdiction_id,
+                "market_served": market_served,
+                "organization_id": resolved_organization_id,
+                "state_env": state_env,
+            }
+        )
+        metadata.update(
+            {
+                "client_id": resolved_client_id,
+                "tenant_client_id": resolved_client_id,
+                "tenant_client_uuid": tenant_client.id,
+                "organization_id": resolved_organization_id,
+                "state_env": state_env,
+            }
+        )
+        if isinstance(session_state.get("active_property_context"), dict):
+            session_state["active_property_context"]["state_env"] = state_env
+            session_state["active_property_context"]["jurisdiction_id"] = resolved_jurisdiction_id
+            session_state["active_property_context"]["jurisdiction_name"] = resolved_city_name
+
+    started_at = time.perf_counter()
+    try:
+        run_response = _run_customer_zoning_team_for_assistant_test(
+            run_payload,
+            session_state=session_state,
+            dependencies=dependencies,
+            metadata=metadata,
+            session_id=payload.session_id.strip() if payload.session_id else None,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+
+    return AssistantTestRunResponse(
+        payload=run_payload,
+        session_state=session_state,
+        dependencies=dependencies,
+        metadata=metadata,
+        content=_extract_assistant_test_content(run_response),
+        run_id=_get_value(run_response, "run_id"),
+        session_id=_get_value(run_response, "session_id") or payload.session_id,
+        duration_ms=duration_ms,
+        raw_response=_jsonable_or_string(run_response),
     )
 
 
@@ -1419,24 +1616,11 @@ def get_agno_session_usage_route(
     session_id: str,
     session_type: str | None = None,
 ) -> AgnoSessionUsageRead:
-    config = get_agno_storage_config()
-    if not config.enabled:
-        logger.info(
-            "Agno session usage requested while persistence is disabled session_id=%s session_type=%s",
-            session_id,
-            session_type,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Agno session persistence is disabled",
-        )
-
-    session_db = get_agno_db(config)
+    session_db = get_agno_db()
     if session_db is None:
         logger.warning(
-            "Agno session usage requested but PostgreSQL session storage is unavailable session_id=%s session_table=%s",
+            "Agno session usage requested but PostgreSQL session storage is unavailable session_id=%s",
             session_id,
-            config.session_table,
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

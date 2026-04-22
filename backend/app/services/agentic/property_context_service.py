@@ -7,14 +7,14 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.schemas.property_context import PropertyContextFact, PropertyContextResult
-from app.services.citation_formatter import build_property_citation
-from app.services.gridics_client import _build_gridics_client, extract_compressed_zoning_summary
+from app.services.shared.citation_formatter import build_property_citation
+from app.services.shared.gridics_client import _build_gridics_client, extract_compressed_zoning_summary
 
 
 class PropertyLookupAdapter(Protocol):
     """Interface for property lookup providers."""
 
-    def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict[str, Any]:
+    def get_property_record_by_coordinates(self, *, latitude: float, longitude: float, state_env: str) -> dict[str, Any]:
         ...
 
     def get_property_record(self, *, state_code: str, address: str, zip_code: str) -> dict[str, Any]:
@@ -89,16 +89,22 @@ class GridicsPropertyContextService:
         *,
         lat: float,
         lng: float,
+        state_env: str,
         jurisdiction_id: str,
         jurisdiction_name: str | None = None,
         address: str | None = None,
     ) -> PropertyContextResult:
-        print(f'[GridicsPropertyContextService] Fetching property context for coordinates: ({lat}, {lng}) in jurisdiction {jurisdiction_name} (ID: {jurisdiction_id})')
+        print(
+            "[GridicsPropertyContextService] Fetching property context for coordinates: "
+            f"({lat}, {lng}) in jurisdiction {jurisdiction_name} (ID: {jurisdiction_id}) "
+            f"state_env={state_env}"
+        )
         client = self.adapter or _build_gridics_client()
         
         raw_response = client.get_property_record_by_coordinates(
             latitude=lat,
             longitude=lng,
+            state_env=state_env,
         )
         print(f'[GridicsPropertyContextService] response successfully retrieved from adapter/client: {bool(raw_response)}')
 
@@ -108,31 +114,10 @@ class GridicsPropertyContextService:
             address=address,
             lat=lat,
             lng=lng,
+            state_env=state_env,
             raw_response=raw_response,
         )
-
-    def _retry_with_address_lookup(
-        self,
-        *,
-        client: PropertyLookupAdapter,
-        address: str | None,
-        lookup_error: Exception,
-    ) -> dict[str, Any] | None:
-        message = str(lookup_error)
-        normalized_message = message.lower()
-        if "state_env" not in normalized_message or "required" not in normalized_message:
-            return None
-
-        state_code = self._infer_state_code_from_address(address)
-        zip_code = self._infer_zip_code_from_address(address)
-        if not address or not state_code or not zip_code:
-            return None
-
-        return client.get_property_record(
-            state_code=state_code,
-            address=address,
-            zip_code=zip_code,
-        )
+    
 
     def _normalize(
         self,
@@ -142,6 +127,7 @@ class GridicsPropertyContextService:
         address: str | None,
         lat: float,
         lng: float,
+        state_env: str,
         raw_response: dict[str, Any],
     ) -> PropertyContextResult:
         summary = extract_compressed_zoning_summary(raw_response)
@@ -153,6 +139,7 @@ class GridicsPropertyContextService:
                 address=address,
                 latitude=lat,
                 longitude=lng,
+                state_env=state_env,
                 raw_response=raw_response,
                 error_message=str(summary["error"]),
                 missing_fields=["zoning envelope", "allowed uses"],
@@ -249,6 +236,9 @@ class GridicsPropertyContextService:
         zoning_district: str | None,
         future_land_use: str | None,
         overlays: list[str],
+        # NEW: Pass the parsed dimensions and allowed uses down
+        dimensions: dict[str, Any] = None, 
+        allowed_use_rows: list[dict[str, Any]] = None,
     ) -> list[PropertyContextFact]:
         facts: list[PropertyContextFact] = []
         if jurisdiction_name:
@@ -260,11 +250,34 @@ class GridicsPropertyContextService:
             ]
         )
         if zoning_district:
-            facts.append(PropertyContextFact(label="Zoning district", value=zoning_district))
+            facts.append(PropertyContextFact(label="Zoning District", value=zoning_district))
         if future_land_use:
-            facts.append(PropertyContextFact(label="Future land use", value=future_land_use))
+            facts.append(PropertyContextFact(label="Future Land Use", value=future_land_use))
         if overlays:
             facts.append(PropertyContextFact(label="Overlays", value=", ".join(overlays)))
+
+        # NEW: Extract allowed uses into a compact string
+        if allowed_use_rows:
+            allowed = [row.get("use") for row in allowed_use_rows if isinstance(row, dict) and row.get("use")]
+            if allowed:
+                facts.append(PropertyContextFact(label="Allowed Uses", value=", ".join(allowed)))
+
+        # NEW: Extract critical envelope dimensions
+        if dimensions:
+            if dimensions.get("max_height_ft"):
+                facts.append(PropertyContextFact(label="Max Height (ft)", value=str(dimensions.get("max_height_ft"))))
+            if dimensions.get("max_far"):
+                 facts.append(PropertyContextFact(label="Max FAR", value=str(dimensions.get("max_far"))))
+            
+            # Setbacks
+            setbacks = dimensions.get("setbacks_ft") or {}
+            if setbacks.get("front_principal"):
+                facts.append(PropertyContextFact(label="Front Setback (Principal)", value=f"{setbacks.get('front_principal')} ft"))
+            if setbacks.get("rear"):
+                 facts.append(PropertyContextFact(label="Rear Setback", value=f"{setbacks.get('rear')} ft"))
+            if setbacks.get("side"):
+                 facts.append(PropertyContextFact(label="Side Setback", value=f"{setbacks.get('side')} ft"))
+
         return facts
 
     @staticmethod
@@ -302,13 +315,3 @@ class GridicsPropertyContextService:
                 return state_code
 
         return None
-
-    @staticmethod
-    def _infer_zip_code_from_address(address: str | None) -> str | None:
-        normalized = str(address or "").strip()
-        if not normalized:
-            return None
-        match = _ZIP_CODE_PATTERN.search(normalized)
-        if not match:
-            return None
-        return match.group(1)

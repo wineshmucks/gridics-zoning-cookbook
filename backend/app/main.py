@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
     base_app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
-        description="Backend API for the UZone zoning verification platform.",
+        description="Backend API for the Gridics UZone platform.",
     )
     base_app.state.agent_os_enabled = False
 
@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:
                 request.scope["raw_path"] = rewritten.encode()
-        elif path.startswith("/api/agents"):
+        elif path.startswith("/api/agents") or path.startswith("/api/teams"):
             rewritten = path[4:]
             request.scope["path"] = rewritten
             if request.scope.get("raw_path") is not None:

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { getMapboxCoordinates } from '../lib/property-summary'
+import { getMapboxMarketFilters, resolveMapboxMarketBoundingBox } from '../lib/mapbox'
 
 type Feature = {
   id: string
@@ -15,6 +16,7 @@ type Props = {
   placeholder?: string
   onSelect: (feature: Feature) => void
   initial?: Feature | null
+  market?: string | null
   // optional restrictions
   city?: string
   state?: string
@@ -24,7 +26,7 @@ type Props = {
 
 const MIN_AUTOCOMPLETE_LENGTH = 3
 
-export default function PropertySelector({ placeholder, onSelect, initial, city, state, bbox }: Props) {
+export default function PropertySelector({ placeholder, onSelect, initial, market, city, state, bbox }: Props) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<Feature[]>([])
   const [isOpen, setIsOpen] = useState(false)
@@ -32,10 +34,49 @@ export default function PropertySelector({ placeholder, onSelect, initial, city,
   const [error, setError] = useState<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const [resolvedMarketBbox, setResolvedMarketBbox] = useState<number[] | null>(null)
 
   const MAPBOX_TOKEN = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").replace(/^"|"$/g, '').trim()
+  const marketFilters = getMapboxMarketFilters({ market, city, state })
+  const marketCity = marketFilters.city
+  const marketState = marketFilters.state
+  const effectiveBbox = Array.isArray(bbox) && bbox.length === 4 ? bbox : resolvedMarketBbox
 
   const q = query?.trim() || ''
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (Array.isArray(bbox) && bbox.length === 4) {
+      setResolvedMarketBbox(bbox)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (!market || !MAPBOX_TOKEN) {
+      setResolvedMarketBbox(null)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void resolveMapboxMarketBoundingBox(market, MAPBOX_TOKEN)
+      .then((nextBbox) => {
+        if (!cancelled) {
+          setResolvedMarketBbox(nextBbox)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedMarketBbox(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [bbox, market, MAPBOX_TOKEN])
 
   useEffect(() => {
     // Search after more than 2 characters have been entered.
@@ -65,9 +106,12 @@ export default function PropertySelector({ placeholder, onSelect, initial, city,
         let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
           q,
         )}.json?access_token=${encodeURIComponent(MAPBOX_TOKEN)}&autocomplete=true&limit=6&types=address,place,poi&language=en`
+        if (marketCity || marketState) {
+          url += `&country=us`
+        }
         // if bbox provided, add it to restrict results
-        if (Array.isArray(bbox) && bbox.length === 4) {
-          url += `&bbox=${bbox[0]},${bbox[1]},${bbox[2]},${bbox[3]}`
+        if (Array.isArray(effectiveBbox) && effectiveBbox.length === 4) {
+          url += `&bbox=${effectiveBbox[0]},${effectiveBbox[1]},${effectiveBbox[2]},${effectiveBbox[3]}`
         }
         const resp = await fetch(url)
         if (!resp.ok) {
@@ -88,26 +132,31 @@ export default function PropertySelector({ placeholder, onSelect, initial, city,
         }
         const body = await resp.json()
         const features = Array.isArray(body.features) ? body.features : []
-        // if city/state restrictions provided, filter results
+        // Filter results against the tenant's market scope when possible.
         let filtered = features
-        if (city || state) {
-          const cityLower = (city || '').toLowerCase()
-          const stateLower = (state || '').toLowerCase()
+        if (marketCity || marketState) {
+          const cityLower = (marketCity || '').toLowerCase()
+          const stateLower = (marketState || '').toLowerCase()
           filtered = features.filter((f: Feature) => {
             const pn = (f.place_name || '').toLowerCase()
-            if (city && state) {
+            if (marketCity && marketState) {
               // prefer exact inclusion
               if (pn.includes(`${cityLower}`) && pn.includes(`${stateLower}`)) return true
             }
-            if (city && pn.includes(cityLower)) return true
-            if (state && pn.includes(stateLower)) return true
+            if (marketCity && pn.includes(cityLower)) return true
+            if (marketState && pn.includes(stateLower)) return true
 
             // check context array entries from Mapbox
             if (Array.isArray((f as any).context)) {
               for (const c of (f as any).context) {
                 const txt = (c.text || c.id || '').toString().toLowerCase()
-                if (city && txt === cityLower) return true
-                if (state && (txt === stateLower || (c.short_code || '').toString().toLowerCase().endsWith(stateLower))) return true
+                if (marketCity && txt === cityLower) return true
+                if (
+                  marketState &&
+                  (txt === stateLower || (c.short_code || '').toString().toLowerCase().endsWith(stateLower))
+                ) {
+                  return true
+                }
               }
             }
 
@@ -128,7 +177,7 @@ export default function PropertySelector({ placeholder, onSelect, initial, city,
         window.clearTimeout(timeoutRef.current)
       }
     }
-  }, [query, MAPBOX_TOKEN, city, state, bbox])
+  }, [query, MAPBOX_TOKEN, marketCity, marketState, effectiveBbox])
 
   useEffect(() => {
     if (initial) {

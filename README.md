@@ -70,7 +70,7 @@ uvicorn app.main:app --reload
 Agno session persistence is wired in through the backend AgentOS and customer zoning agent setup:
 
 - [`backend/app/agents/storage.py`](/workspaces/gridics-zoning-cookbook/backend/app/agents/storage.py) builds the shared Agno Postgres session DB, run-metrics helpers, and session-usage rollups
-- [`backend/app/agents/customer_zoning_agent.py`](/workspaces/gridics-zoning-cookbook/backend/app/agents/customer_zoning_agent.py) attaches the DB and bounded history settings to the public team and agent
+- [`backend/app/agents/zoning_agent.py`](/workspaces/gridics-zoning-cookbook/backend/app/agents/zoning_agent.py) attaches the DB and bounded history settings to the public team and agent
 - [`backend/app/agent_os.py`](/workspaces/gridics-zoning-cookbook/backend/app/agent_os.py) reuses the same PostgreSQL connection for AgentOS
 
 Session identity:
@@ -82,10 +82,10 @@ Session identity:
 
 Storage controls:
 
-- `AGNO_SESSIONS_ENABLED=true|false`
 - `AGNO_SESSION_TABLE=...`
 - `AGNO_STORE_HISTORY_MESSAGES=true|false`
 - `AGNO_NUM_HISTORY_RUNS=...`
+- `NEXT_PUBLIC_ASSISTANT_TARGET_ID=...`
 
 The implementation keeps history conservative by default:
 
@@ -180,9 +180,9 @@ cp .env.example .env
 Backend:
 
 - `UZONE_AUTH_PROVIDER=local|clerk`
-- `UZONE_CLERK_PEM_PUBLIC_KEY=...`
-- `UZONE_CLERK_JWKS_URL=...`
-- `UZONE_CLERK_AUTHORIZED_PARTIES=http://localhost:3001,http://st1-agentic.gridics.local:3001,http://st1-zvl.gridics.local:3001,...`
+- `CLERK_PEM_PUBLIC_KEY=...`
+- `CLERK_JWKS_URL=...`
+- `CLERK_AUTHORIZED_PARTIES=http://localhost:3001,http://st1-agentic.gridics.local:3001,http://st1-zvl.gridics.local:3001,...`
 
 For host-based local testing, the backend also allows branded local origins such as:
 - `http://st1-agentic.gridics.local:3001`

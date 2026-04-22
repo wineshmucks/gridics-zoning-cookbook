@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.zoning_knowledge_tool_service import ZoningKnowledgeLookupService
+from app.services.agentic.zoning_knowledge_tool_service import ZoningKnowledgeLookupService
 
 
 def retrieve_zoning_knowledge(

@@ -31,6 +31,7 @@ def test_embed_session_token_round_trip() -> None:
         client_id="dream-town",
         city_name="Dream Town",
         department_name="Planning",
+        settings_json={"market": "Miami, FL"},
     )
 
     token, expires_at = embed_service.issue_embed_session_token(
@@ -40,6 +41,7 @@ def test_embed_session_token_round_trip() -> None:
         widget_title="Ask Dream Town",
         launcher_label="Have a question?",
         accent_color="#123456",
+        market="Miami, FL",
     )
     payload = embed_service.decode_embed_session_token(token)
 
@@ -49,4 +51,5 @@ def test_embed_session_token_round_trip() -> None:
     assert payload["widget_title"] == "Ask Dream Town"
     assert payload["launcher_label"] == "Have a question?"
     assert payload["accent_color"] == "#123456"
+    assert payload["market"] == "Miami, FL"
     assert payload["exp"] == int(expires_at.timestamp())

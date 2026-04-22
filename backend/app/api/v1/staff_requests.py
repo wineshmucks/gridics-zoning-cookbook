@@ -31,9 +31,9 @@ from app.schemas import (
     RequestStartReview,
     RequestStatusEventRead,
 )
-from app.services.document_service import build_draft, build_letter_version
-from app.services.document_service import generate_pdf_for_version
-from app.services.email_service import send_request_status_email
+from app.services.letters.document_service import build_draft, build_letter_version
+from app.services.letters.document_service import generate_pdf_for_version
+from app.services.letters.email_service import send_request_status_email
 
 router = APIRouter()
 

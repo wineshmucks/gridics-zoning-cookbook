@@ -14,18 +14,18 @@ from typing import Any
 
 from app.schemas.assistant_guardrails import AssistantTurnContract
 from app.schemas.gridics import GridicsBuilding, GridicsDataRow, GridicsResponse
-from app.services.confirmation_service import (
+from app.services.agentic.confirmation_service import (
     build_pending_confirmation_prompt,
     classify_pending_property_confirmation_response,
 )
-from app.services.jurisdiction_resolver import resolve_jurisdiction_for_property_request
-from app.services.policy_service import evaluate_policy_decision
-from app.services.response_templates import (
+from app.services.agentic.jurisdiction_resolver import resolve_jurisdiction_for_property_request
+from app.services.agentic.policy_service import evaluate_policy_decision
+from app.services.agentic.response_templates import (
     insufficient_evidence_message,
     jurisdiction_lock_message,
     missing_address_details_message,
 )
-from app.services.response_grounding import (
+from app.services.agentic.response_grounding import (
     build_evidence_pack,
     citation_completeness_report,
     grounding_verdict,
@@ -215,10 +215,10 @@ class _GridicsClient:
             {"state_env": state_code, "address": address, "zipCode": zip_code},
         )
 
-    def get_property_record_by_coordinates(self, *, latitude: float, longitude: float) -> dict[str, Any]:
+    def get_property_record_by_coordinates(self, *, latitude: float, longitude: float, state_env: str | None = None) -> dict[str, Any]:
         return self._get(
             "/property-record",
-            {"lat": latitude, "lon": longitude},
+            {"lat": latitude, "lon": longitude, "state_env": state_env},
         )
 
 
@@ -1602,7 +1602,7 @@ def query_customer_zoning_code(
 
     from app.db.models import TenantClient
     from app.db.session import SessionLocal
-    from app.services.zoning_knowledge_service import query_customer_zoning_knowledge
+    from app.services.agentic.zoning_knowledge_service import query_customer_zoning_knowledge
 
     with SessionLocal() as db:
         tenant_client = db.scalar(select(TenantClient).where(TenantClient.client_id == resolved_client_id))

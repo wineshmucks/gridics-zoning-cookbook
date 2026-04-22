@@ -13,9 +13,9 @@ from typing import Any
 
 from app.db.models import TenantClient
 from app.db.session import SessionLocal
-from app.services.jurisdiction_resolver import normalize_city_name
-from app.services.platform_settings_service import get_platform_assistant_settings_json
-from app.services.tenant_service import get_tenant_assistant_settings, merge_assistant_provider_keys
+from app.services.agentic.jurisdiction_resolver import normalize_city_name
+from app.services.shared.platform_settings_service import get_platform_assistant_settings_json
+from app.services.shared.tenant_service import get_tenant_assistant_settings, merge_assistant_provider_keys
 
 _ZONING_KEYWORDS = (
     "zoning",
@@ -84,7 +84,8 @@ def _resolve_scope_guardrail_api_key(tenant_client: TenantClient | None) -> tupl
 
 def _build_scope_guardrail_agent(tenant_client: TenantClient | None = None):
     try:
-        from app.agents.factory import build_agent_model, create_agent
+        from agno.agent import Agent
+        from agno.models.google import Gemini
 
         api_key, api_key_source = _resolve_scope_guardrail_api_key(tenant_client)
         if not api_key:
@@ -94,15 +95,10 @@ def _build_scope_guardrail_agent(tenant_client: TenantClient | None = None):
         if cached_agent is not None:
             return cached_agent
 
-        agent = create_agent(
+        agent = Agent(
             id="scope-guardrail-agent",
             name="Scope Guardrail Agent",
-            model=build_agent_model(
-                provider="gemini",
-                model_id="gemini-2.5-flash-lite",
-                api_key=api_key,
-                allow_env_fallback=False,
-            ),
+            model=Gemini(id="gemini-2.5-flash-lite", api_key=api_key),
             instructions=[
                 "Classify if a user prompt is zoning-related.",
                 "Return only JSON with keys: label, reason, confidence.",

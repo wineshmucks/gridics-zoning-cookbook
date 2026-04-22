@@ -6,15 +6,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { getAssistantContent, getAssistantContentDebug, normalizeContent, sanitizeAssistantContent } from '../lib/agentRunContent'
 import { buildAssistantApiUrl } from '../lib/assistant-api'
-import {
-  buildPropertySummaryChips,
-  buildPropertySummaryUrl,
-  getMapboxCoordinates,
-  type MapboxFeature,
-  type PropertySummary,
-} from '../lib/property-summary'
+import { buildPropertySummaryUrl, type PropertySummary } from '../lib/property-summary'
+import { AssistantPropertyCard } from './AssistantPropertyCard'
 import AssistantLanding from './AssistantLanding'
-import { BuildingLogo } from './BuildingLogo'
+import { getAssistantTargetRouteKind } from './assistantTargetIds'
+import PropertySelectionCard from './PropertySelectionCard'
 
 type AgentRunResponse = {
   session_id?: string
@@ -57,6 +53,7 @@ type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
+  timestamp: string
   steps?: StreamStep[]
   toolCalls?: StreamToolCall[]
   runId?: string
@@ -93,6 +90,39 @@ function ThumbDownIcon() {
   )
 }
 
+function AssistantFeedbackButtons({
+  message,
+  onFeedbackToggle,
+  messageFeedbackValue,
+}: {
+  message: ChatMessage
+  onFeedbackToggle: (message: ChatMessage, direction: MessageFeedback) => Promise<void>
+  messageFeedbackValue?: MessageFeedback
+}) {
+  return (
+    <div className="agent-chat-message-header-actions" aria-label="Response feedback">
+      <button
+        className={`assistant-message-tool-button${messageFeedbackValue === 'up' ? ' is-active' : ''}`}
+        type="button"
+        aria-label="Helpful response"
+        title="Helpful response"
+        onClick={() => void onFeedbackToggle(message, 'up')}
+      >
+        <ThumbUpIcon />
+      </button>
+      <button
+        className={`assistant-message-tool-button${messageFeedbackValue === 'down' ? ' is-active is-negative' : ''}`}
+        type="button"
+        aria-label="Unhelpful response"
+        title="Unhelpful response"
+        onClick={() => void onFeedbackToggle(message, 'down')}
+      >
+        <ThumbDownIcon />
+      </button>
+    </div>
+  )
+}
+
 function TimelineIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -104,6 +134,20 @@ function TimelineIcon() {
       <path d="M11.5 5h3" />
     </svg>
   )
+}
+
+function buildAgentOsRunPath(agentId: string, runId?: string) {
+  const targetId = encodeURIComponent(agentId)
+  const routeKind = getAssistantTargetRouteKind(agentId)
+  const basePath = `/api/${routeKind}/${targetId}/runs`
+  return runId ? `${basePath}/${encodeURIComponent(runId)}` : basePath
+}
+
+function formatChatTimestamp(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
 }
 
 function ToolsIcon() {
@@ -166,114 +210,6 @@ type AssistantToolbarState = {
   subtitle: string | null
   canCopy: boolean
   canNewChat: boolean
-}
-
-function AssistantPropertyBanner({
-  selectedProperty,
-  onClearProperty,
-}: {
-  selectedProperty: SelectedProperty
-  onClearProperty: () => void
-}) {
-  const MAPBOX_TOKEN = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '').replace(/^"|"$/g, '')
-  const [propertySummary, setPropertySummary] = useState<PropertySummary | null>(null)
-  const [propertySummaryLoading, setPropertySummaryLoading] = useState(false)
-
-  function buildStaticMapUrl(center?: number[] | undefined) {
-    if (!center || center.length < 2 || !MAPBOX_TOKEN) return null
-    const [lng, lat] = center
-    const marker = `pin-s+2563eb(${lng},${lat})`
-    const zoom = 15
-    const size = '320x120@2x'
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/${encodeURIComponent(marker)}/${lng},${lat},${zoom},0,0/${size}?access_token=${encodeURIComponent(
-      MAPBOX_TOKEN,
-    )}`
-  }
-
-  useEffect(() => {
-    if (!selectedProperty?.center || selectedProperty.center.length < 2) {
-      setPropertySummary(null)
-      setPropertySummaryLoading(false)
-      return
-    }
-
-    const summaryUrl = buildPropertySummaryUrl(selectedProperty as MapboxFeature)
-    if (!summaryUrl) return
-
-    const controller = new AbortController()
-    setPropertySummaryLoading(true)
-    fetch(summaryUrl, { cache: 'no-store', signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Gridics summary request failed (${response.status}).`)
-        }
-        return response.json() as Promise<PropertySummary>
-      })
-      .then((summary) => setPropertySummary(summary))
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return
-        setPropertySummary(null)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPropertySummaryLoading(false)
-      })
-
-    return () => controller.abort()
-  }, [selectedProperty])
-
-  const propertyChips = buildPropertySummaryChips(propertySummary)
-  const mapImageUrl = buildStaticMapUrl(selectedProperty.center)
-
-  return (
-    <div className="agent-chat-property-banner assistant-property-card">
-      <div className="assistant-property-thumb">
-        {mapImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={mapImageUrl} alt={`Map of ${selectedProperty.place_name}`} loading="lazy" />
-        ) : (
-          <div className="assistant-property-thumb-placeholder" />
-        )}
-        {mapImageUrl ? <div className="assistant-property-thumb-marker" aria-hidden="true" /> : null}
-      </div>
-
-      <div className="assistant-property-content">
-        <div className="assistant-property-title-row">
-          <span className="assistant-property-location-icon" aria-hidden="true" />
-          <div className="assistant-property-card-address">{propertySummary?.address || selectedProperty.place_name}</div>
-          <button type="button" className="assistant-property-change-link" onClick={onClearProperty}>
-            Change
-          </button>
-        </div>
-        {propertySummaryLoading ? (
-          <div className="assistant-property-summary-status">Loading Gridics parcel summary...</div>
-        ) : propertyChips.length ? (
-          <div className="assistant-property-chips" aria-label="Gridics parcel summary">
-            {propertyChips.slice(0, 5).map((chip) => (
-              <span key={chip} className="assistant-property-chip">
-                {chip}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="assistant-property-actions">
-        <button
-          type="button"
-          className="button secondary assistant-property-map-button"
-          onClick={() => {
-            if (selectedProperty.center && selectedProperty.center.length >= 2) {
-              const { lng, lat } = getMapboxCoordinates(selectedProperty)
-              window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank')
-            }
-          }}
-        >
-          <span className="assistant-property-map-icon" aria-hidden="true" />
-          View on Map
-        </button>
-      </div>
-    </div>
-  )
 }
 
 function summarizeToolResultForExport(rawResult: unknown): unknown {
@@ -699,7 +635,7 @@ function extractCitationLinks(parsed: Record<string, unknown> | null | undefined
 }
 
 function collectReferenceLinksFromToolCalls(toolCalls: StreamToolCall[]): string[] {
-  const links: string[] = ['[Powered by Gridics](https://gridics.com/)']
+  const links: string[] = []
 
   for (const toolCall of toolCalls) {
     if (!toolCall.rawResult) {
@@ -722,8 +658,24 @@ function collectReferenceLinksFromToolCalls(toolCalls: StreamToolCall[]): string
   return links
 }
 
+function removeGridicsPoweredFooter(content: string): string {
+  return content
+    .replace(
+      /\n{2,}---\n{2,}\*\*References\*\*\n(?:-\s*)?\[Powered by Gridics\]\(https:\/\/gridics\.com\/?\)\s*$/i,
+      '',
+    )
+    .trim()
+}
+
+function replaceGridicsPropertyReferences(content: string): string {
+  return content.replace(
+    /\(reference:\s*Gridics property data\)/gi,
+    '![Gridics reference](/logos/R%20-%20Gridics%20(Grey).png "Reference: Gridics")',
+  )
+}
+
 function appendReferenceSection(content: string, toolCalls: StreamToolCall[]): string {
-  const trimmedContent = content.trim()
+  const trimmedContent = removeGridicsPoweredFooter(content.trim())
   const referenceLinks = collectReferenceLinksFromToolCalls(toolCalls)
   if (!referenceLinks.length) {
     return trimmedContent
@@ -1000,7 +952,7 @@ async function fetchCompletedRun(
   try {
     const debugQuery = isDebugEnabled ? '&debug=1' : ''
     const response = await fetch(
-      `${buildAssistantApiUrl(`/agents/${agentId}/runs/${runId}`)}?session_id=${encodeURIComponent(sessionId)}${debugQuery}`,
+      `${buildAssistantApiUrl(buildAgentOsRunPath(agentId, runId))}?session_id=${encodeURIComponent(sessionId)}${debugQuery}`,
       {
         cache: "no-store",
         headers: requestHeaders,
@@ -1203,14 +1155,10 @@ function AssistantMessageDetails({
   message,
   customerName,
   onCopyMessage,
-  onFeedbackToggle,
-  messageFeedbackValue,
 }: {
   message: ChatMessage
   customerName: string
   onCopyMessage: (content: string) => void
-  onFeedbackToggle: (message: ChatMessage, direction: MessageFeedback) => Promise<void>
-  messageFeedbackValue?: MessageFeedback
 }) {
   const hasDetails =
     Boolean(message.content) ||
@@ -1232,33 +1180,15 @@ function AssistantMessageDetails({
       <div className="assistant-message-details-body">
         <div className="assistant-message-tools">
           <div className="assistant-message-tools-primary">
-            <button
-              className="assistant-message-tool-button"
-              type="button"
-              aria-label="Copy answer"
-              title="Copy answer"
-              onClick={() => onCopyMessage(message.content)}
-            >
-              <CopyIcon />
-            </button>
-            <button
-              className={`assistant-message-tool-button${messageFeedbackValue === 'up' ? ' is-active' : ''}`}
-              type="button"
-              aria-label="Helpful response"
-              title="Helpful response"
-              onClick={() => void onFeedbackToggle(message, 'up')}
-            >
-              <ThumbUpIcon />
-            </button>
-            <button
-              className={`assistant-message-tool-button${messageFeedbackValue === 'down' ? ' is-active is-negative' : ''}`}
-              type="button"
-              aria-label="Unhelpful response"
-              title="Unhelpful response"
-              onClick={() => void onFeedbackToggle(message, 'down')}
-            >
-              <ThumbDownIcon />
-            </button>
+          <button
+            className="assistant-message-tool-button"
+            type="button"
+            aria-label="Copy answer"
+            title="Copy answer"
+            onClick={() => onCopyMessage(message.content)}
+          >
+            <CopyIcon />
+          </button>
           </div>
           {collectSourceChips(message).length ? (
             <div className="assistant-source-chip-row">
@@ -1282,6 +1212,10 @@ function AssistantMessageDetails({
       </div>
     </details>
   )
+}
+
+function MessageTimestamp({ timestamp, role }: { timestamp: string; role: ChatMessage['role'] }) {
+  return <div className={`assistant-message-timestamp assistant-message-timestamp-${role}`}>{timestamp}</div>
 }
 
 function ChatEmptyState({
@@ -1320,7 +1254,7 @@ export function AgentChatPanel({
   agentId,
   backendBase,
   customerName,
-  assistantLogoUrl = null,
+  market = null,
   clientId,
   defaultModelId = "",
   surface,
@@ -1339,6 +1273,7 @@ export function AgentChatPanel({
   agentId: string
   backendBase: string
   customerName: string
+  market?: string | null
   assistantLogoUrl?: string | null
   clientId: string | null
   defaultModelId?: string
@@ -1364,6 +1299,10 @@ export function AgentChatPanel({
   const [messageFeedback, setMessageFeedback] = useState<Record<string, MessageFeedback | undefined>>({})
   const [modelId, setModelId] = useState(defaultModelId)
   const [selectedProperty, setSelectedProperty] = useState<SelectedProperty | null>(null)
+  const [selectedPropertySummary, setSelectedPropertySummary] = useState<PropertySummary | null>(null)
+  const [selectedPropertySummaryLoading, setSelectedPropertySummaryLoading] = useState(false)
+  const [selectedPropertySummaryError, setSelectedPropertySummaryError] = useState<string | null>(null)
+  const [isPropertySearchOpen, setIsPropertySearchOpen] = useState(false)
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false)
   const searchParams = useSearchParams()
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -1415,6 +1354,85 @@ export function AgentChatPanel({
     const nextHeight = Math.min(Math.max(textarea.scrollHeight, 56), 180)
     textarea.style.height = `${nextHeight}px`
   }, [input])
+
+  useEffect(() => {
+    if (!selectedProperty?.center || selectedProperty.center.length < 2) {
+      setSelectedPropertySummary(null)
+      setSelectedPropertySummaryLoading(false)
+      setSelectedPropertySummaryError(null)
+      return
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = window.sessionStorage.getItem(`uzone:selected-property-summary:${selectedProperty.id}`)
+        if (cached) {
+          setSelectedPropertySummary(JSON.parse(cached) as PropertySummary)
+          setSelectedPropertySummaryError(null)
+        }
+      } catch {
+        // Ignore cached summary parse failures and fall through to a fresh fetch.
+      }
+    }
+
+    const summaryUrl = buildPropertySummaryUrl(selectedProperty)
+    if (!summaryUrl) {
+      setSelectedPropertySummary(null)
+      setSelectedPropertySummaryLoading(false)
+      setSelectedPropertySummaryError('Gridics summary unavailable.')
+      return
+    }
+
+    const controller = new AbortController()
+    setSelectedPropertySummaryLoading(true)
+    setSelectedPropertySummaryError(null)
+
+    fetch(summaryUrl, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Gridics summary request failed (${response.status}).`)
+        }
+        return response.json() as Promise<PropertySummary>
+      })
+      .then((summary) => {
+        setSelectedPropertySummary(summary)
+        if (typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.setItem(
+              `uzone:selected-property-summary:${selectedProperty.id}`,
+              JSON.stringify(summary),
+            )
+          } catch {
+            // Ignore storage failures.
+          }
+        }
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setSelectedPropertySummary(null)
+        setSelectedPropertySummaryError(error instanceof Error ? error.message : 'Unable to load parcel summary.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSelectedPropertySummaryLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [selectedProperty])
+
+  useEffect(() => {
+    if (!selectedProperty?.id || !selectedPropertySummary || typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        `uzone:selected-property-summary:${selectedProperty.id}`,
+        JSON.stringify(selectedPropertySummary),
+      )
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [selectedProperty?.id, selectedPropertySummary])
 
   useEffect(() => {
     if (!isModelPickerOpen) {
@@ -1571,12 +1589,14 @@ export function AgentChatPanel({
         id: userMessageId,
         role: "user",
         content: trimmed,
+        timestamp: formatChatTimestamp(new Date()),
         status: "complete",
       },
       {
         id: assistantMessageId,
         role: "assistant",
         content: "",
+        timestamp: formatChatTimestamp(new Date()),
         steps: initialSteps,
         status: "streaming",
       },
@@ -1923,7 +1943,7 @@ export function AgentChatPanel({
             ...(requestHeaders || {}),
           }
       const runDebugQuery = isDebugEnabled ? "?debug=1" : ""
-      const runUrl = `${buildAssistantApiUrl(`/agents/${agentId}/runs`)}${runDebugQuery}`
+      const runUrl = `${buildAssistantApiUrl(buildAgentOsRunPath(agentId))}${runDebugQuery}`
 
       if (process.env.NODE_ENV !== "production") {
         console.debug("[assistant] submit run", {
@@ -2272,17 +2292,42 @@ export function AgentChatPanel({
           {copyMessage ? <div className="assistant-chat-toolbar-copy-status">{copyMessage}</div> : null}
         </div>
         ) : null}
+        {selectedProperty && messages.length > 0 && !isPropertySearchOpen ? (
+          <AssistantPropertyCard
+            className="agent-chat-property-banner"
+            selectedProperty={selectedProperty}
+            propertySummary={selectedPropertySummary}
+            propertySummaryLoading={selectedPropertySummaryLoading}
+            propertySummaryError={selectedPropertySummaryError}
+            onChange={() => setIsPropertySearchOpen(true)}
+          />
+        ) : null}
+        {messages.length > 0 && isPropertySearchOpen ? (
+          <div className="agent-chat-property-picker">
+            <PropertySelectionCard
+              market={market}
+              isOpen={isPropertySearchOpen}
+              onOpenChange={setIsPropertySearchOpen}
+              onSelectProperty={(feature) => setSelectedProperty(feature)}
+            />
+          </div>
+        ) : null}
         <div ref={viewportRef} className={`agent-chat-log agent-chat-log-${variant}`}>
-          {selectedProperty && messages.length > 0 ? (
-            <AssistantPropertyBanner selectedProperty={selectedProperty} onClearProperty={() => setSelectedProperty(null)} />
-          ) : null}
           {messages.length === 0 ? (
             <AssistantLanding
               customerName={customerName}
+              market={market}
+              propertySummary={selectedPropertySummary}
+              propertySummaryLoading={selectedPropertySummaryLoading}
+              propertySummaryError={selectedPropertySummaryError}
+              isPropertySearchOpen={isPropertySearchOpen}
+              onPropertySearchOpenChange={setIsPropertySearchOpen}
               onSelectPrompt={handleSuggestionClick}
               selectedProperty={selectedProperty}
-              onSelectProperty={(f) => setSelectedProperty(f)}
-              onClearProperty={() => setSelectedProperty(null)}
+              onSelectProperty={(f) => {
+                setSelectedProperty(f)
+                setIsPropertySearchOpen(false)
+              }}
             />
           ) : (
             messages.map((message) => (
@@ -2291,49 +2336,50 @@ export function AgentChatPanel({
                 className={`agent-chat-message-row agent-chat-message-row-${message.role}`}
                 data-message-id={message.id}
               >
-                {message.role === "assistant" ? (
-                  <div className={`agent-chat-message-avatar${assistantLogoUrl ? " has-image" : ""}`} aria-hidden="true">
-                    <BuildingLogo logoUrl={assistantLogoUrl} alt={`${customerName} logo`} />
-                  </div>
-                ) : null}
-                <div className={`agent-chat-message agent-chat-message-${message.role}`}>
-                  {variant === "chatgpt" ? null : (
-                    <div className="agent-chat-message-header">
-                      <div className="agent-chat-message-role-block">
-                        <div className="agent-chat-message-role">
-                          {message.role === "user" ? "You" : `${customerName} Assistant`}
-                        </div>
-                        {message.role === "assistant" && message.status === "streaming" ? (
-                          <div className="agent-chat-message-status">
-                            <span className="assistant-streaming-dots" aria-hidden="true">
-                              <span />
-                              <span />
-                              <span />
-                            </span>
-                            Streaming
-                          </div>
-                        ) : null}
+              <div className={`agent-chat-message agent-chat-message-${message.role}`}>
+                  <div className="agent-chat-message-header">
+                    <div className="agent-chat-message-role-block">
+                      <div className={`agent-chat-message-role agent-chat-message-role-${message.role}`}>
+                        {message.role === "user" ? "User" : "Zoning Assistant"}
                       </div>
+                      {message.role === "assistant" && message.status === "streaming" ? (
+                        <div className="agent-chat-message-status">
+                          <span className="assistant-streaming-dots" aria-hidden="true">
+                            <span />
+                            <span />
+                            <span />
+                          </span>
+                          Streaming
+                        </div>
+                      ) : null}
                     </div>
-                  )}
+                    {message.role === "assistant" ? (
+                      <AssistantFeedbackButtons
+                        message={message}
+                        onFeedbackToggle={handleFeedbackToggle}
+                        messageFeedbackValue={messageFeedback[message.id]}
+                      />
+                    ) : null}
+                  </div>
                   <div className="assistant-ui-message-content">
                     {message.role === "user" ? (
                       <div className="assistant-ui-user-content">{message.content}</div>
                     ) : message.content ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {replaceGridicsPropertyReferences(message.content)}
+                      </ReactMarkdown>
                     ) : message.status === "streaming" ? (
                       <div className="assistant-answer-placeholder">Reviewing zoning context and preparing an answer…</div>
                     ) : (
                       <div className="assistant-answer-placeholder">No answer text was returned.</div>
                     )}
                   </div>
+                  <MessageTimestamp timestamp={message.timestamp} role={message.role} />
                   {message.role === "assistant" ? (
                     <AssistantMessageDetails
                       message={message}
                       customerName={customerName}
                       onCopyMessage={handleCopyMessage}
-                      onFeedbackToggle={handleFeedbackToggle}
-                      messageFeedbackValue={messageFeedback[message.id]}
                     />
                   ) : null}
                 </div>

@@ -6,9 +6,9 @@ from agno.run import RunContext
 
 from app.db.models import TenantClient
 from app.db.session import SessionLocal
-from app.services.embed_service import decode_embed_session_token
-from app.services.platform_settings_service import get_platform_assistant_settings_json
-from app.services.tenant_service import (
+from app.services.shared.embed_service import decode_embed_session_token
+from app.services.shared.platform_settings_service import get_platform_assistant_settings_json
+from app.services.shared.tenant_service import (
     get_tenant_assistant_agent_prompts,
     get_tenant_assistant_settings,
     merge_assistant_agent_prompts,

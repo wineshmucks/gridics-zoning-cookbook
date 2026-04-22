@@ -1307,12 +1307,6 @@ export async function saveCustomerExperienceSettingsAction(
   const assistantProviderKeys = {
     gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
   }
-  const assistantAgentPrompts = {
-    [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
-      String(formData.get('promptCustomerZoningAgent') || '').trim() || null,
-    'parcel-data-agent': String(formData.get('promptParcelDataAgent') || '').trim() || null,
-    'code-researcher-agent': String(formData.get('promptCodeResearcherAgent') || '').trim() || null,
-  }
 
   if (!organizationId) {
     return {
@@ -1332,7 +1326,7 @@ export async function saveCustomerExperienceSettingsAction(
           zoning_code_url: zoningCodeUrl || null,
           assistant_disclaimer_text: assistantDisclaimerText || null,
           assistant_provider_keys: assistantProviderKeys,
-          assistant_agent_prompts: assistantAgentPrompts,
+          assistant_agent_prompts: {},
         }),
       })
 

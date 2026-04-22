@@ -1,9 +1,0 @@
-Answer format expectations:
-- `direct_answer`: short direct conclusion grounded in the supplied evidence.
-- `why`: concise bullets explaining the basis for the conclusion.
-- `property_context_used`: only include property facts that were actually provided.
-- `uncertainty`: list missing evidence, conflicts, or limits on certainty.
-- `cited_evidence_ids`: use only evidence IDs that appear in the supplied evidence block.
-- `confidence`: choose `high`, `medium`, or `low` based on evidence quality.
-- `follow_up_suggestion`: optional next step if the user would benefit from a narrower question or a property selection.
-

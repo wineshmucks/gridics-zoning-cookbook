@@ -7,6 +7,7 @@ import types
 import json
 
 from app.agents.tools import analyze_customer_zoning_request, query_customer_zoning_code, standardize_address
+from app.tools import gridics_property_tool
 
 
 class DummyTenant:
@@ -117,6 +118,47 @@ def test_query_customer_zoning_code_requires_client_id_when_unbound() -> None:
     assert result["response_guardrail"]["operation"] == "query_customer_zoning_code"
     assert "couldn't complete the zoning lookup" in result["response_guardrail"]["message"].lower()
     assert result["retry_debug"]["recovered"] is False
+
+
+def test_gridics_property_tool_falls_back_to_run_context_state_env(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakePropertyContextResult:
+        def model_dump(self, **kwargs):
+            return {"status": "ok", "state_env": captured["state_env"]}
+
+    class FakeGridicsPropertyContextService:
+        def get_property_context(self, **kwargs):
+            captured.update(kwargs)
+            return FakePropertyContextResult()
+
+    run_context = DummyRunContext(
+        {
+            "state_env": "fl",
+            "jurisdiction_id": "jur-miami",
+            "jurisdiction_name": "City of Miami",
+        }
+    )
+    run_context.session_state = {
+        "active_property_context": {
+            "address": "3148 Mary St #1, Miami, FL 33133",
+        }
+    }
+    monkeypatch.setattr(gridics_property_tool, "GridicsPropertyContextService", FakeGridicsPropertyContextService)
+
+    result = gridics_property_tool.get_property_context(
+        lat=25.732787,
+        lng=-80.239989,
+        state_env="",
+        jurisdiction_id="",
+        run_context=run_context,
+    )
+
+    assert result == {"status": "ok", "state_env": "fl"}
+    assert captured["state_env"] == "fl"
+    assert captured["jurisdiction_id"] == "jur-miami"
+    assert captured["jurisdiction_name"] == "City of Miami"
+    assert captured["address"] == "3148 Mary St #1, Miami, FL 33133"
 
 
 def test_standardize_address_marks_exact_matches_as_not_needing_confirmation() -> None:

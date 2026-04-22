@@ -11,14 +11,14 @@ import json
 from typing import Any
 
 from app.agents import zoning_request_tools as _runtime
-from app.services.confirmation_service import (
+from app.services.agentic.confirmation_service import (
     build_pending_confirmation_prompt,
     classify_pending_property_confirmation_response,
 )
-from app.services.jurisdiction_resolver import resolve_jurisdiction_for_property_request
-from app.services.policy_service import evaluate_policy_decision
-from app.services.response_grounding import build_evidence_pack, citation_completeness_report, grounding_verdict
-from app.services.response_templates import (
+from app.services.agentic.jurisdiction_resolver import resolve_jurisdiction_for_property_request
+from app.services.agentic.policy_service import evaluate_policy_decision
+from app.services.agentic.response_grounding import build_evidence_pack, citation_completeness_report, grounding_verdict
+from app.services.agentic.response_templates import (
     insufficient_evidence_message,
     jurisdiction_lock_message,
     missing_address_details_message,
@@ -251,7 +251,7 @@ def standardize_address(address: str, **kwargs: Any) -> dict[str, Any]:
 
 def confirm_pending_address(*, query: str | None = None, run_context: Any = None, **kwargs: Any) -> dict[str, Any]:
     from app.agents.zoning_request_tools import _clear_pending_property_confirmation, _get_pending_property_confirmation
-    from app.services.confirmation_service import (
+    from app.services.agentic.confirmation_service import (
         build_pending_confirmation_prompt,
         classify_pending_property_confirmation_response,
     )

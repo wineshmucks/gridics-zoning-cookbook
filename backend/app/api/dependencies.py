@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.security import AuthContext, optional_auth
 from app.db.models import User
 from app.db.session import SessionLocal
-from app.services.auth_service import hash_password
+from app.services.shared.auth_service import hash_password
 
 
 def _fallback_clerk_email(user_id: str) -> str:

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 
 import { acceptAssistantDisclaimerAction } from '../app/ai-assistant/actions'
 import { buildAssistantDisclaimerScopeKey } from '../lib/assistant-disclaimer'
-import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
+import { DEFAULT_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 import { AgentChatPanel } from './AgentChatPanel'
 
 const LOCAL_STORAGE_PREFIX = 'uzone:assistant-disclaimer:accepted:'
@@ -17,7 +17,9 @@ type EmbedChatActions = {
 type Props = {
   backendBase: string
   customerName: string
+  market?: string | null
   clientId: string | null
+  agentId?: string
   disclaimerText: string
   disclaimerScopeId: string
   initialAccepted: boolean
@@ -29,7 +31,9 @@ type Props = {
 export function PublicAssistantExperience({
   backendBase,
   customerName,
+  market = null,
   clientId,
+  agentId,
   disclaimerText,
   disclaimerScopeId,
   initialAccepted,
@@ -116,9 +120,10 @@ export function PublicAssistantExperience({
       ) : null}
 
       <AgentChatPanel
-        agentId={CUSTOMER_ZONING_ASSISTANT_TARGET_ID}
+        agentId={agentId || DEFAULT_ASSISTANT_TARGET_ID}
         backendBase={backendBase}
         customerName={customerName}
+        market={market}
         clientId={clientId}
         surface="public-assistant"
         title=""

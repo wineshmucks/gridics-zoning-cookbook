@@ -12,7 +12,7 @@ BACKEND_ROOT = CURRENT_FILE.parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.services.assistant_eval_service import evaluate_guardrail_cases
+from app.services.agentic.assistant_eval_service import evaluate_guardrail_cases
 
 
 def _load_cases(filename: str) -> list[dict]:

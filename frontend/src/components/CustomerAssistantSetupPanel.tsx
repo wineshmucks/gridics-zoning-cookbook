@@ -22,7 +22,6 @@ import { CustomerAssistantEmbedPreview } from './CustomerAssistantEmbedPreview'
 import {
   assistantProviderKeyFields,
 } from './agenticSetupConfig'
-import { CUSTOMER_ZONING_ASSISTANT_TARGET_ID } from './assistantTargetIds'
 import { getClientBackendOrigin } from '../lib/backend'
 
 type SelectedCustomer = {
@@ -35,7 +34,6 @@ type SelectedCustomer = {
 type AgenticSection =
   | 'general'
   | 'api-keys'
-  | 'agents'
   | 'knowledge'
   | 'integrations'
 
@@ -96,9 +94,8 @@ export function CustomerAssistantSetupPanel({
   const sectionParam = searchParams.get('section')
   const activeSection: AgenticSection =
     sectionParam === 'llm'
-        ? 'agents'
+        ? 'api-keys'
     : sectionParam === 'api-keys' ||
-          sectionParam === 'agents' ||
           sectionParam === 'knowledge' ||
           sectionParam === 'integrations'
       ? sectionParam
@@ -119,7 +116,6 @@ export function CustomerAssistantSetupPanel({
   const currentDisclaimer = currentExperienceSettings.assistant_disclaimer_text
   const currentZoningCodeUrl = currentExperienceSettings.zoning_code_url || ''
   const currentProviderKeys = currentExperienceSettings.assistant_provider_keys || providerKeys
-  const currentAgentPrompts = currentExperienceSettings.assistant_agent_prompts || {}
   const baselineProviderKeys = baselineSettings?.assistant_provider_keys || {}
   const baselineDisclaimer = baselineSettings?.assistant_disclaimer_text?.trim() || ''
   const currentEmbedSettings = embedState.settings || embedSettings
@@ -144,7 +140,6 @@ export function CustomerAssistantSetupPanel({
   > = {
     general: { title: 'General', icon: 'jurisdiction-details' },
     'api-keys': { title: 'API Keys', icon: 'assistant-setup' },
-    agents: { title: 'Agents', icon: 'assistant' },
     knowledge: { title: 'Knowledge', icon: 'assistant' },
     integrations: { title: 'Integrations', icon: 'assistant-setup' },
   }
@@ -245,12 +240,7 @@ export function CustomerAssistantSetupPanel({
       assistant_provider_keys: {
         gemini: String(formData.get('providerKeyGemini') || '').trim() || null,
       },
-      assistant_agent_prompts: {
-        [CUSTOMER_ZONING_ASSISTANT_TARGET_ID]:
-          currentAgentPrompts[CUSTOMER_ZONING_ASSISTANT_TARGET_ID] || null,
-        'parcel-data-agent': currentAgentPrompts['parcel-data-agent'] || null,
-        'code-researcher-agent': currentAgentPrompts['code-researcher-agent'] || null,
-      },
+      assistant_agent_prompts: {},
     }
 
     try {
@@ -305,7 +295,6 @@ export function CustomerAssistantSetupPanel({
     includeZoningCodeUrl?: boolean
     includeDisclaimer?: boolean
     includeProviderKeys?: boolean
-    includeAgentPrompts?: boolean
   }) => (
     <>
       <input type="hidden" name="organizationId" value={customer.id} />
@@ -322,27 +311,6 @@ export function CustomerAssistantSetupPanel({
               type="hidden"
               name={provider.fieldName}
               value={currentProviderKeys[provider.id] || ''}
-            />
-          ))
-        : null}
-      {options.includeAgentPrompts
-        ? Object.entries(currentAgentPrompts).map(([targetId, prompt]) => (
-            <input
-              key={targetId}
-              type="hidden"
-              name={(() => {
-                switch (targetId) {
-                  case CUSTOMER_ZONING_ASSISTANT_TARGET_ID:
-                    return 'promptCustomerZoningAgent'
-                  case 'parcel-data-agent':
-                    return 'promptParcelDataAgent'
-                  case 'code-researcher-agent':
-                    return 'promptCodeResearcherAgent'
-                  default:
-                    return `prompt-${targetId}`
-                }
-              })()}
-              value={prompt || ''}
             />
           ))
         : null}
@@ -370,7 +338,6 @@ export function CustomerAssistantSetupPanel({
                 {renderExperienceHiddenFields({
                   includeZoningCodeUrl: true,
                   includeProviderKeys: true,
-                  includeAgentPrompts: true,
                 })}
               <label className="field field-full">
                 <span>Disclaimer</span>
@@ -414,7 +381,6 @@ export function CustomerAssistantSetupPanel({
                 ) : null}
                 {renderExperienceHiddenFields({
                   includeZoningCodeUrl: true,
-                  includeAgentPrompts: true,
                   includeDisclaimer: true,
                 })}
                 <label className="api-key-toggle">
@@ -469,32 +435,6 @@ export function CustomerAssistantSetupPanel({
           </>
         ) : null}
 
-        {activeSection === 'agents' ? (
-          <>
-            <FormSection title="Agents" icon="assistant" hideHeader>
-              <form onSubmit={(event) => void handleExperienceSubmit(event)} className="admin-form admin-form-compact">
-                {hasBaselineDefaults ? (
-                  <div className="admin-form-note">
-                    Jurisdiction values override the platform baseline only for this jurisdiction.
-                  </div>
-                ) : null}
-                {renderExperienceHiddenFields({
-                  includeZoningCodeUrl: true,
-                  includeDisclaimer: true,
-                  includeProviderKeys: true,
-                })}
-                <div className="admin-form-note">
-                  Agent prompt editing is temporarily disabled. This jurisdiction currently uses the
-                  checked-in assistant instructions from the codebase.
-                </div>
-                {experienceState.error ? <div className="status-banner status-banner-error">{experienceState.error}</div> : null}
-                {experienceState.success ? (
-                  <div className="status-banner status-banner-success">{experienceState.success}</div>
-                ) : null}
-              </form>
-            </FormSection>
-          </>
-        ) : null}
         {activeSection === 'knowledge' ? (
           <>
             <FormSection title="Knowledge" icon="assistant" hideHeader>
@@ -502,7 +442,6 @@ export function CustomerAssistantSetupPanel({
                 {renderExperienceHiddenFields({
                   includeDisclaimer: true,
                   includeProviderKeys: true,
-                  includeAgentPrompts: true,
                 })}
                 <label className="field field-full">
                   <span>Zoning code URL</span>

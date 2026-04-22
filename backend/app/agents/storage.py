@@ -56,34 +56,18 @@ def _cap_history_runs(value: int | str | None) -> int:
     return max(1, min(resolved, _HISTORY_RUN_CAP))
 
 
-def get_agno_storage_config() -> AgnoStorageConfig:
-    enabled = bool(settings.agno_sessions_enabled)
-    store_history_messages = bool(settings.agno_store_history_messages) if enabled else False
-    num_history_runs = _cap_history_runs(settings.agno_num_history_runs) if enabled else _HISTORY_RUN_CAP
-
-    if enabled and store_history_messages:
+def get_agno_db(config: AgnoStorageConfig | None = None) -> PostgresDb | None:
+    config = config or AgnoStorageConfig(
+        enabled=True,
+        session_table=_normalize_table_name(settings.agno_session_table, "aos_sessions"),
+        store_history_messages=bool(settings.agno_store_history_messages),
+        num_history_runs=_cap_history_runs(settings.agno_num_history_runs),
+    )
+    if config.store_history_messages:
         logger.warning(
             "Agno session storage is configured to persist full history messages. "
             "This can significantly increase PostgreSQL storage usage because Agno stores expanded history per run."
         )
-
-    return AgnoStorageConfig(
-        enabled=enabled,
-        session_table=_normalize_table_name(settings.agno_session_table, "aos_sessions"),
-        store_history_messages=store_history_messages,
-        num_history_runs=num_history_runs,
-    )
-
-
-def get_agno_db(config: AgnoStorageConfig | None = None) -> PostgresDb | None:
-    config = config or get_agno_storage_config()
-    if not config.enabled:
-        logger.info(
-            "Agno session persistence disabled; runs will not be stored in PostgreSQL. session_table=%s",
-            config.session_table,
-        )
-        return None
-
     try:
         return PostgresDb(
             db_url=settings.database_url,
@@ -104,10 +88,12 @@ def get_agno_db(config: AgnoStorageConfig | None = None) -> PostgresDb | None:
 
 
 def get_async_agno_db(config: AgnoStorageConfig | None = None) -> AsyncPostgresDb | None:
-    config = config or get_agno_storage_config()
-    if not config.enabled:
-        return None
-
+    config = config or AgnoStorageConfig(
+        enabled=True,
+        session_table=_normalize_table_name(settings.agno_session_table, "aos_sessions"),
+        store_history_messages=bool(settings.agno_store_history_messages),
+        num_history_runs=_cap_history_runs(settings.agno_num_history_runs),
+    )
     try:
         return AsyncPostgresDb(
             db_url=settings.database_url,
@@ -124,18 +110,6 @@ def get_async_agno_db(config: AgnoStorageConfig | None = None) -> AsyncPostgresD
             config.session_table,
         )
         return None
-
-
-def build_agno_session_kwargs(*, enable_history: bool = True) -> dict[str, Any]:
-    config = get_agno_storage_config()
-    db = get_agno_db(config) if config.enabled else None
-    history_enabled = bool(config.enabled and enable_history and db is not None)
-    return {
-        "db": db,
-        "add_history_to_context": history_enabled,
-        "num_history_runs": config.num_history_runs if history_enabled else None,
-        "store_history_messages": bool(config.store_history_messages and history_enabled),
-    }
 
 
 def _first_nonempty_string(*values: Any) -> str | None:
@@ -207,9 +181,12 @@ def _get_session_table(schema: str, session_table: str) -> Table:
 
 
 def _resolve_session_table(config: AgnoStorageConfig | None = None) -> Table | None:
-    config = config or get_agno_storage_config()
-    if not config.enabled:
-        return None
+    config = config or AgnoStorageConfig(
+        enabled=True,
+        session_table=_normalize_table_name(settings.agno_session_table, "aos_sessions"),
+        store_history_messages=bool(settings.agno_store_history_messages),
+        num_history_runs=_cap_history_runs(settings.agno_num_history_runs),
+    )
     try:
         return _get_session_table(config.db_schema, config.session_table)
     except Exception:
@@ -336,11 +313,10 @@ def extract_run_usage_metrics(
     team_id = _first_nonempty_string(_attr_or_item(team, "id"), _attr_or_item(run_output, "team_id"))
     model = _attr_or_item(run_output, "model") or _attr_or_item(agent, "model") or _attr_or_item(team, "model")
     model_provider = _first_nonempty_string(
-        _attr_or_item(model, "_uzone_model_provider"),
         _attr_or_item(model, "provider"),
+        type(model).__name__.lower() if model is not None else None,
     )
     model_id = _first_nonempty_string(
-        _attr_or_item(model, "_uzone_model_id"),
         _attr_or_item(model, "id", "model_id"),
         _attr_or_item(run_output, "model_id"),
     )
@@ -382,42 +358,6 @@ def extract_run_usage_metrics(
         "duration": _metric_value(metrics, "duration", "time", default=None),
         "model_usage": model_usage,
     }
-
-
-def log_agno_run_metrics(
-    agent: Any = None,
-    team: Any = None,
-    run_output: Any = None,
-    session: Any = None,
-    session_state: Any = None,
-    dependencies: Any = None,
-    metadata: dict[str, Any] | None = None,
-    user_id: str | None = None,
-    debug_mode: bool | None = None,
-    run_context: Any = None,
-) -> None:
-    summary = extract_run_usage_metrics(
-        run_output,
-        agent=agent,
-        team=team,
-        session=session,
-        metadata=metadata,
-        run_context=run_context,
-    )
-    logger.info(
-        "Agno run metrics session_id=%s run_id=%s agent_id=%s team_id=%s model=%s provider=%s input_tokens=%s output_tokens=%s total_tokens=%s cost=%s duration=%s",
-        summary.get("session_id"),
-        summary.get("run_id"),
-        summary.get("agent_id"),
-        summary.get("team_id"),
-        summary.get("model_id"),
-        summary.get("model_provider"),
-        summary.get("input_tokens"),
-        summary.get("output_tokens"),
-        summary.get("total_tokens"),
-        summary.get("cost"),
-        summary.get("duration"),
-    )
 
 
 def _session_run_metrics(session: Any) -> list[dict[str, Any]]:
@@ -689,14 +629,11 @@ def get_tenant_conversation_session(
 __all__ = [
     "AgnoStorageConfig",
     "aget_session_usage_totals",
-    "build_agno_session_kwargs",
     "extract_run_usage_metrics",
     "get_agno_db",
-    "get_agno_storage_config",
     "get_async_agno_db",
     "get_session_usage_totals",
     "get_tenant_conversation_session",
-    "log_agno_run_metrics",
     "list_tenant_conversation_sessions",
     "resolve_agno_session_id",
 ]

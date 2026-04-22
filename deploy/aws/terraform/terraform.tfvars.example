@@ -31,8 +31,8 @@ backend_environment = {
   UZONE_DEFAULT_PAYMENT_PROVIDER = "manual"
   UZONE_EMAIL_PROVIDER           = "console"
   UZONE_EMAIL_FROM               = "noreply@example.com"
-  UZONE_CLERK_JWKS_URL           = "https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json"
-  UZONE_CLERK_AUTHORIZED_PARTIES = "https://uzone.example.com"
+  CLERK_JWKS_URL                = "https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json"
+  CLERK_AUTHORIZED_PARTIES      = "https://uzone.example.com"
   UZONE_ASSETS_PREFIX            = "jurisdictions"
 }
 

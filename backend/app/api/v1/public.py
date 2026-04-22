@@ -12,7 +12,7 @@ from app.api.dependencies import get_db, get_optional_auth_context
 from app.core.security import AuthContext
 from app.core.config import settings
 from app.db.models import AssistantMessageFeedback, TenantClient
-from app.services.embed_service import (
+from app.services.shared.embed_service import (
     build_embed_widget_payload,
     decode_embed_session_token,
     get_tenant_embed_settings,
@@ -20,11 +20,12 @@ from app.services.embed_service import (
     normalize_embed_origin,
     verify_embed_secret,
 )
-from app.services.platform_settings_service import get_platform_assistant_settings_json
-from app.services.clerk_service import clerk_organization_exists
-from app.services.tenant_service import (
+from app.services.shared.platform_settings_service import get_platform_assistant_settings_json
+from app.services.shared.clerk_service import clerk_organization_exists
+from app.services.shared.tenant_service import (
     get_effective_assistant_disclaimer_text,
     get_tenant_path_alias,
+    get_tenant_market,
     get_tenant_logo_path,
     normalize_tenant_path_alias,
     resolve_tenant_public_config,
@@ -54,6 +55,7 @@ class EmbedSessionCreateResponse(BaseModel):
     client_id: str
     city_name: str
     department_name: str
+    market: str | None = None
     logo_path: str | None = None
     assistant_disclaimer_text: str
     widget_title: str
@@ -67,6 +69,7 @@ class EmbedSessionReadResponse(BaseModel):
     client_id: str
     city_name: str
     department_name: str
+    market: str | None = None
     logo_path: str | None = None
     assistant_disclaimer_text: str
     widget_title: str
@@ -326,6 +329,7 @@ def create_embed_session(
         widget_title=embed_settings.widget_title,
         launcher_label=embed_settings.launcher_label,
         accent_color=embed_settings.accent_color,
+        market=get_tenant_market(tenant_client.settings_json),
     )
     response_payload = build_embed_widget_payload(
         tenant_client=tenant_client,
@@ -335,6 +339,7 @@ def create_embed_session(
         assistant_disclaimer_text=assistant_disclaimer_text,
         embed_origin=normalized_origin,
     )
+    response_payload["market"] = get_tenant_market(tenant_client.settings_json)
     return EmbedSessionCreateResponse(**response_payload).model_dump()
 
 
@@ -349,6 +354,7 @@ def read_embed_session(request: Request) -> dict:
         client_id=str(payload.get("client_id") or ""),
         city_name=str(payload.get("city_name") or ""),
         department_name=str(payload.get("department_name") or ""),
+        market=str(payload.get("market") or "") if payload.get("market") else None,
         logo_path=str(payload.get("logo_path") or "") if payload.get("logo_path") else None,
         assistant_disclaimer_text=str(payload.get("assistant_disclaimer_text") or ""),
         widget_title=str(payload.get("widget_title") or f"Ask {payload.get('city_name') or 'UZone'}"),

@@ -1,6 +1,6 @@
 'use client'
 
-type IconName = 'jurisdiction-details' | 'assistant-setup' | 'assistant' | 'admin-users' | 'database' | 'conversations' | 'back'
+type IconName = 'jurisdiction-details' | 'assistant-setup' | 'assistant' | 'admin-users' | 'database' | 'conversations' | 'traces' | 'back'
 
 function IconPath({ name }: { name: IconName }) {
   if (name === 'jurisdiction-details') {
@@ -53,6 +53,19 @@ function IconPath({ name }: { name: IconName }) {
       <path
         d="M6.5 5.5A3.5 3.5 0 0 0 3 9v5a3.5 3.5 0 0 0 3.5 3.5H8l3 2.5c.7.6 1.8.1 1.8-.9v-1.6H17A3.5 3.5 0 0 0 20.5 14V9A3.5 3.5 0 0 0 17 5.5H6.5Zm2 4.7a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm3.5 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Zm3.5 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2Z"
         fill="currentColor"
+      />
+    )
+  }
+
+  if (name === 'traces') {
+    return (
+      <path
+        d="M4 17.5h16M6.5 14.5l2.6-3.2 3 2.4 4.3-6.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     )
   }

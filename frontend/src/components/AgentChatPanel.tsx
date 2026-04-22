@@ -92,15 +92,27 @@ function ThumbDownIcon() {
 
 function AssistantFeedbackButtons({
   message,
+  onCopyMessage,
   onFeedbackToggle,
   messageFeedbackValue,
 }: {
   message: ChatMessage
+  onCopyMessage: (content: string) => Promise<void>
   onFeedbackToggle: (message: ChatMessage, direction: MessageFeedback) => Promise<void>
   messageFeedbackValue?: MessageFeedback
 }) {
   return (
     <div className="agent-chat-message-header-actions" aria-label="Response feedback">
+      <button
+        className="assistant-message-tool-button"
+        type="button"
+        aria-label="Copy response"
+        title="Copy response"
+        onClick={() => void onCopyMessage(message.content)}
+        disabled={!message.content.trim()}
+      >
+        <CopyIcon />
+      </button>
       <button
         className={`assistant-message-tool-button${messageFeedbackValue === 'up' ? ' is-active' : ''}`}
         type="button"
@@ -2356,6 +2368,7 @@ export function AgentChatPanel({
                     {message.role === "assistant" ? (
                       <AssistantFeedbackButtons
                         message={message}
+                        onCopyMessage={handleCopyMessage}
                         onFeedbackToggle={handleFeedbackToggle}
                         messageFeedbackValue={messageFeedback[message.id]}
                       />

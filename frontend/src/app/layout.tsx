@@ -50,7 +50,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const isEmbedSurface = currentScopePath?.startsWith('/embed') ?? false
   const isSuperAdminScope = currentPathname?.startsWith('/super-admin') ?? false
   const superAdminPathSegments = currentPathname?.split('/').filter(Boolean) || []
-  const superAdminReservedSegments = new Set(['assistant', 'assistant-setup', 'assistant-tests', 'database', 'gridics-debug', 'new', 'customers'])
+  const superAdminReservedSegments = new Set([
+    'assistant',
+    'assistant-setup',
+    'assistant-tests',
+    'database',
+    'gridics-debug',
+    'new',
+    'customers',
+    'traces',
+  ])
   const superAdminPathCustomerId =
     isSuperAdminScope && superAdminPathSegments.length >= 2 && !superAdminReservedSegments.has(superAdminPathSegments[1])
       ? superAdminPathSegments[1]

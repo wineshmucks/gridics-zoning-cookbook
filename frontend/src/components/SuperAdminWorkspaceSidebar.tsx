@@ -6,6 +6,7 @@ import { useHydratedPathname } from '../lib/use-hydrated-pathname'
 const workspaceItems = [
   { href: '/super-admin', label: 'Jurisdictions', icon: 'jurisdiction-details' as const },
   { href: '/super-admin/database', label: 'Database', icon: 'database' as const },
+  { href: '/super-admin/traces', label: 'Agno Traces', icon: 'traces' as const },
   { href: '/super-admin/assistant-setup', label: 'Platform Agentic Setup', icon: 'assistant-setup' as const },
   { href: '/super-admin/gridics-debug', label: 'Gridics Debug', icon: 'assistant-setup' as const },
   { href: '/super-admin/new', label: 'Add Jurisdiction', icon: 'jurisdiction-details' as const },

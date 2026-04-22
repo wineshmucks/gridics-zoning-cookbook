@@ -170,6 +170,49 @@ export type AgnoConversationDetail = {
   updated_at: string | null
 }
 
+export type AgnoTrace = {
+  trace_id: string
+  name: string
+  status: string
+  start_time: string
+  end_time: string
+  duration_ms: number
+  total_spans: number
+  error_count: number
+  run_id: string | null
+  session_id: string | null
+  user_id: string | null
+  agent_id: string | null
+  team_id: string | null
+  workflow_id: string | null
+  created_at: string
+}
+
+export type AgnoSpan = {
+  span_id: string
+  trace_id: string
+  parent_span_id: string | null
+  name: string
+  span_kind: string
+  status_code: string
+  status_message: string | null
+  start_time: string
+  end_time: string
+  duration_ms: number
+  attributes: Record<string, unknown>
+  created_at: string
+}
+
+export type AgnoTracesResponse = {
+  total_count: number
+  items: AgnoTrace[]
+}
+
+export type AgnoTraceDetail = {
+  trace: AgnoTrace
+  spans: AgnoSpan[]
+}
+
 export type CustomerZoningKnowledgeMutationState = {
   error: string | null
   success: string | null
@@ -1518,6 +1561,69 @@ export async function fetchCustomerConversation(
     }
 
     return (await response.json()) as AgnoConversationDetail
+  } catch {
+    return null
+  }
+}
+
+export async function fetchAgnoTraces(params?: {
+  sessionId?: string | null
+  runId?: string | null
+  traceStatus?: string | null
+  limit?: number
+  page?: number
+}): Promise<AgnoTracesResponse> {
+  const query = new URLSearchParams()
+  if (params?.sessionId?.trim()) {
+    query.set('session_id', params.sessionId.trim())
+  }
+  if (params?.runId?.trim()) {
+    query.set('run_id', params.runId.trim())
+  }
+  if (params?.traceStatus?.trim()) {
+    query.set('trace_status', params.traceStatus.trim())
+  }
+  if (typeof params?.limit === 'number') {
+    query.set('limit', String(params.limit))
+  }
+  if (typeof params?.page === 'number') {
+    query.set('page', String(params.page))
+  }
+
+  try {
+    const response = await fetch(buildBackendApiUrl(`/api/admin/agno/traces${query.toString() ? `?${query.toString()}` : ''}`), {
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      return { total_count: 0, items: [] }
+    }
+
+    const payload = (await response.json()) as Partial<AgnoTracesResponse>
+    return {
+      total_count: typeof payload.total_count === 'number' ? payload.total_count : 0,
+      items: Array.isArray(payload.items) ? payload.items : [],
+    }
+  } catch {
+    return { total_count: 0, items: [] }
+  }
+}
+
+export async function fetchAgnoTrace(traceId: string): Promise<AgnoTraceDetail | null> {
+  if (!traceId.trim()) {
+    return null
+  }
+
+  try {
+    const response = await fetch(buildBackendApiUrl(`/api/admin/agno/traces/${encodeURIComponent(traceId)}`), {
+      cache: 'no-store',
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    return (await response.json()) as AgnoTraceDetail
   } catch {
     return null
   }

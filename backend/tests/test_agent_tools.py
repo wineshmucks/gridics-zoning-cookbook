@@ -52,7 +52,7 @@ def test_query_customer_zoning_code_uses_run_context_client_id(monkeypatch) -> N
     session_module.SessionLocal = lambda: FakeSession()
     monkeypatch.setitem(sys.modules, "app.db.session", session_module)
     monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.query_customer_zoning_knowledge",
+        "app.services.agentic.zoning_knowledge_service.query_customer_zoning_knowledge",
         fake_query_customer_zoning_knowledge,
     )
 
@@ -94,7 +94,7 @@ def test_query_customer_zoning_code_ignores_address_like_client_id(monkeypatch) 
     session_module.SessionLocal = lambda: FakeSession()
     monkeypatch.setitem(sys.modules, "app.db.session", session_module)
     monkeypatch.setattr(
-        "app.services.zoning_knowledge_service.query_customer_zoning_knowledge",
+        "app.services.agentic.zoning_knowledge_service.query_customer_zoning_knowledge",
         fake_query_customer_zoning_knowledge,
     )
 
@@ -290,7 +290,13 @@ def test_analyze_customer_zoning_request_uses_mapbox_coordinates_from_context(mo
     captured: dict[str, object] = {}
 
     class FakeGridicsClient:
-        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float):
+        def get_property_record_by_coordinates(
+            self,
+            *,
+            latitude: float,
+            longitude: float,
+            state_env: str | None = None,
+        ):
             captured["gridics"] = {
                 "latitude": latitude,
                 "longitude": longitude,
@@ -1198,7 +1204,13 @@ def test_analyze_customer_zoning_request_reuses_active_property_coordinates_with
     }
 
     class FakeGridicsClient:
-        def get_property_record_by_coordinates(self, *, latitude: float, longitude: float):
+        def get_property_record_by_coordinates(
+            self,
+            *,
+            latitude: float,
+            longitude: float,
+            state_env: str | None = None,
+        ):
             gridics_calls.append(
                 {
                     "latitude": latitude,

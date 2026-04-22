@@ -11,6 +11,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
+class GridicsUpstreamError(RuntimeError):
+    def __init__(self, status_code: int, payload: str) -> None:
+        super().__init__(f"Gridics HTTP {status_code}: {payload}")
+        self.status_code = status_code
+        self.payload = payload
+
+
 def _get_gridics_api_key() -> str:
     key = os.getenv("GRIDICS_API_KEY", "").strip() or os.getenv("GRIDICS_CONSUMER_KEY", "").strip()
     if not key:
@@ -66,7 +73,7 @@ class GridicsClient:
             payload = e.read().decode("utf-8", errors="replace")
             trace_entry["response"] = {"status_code": e.code, "body": payload}
             self.call_log.append(trace_entry)
-            raise RuntimeError(f"Gridics HTTP {e.code}: {payload}") from e
+            raise GridicsUpstreamError(e.code, payload) from e
         except urllib.error.URLError as e:
             trace_entry["error"] = f"Gridics connection error: {e.reason}"
             self.call_log.append(trace_entry)

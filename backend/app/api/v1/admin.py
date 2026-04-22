@@ -34,6 +34,10 @@ from app.db.models import (
     ZoningCodeSection,
 )
 from app.schemas import (
+    AgnoSpanRead,
+    AgnoTraceDetailRead,
+    AgnoTraceRead,
+    AgnoTracesResponseRead,
     EmailTemplateClientContextRead,
     EmailTemplateEffectiveRead,
     EmailTemplateOverrideUpsert,
@@ -1632,6 +1636,57 @@ def get_agno_session_usage_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agno session not found")
 
     return AgnoSessionUsageRead.model_validate(summary)
+
+
+@router.get("/agno/traces", response_model=AgnoTracesResponseRead)
+def list_agno_traces_route(
+    session_id: str | None = None,
+    run_id: str | None = None,
+    trace_status: str | None = None,
+    limit: int = Query(default=25, ge=1, le=100),
+    page: int = Query(default=1, ge=1),
+) -> AgnoTracesResponseRead:
+    session_db = get_agno_db()
+    if session_db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Agno session storage is unavailable")
+
+    resolved_session_id = session_id.strip() if isinstance(session_id, str) and session_id.strip() else None
+    resolved_run_id = run_id.strip() if isinstance(run_id, str) and run_id.strip() else None
+    resolved_status = trace_status.strip().upper() if isinstance(trace_status, str) and trace_status.strip() else None
+
+    traces, total_count = session_db.get_traces(
+        session_id=resolved_session_id,
+        run_id=resolved_run_id,
+        status=resolved_status,
+        limit=limit,
+        page=page,
+    )
+    return AgnoTracesResponseRead(
+        total_count=total_count,
+        items=[AgnoTraceRead.model_validate(trace) for trace in traces],
+    )
+
+
+@router.get("/agno/traces/{trace_id}", response_model=AgnoTraceDetailRead)
+def get_agno_trace_route(trace_id: str) -> AgnoTraceDetailRead:
+    session_db = get_agno_db()
+    if session_db is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Agno session storage is unavailable")
+
+    resolved_trace_id = trace_id.strip()
+    if not resolved_trace_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agno trace not found")
+
+    trace = session_db.get_trace(trace_id=resolved_trace_id)
+    if trace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agno trace not found")
+
+    spans = session_db.get_spans(trace_id=trace.trace_id, limit=1000)
+    spans = sorted(spans, key=lambda span: (span.start_time, span.created_at, span.span_id))
+    return AgnoTraceDetailRead(
+        trace=AgnoTraceRead.model_validate(trace),
+        spans=[AgnoSpanRead.model_validate(span) for span in spans],
+    )
 
 
 @router.get("/clients/{organization_id}/conversations", response_model=AgnoConversationListRead)

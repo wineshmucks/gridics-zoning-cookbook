@@ -21,7 +21,7 @@ from app.services.shared.embed_service import (
     verify_embed_secret,
 )
 from app.services.shared.platform_settings_service import get_platform_assistant_settings_json
-from app.services.shared.clerk_service import clerk_organization_exists
+from app.services.shared.clerk_service import clerk_organization_exists, get_clerk_organization
 from app.services.shared.tenant_service import (
     get_effective_assistant_disclaimer_text,
     get_tenant_path_alias,

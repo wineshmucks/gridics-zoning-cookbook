@@ -1,6 +1,7 @@
 """Admin and configuration schemas."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -366,6 +367,57 @@ class DatabaseCleanupResultRead(BaseModel):
     deleted_rows_total: int
     deleted_by_table: list[DatabaseCleanupTableResultRead]
     database_info: DatabaseInfoRead
+
+
+class AgnoTraceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    trace_id: str
+    name: str
+    status: str
+    start_time: datetime
+    end_time: datetime
+    duration_ms: int
+    total_spans: int
+    error_count: int
+    run_id: str | None = None
+    session_id: str | None = None
+    user_id: str | None = None
+    agent_id: str | None = None
+    team_id: str | None = None
+    workflow_id: str | None = None
+    created_at: datetime
+
+
+class AgnoSpanRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    span_id: str
+    trace_id: str
+    parent_span_id: str | None = None
+    name: str
+    span_kind: str
+    status_code: str
+    status_message: str | None = None
+    start_time: datetime
+    end_time: datetime
+    duration_ms: int
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class AgnoTracesResponseRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    total_count: int
+    items: list[AgnoTraceRead] = Field(default_factory=list)
+
+
+class AgnoTraceDetailRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    trace: AgnoTraceRead
+    spans: list[AgnoSpanRead] = Field(default_factory=list)
 
 
 class ZoningKnowledgeLatestRunRead(BaseModel):

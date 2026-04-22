@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services.shared.gridics_client import _build_gridics_client
+from app.services.shared.gridics_client import GridicsUpstreamError, _build_gridics_client
 
 router = APIRouter()
 _STATE_CODE_PATTERN = re.compile(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?(?:\b|$)")
@@ -195,6 +195,15 @@ def _summarize_property_record(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _fetch_property_record(lat: float, lon: float, state_env: str) -> dict[str, Any]:
+    client = _build_gridics_client()
+    return client.get_property_record_by_coordinates(
+        latitude=lat,
+        longitude=lon,
+        state_env=state_env,
+    )
+
+
 @router.get("/property-record")
 def get_property_record(    
     lat: float = Query(...),
@@ -202,12 +211,9 @@ def get_property_record(
     state_env: str = Query(...),
 ) -> dict:
     try:
-        client = _build_gridics_client()
-        return client.get_property_record_by_coordinates(
-            latitude=lat,
-            longitude=lon,
-            state_env=state_env,
-        )        
+        return _fetch_property_record(lat, lon, state_env)
+    except GridicsUpstreamError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.payload) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -218,5 +224,10 @@ def get_property_summary(
     lon: float = Query(...),
     state_env: str = Query(...),
 ) -> dict:
-    rec = get_property_record(lat=lat, lon=lon, state_env=state_env)
-    return _summarize_property_record(rec)
+    try:
+        rec = _fetch_property_record(lat, lon, state_env)
+        return _summarize_property_record(rec)
+    except GridicsUpstreamError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.payload) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

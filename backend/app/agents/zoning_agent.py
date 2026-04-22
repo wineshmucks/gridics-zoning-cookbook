@@ -191,6 +191,54 @@ def get_active_tenant_context(run_context: Any = None, **kwargs: Any) -> dict[st
         "found": bool(dependencies.get("client_id") or jurisdiction_id or state_env),
     }
 
+from agno.run.agent import RunInput
+from agno.session.agent import AgentSession
+
+def inject_gridics_context_pre_hook(run_input: RunInput, session: AgentSession, **kwargs) -> None:
+    """Pre-hook to fetch Gridics data and inject it straight into the LLM's prompt."""
+    
+    # 1. Fetch the active tenant and property coordinates from the run's dependencies
+    run_context = kwargs.get("run_context") or session
+    context_kwargs = dict(kwargs)
+    context_kwargs.pop("run_context", None)
+    context = get_active_tenant_context(run_context=run_context, **context_kwargs)
+    property_data = context.get("property")
+    
+    # If no property is active, do nothing and let the agent handle it as a general question
+    if not property_data or "latitude" not in property_data or "longitude" not in property_data:
+        return 
+        
+    lat = property_data["latitude"]
+    lng = property_data["longitude"]
+    state_env = context.get("state_env")
+    jur_id = context.get("jurisdiction_id")
+    
+    if not state_env or not jur_id:
+        print("[pre_hook] Missing state_env or jurisdiction_id. Skipping injection.")
+        return
+
+    try:
+        print(f"[pre_hook] Fetching Gridics context for {lat}, {lng}...")
+        # 2. Fetch the Gridics facts natively in Python
+        gridics_facts = get_property_context(
+            lat=lat, 
+            lng=lng, 
+            state_env=state_env, 
+            jurisdiction_id=jur_id
+        )
+        
+        # 3. Append the facts directly to the user's message
+        injection = f"\n\n### SYSTEM INJECTED PROPERTY FACTS ###\n{gridics_facts}\n####################################\n"
+        
+        # Depending on your Agno version, the input string is either message or input_content
+        if hasattr(run_input, "message") and isinstance(run_input.message, str):
+            run_input.message += injection
+        elif hasattr(run_input, "input_content") and isinstance(run_input.input_content, str):
+            run_input.input_content += injection
+            
+    except Exception as e:
+        print(f"[pre_hook] Failed to fetch or inject Gridics data: {e}")
+
 
 def build_zoning_assistant_agent() -> Agent:
     return Agent(
@@ -266,13 +314,15 @@ def build_code_researcher_agent() -> Agent:
             "",
             "### CRITICAL: SEARCH STRATEGY",
             "Vector databases often struggle with highly specific zoning queries because dimensional rules are often in a 'General' chapter rather than the specific 'Zone' chapter.",
-            "If your initial search (e.g., 'fence height in T3-O') does not return a specific numerical limit:",
+            "If your initial search does not return a specific numerical limit:",
             "1. You MUST call the `search_zoning_code` tool a second time using a broader query.",
             "2. Example: Instead of 'fence height in T3-O', search simply for 'fence height regulations' or 'maximum fence height'.",
             "",
-            "### CITATION FORMATTING (MANDATORY)",
-            "You MUST append the exact source label or section name to every rule you extract.",
-            "Never summarize a rule without including where you found it (e.g., 'Per section 3.7.1, the max height is 6ft')."
+            "### URL & CITATION EXTRACTION (MANDATORY)",
+            "The `search_zoning_code` tool returns a `section_url` (or `page_url`) alongside the text for every result.",
+            "You MUST extract this URL and pass it back to the Orchestrator.",
+            "Format your citations exactly like this so the Orchestrator can read them: `[Source Label](URL)`.",
+            "Never summarize a rule without including its corresponding URL link."
         ],
     )
 
@@ -285,10 +335,9 @@ def build_customer_zoning_team() -> Team:
         model=Gemini(id=CUSTOMER_ZONING_TEAM_MODEL_ID, api_key=_GEMINI_API_KEY),
         members=[build_code_researcher_agent()], 
         
-        # FIX 1: Remove get_active_tenant_context and get_tenant_context. 
-        # The Team Leader only needs the property context tool now.
-        tools=[get_property_facts],
-        
+        tools=[],
+        pre_hooks=[inject_gridics_context_pre_hook],
+
         db=AGNO_DB,
         mode=TeamMode.coordinate,
         add_dependencies_to_context=True,
@@ -304,39 +353,27 @@ def build_customer_zoning_team() -> Team:
         enable_agentic_memory=True,
         debug_mode=True,
         instructions=[
-            "You are the Lead Zoning Orchestrator. Manage the workflow and synthesize data.",
+            "You are the Lead Zoning Orchestrator. Answer the user's zoning questions using the context provided.",
             "Keep the conversation strictly within zoning, urban planning, and land use scope.",
             "",
-            "### CRITICAL: ACTIVE CONTEXT",
-            "Your backend has automatically injected the required context into your prompt below:",
-            "- CLIENT ID: {client_id}",
-            "- ACTIVE PROPERTY: {property}",
+            "### SOURCE OF TRUTH HIERARCHY",
+            "1. **PRIMARY - GRIDICS FACTS:** If your prompt contains a 'SYSTEM INJECTED PROPERTY FACTS' block, you MUST use those specific pre-calculated numbers (e.g., maximum density, maximum height) as your absolute source of truth. Do not recalculate these base limits.",
+            "2. **SECONDARY - ZONING CODE:** If the user asks for written definitions, policy rules (e.g., 'how high can I build a fence?'), or bonuses/overlays not explicitly defined in the Gridics Facts, you MUST DELEGATE to the 'Zoning Knowledge Retriever' to search the code.",
             "",
-            "If the `ACTIVE PROPERTY` contains coordinates (latitude/longitude), you MUST treat the request as a PROPERTY-SPECIFIC QUESTION.",
-            "",
-            "### ROUTING WORKFLOW (MANDATORY)",
-            "1. PROPERTY-SPECIFIC QUESTIONS:",
-            "   If a property is active, you MUST execute the `get_property_facts` tool yourself using the `lat` and `lng`.",
-            "   - Read the tool's output to identify the property's Zoning District.",
-            "   - **Base Limits:** Use the Gridics tool's specific numbers (e.g., `max_density_units`, `max_height_ft`) as your primary baseline answer.",
-            "   - **BONUSES, OVERLAYS & MISSING LIMITS:** If the user asks about a specific bonus (e.g., 'Live Local Act'), overlay, or a limit not returned by Gridics (like fence height):",
-            "     a) DELEGATE a task to the 'Zoning Knowledge Retriever'.",
-            "     b) The task MUST include the rule to search for AND the Zoning District. (e.g., 'Search for Live Local Act density bonuses in T5-O').",
-            "     c) YOU MUST CALCULATE the final yield yourself by multiplying any retrieved bonus limits by the `lot_area_acres` or `lot_area_sqft`.",
-            "",
-            "2. GENERAL QUESTIONS:",
-            "   If NO property is active, DELEGATE directly to the 'Zoning Knowledge Retriever'.",
-            "   - Simply pass the user's core question as the task. The Retriever will autonomously handle the jurisdiction routing.",
-            "",
-            "### FINAL ANSWER FORMATTING & CITATIONS (MANDATORY)",
+            "### ROUTING WORKFLOW",
+            "- If a property's Zoning District is present in the injected property facts, you MUST include that district in your delegation task (e.g., 'Search the code for fence height regulations in the T5-O zoning district').",
+            "- **BONUSES & OVERLAYS:** If the user asks a general question about bonuses (e.g., 'Are there any bonuses available?'), you MUST look at the `overlays` listed in the Gridics Property Facts. You MUST then DELEGATE a task to the 'Zoning Knowledge Retriever' to search the code for the rules associated with those specific overlays.",
+            "- If the user asks about a specific overlay or bonus (like 'Live Local Act'), delegate a search to find the code multiplier, and then YOU must calculate the final yield against the lot size provided in the injected Gridics Facts.",
+            "- If NO property facts were injected, simply pass the user's general question to the Knowledge Retriever.",
+            "### FINAL ANSWER FORMATTING & HYPERLINKS (MANDATORY)",
             "Your final response to the user must be highly readable, scannable, and professionally formatted using Markdown.",
-            "",
             "1. DIRECT ANSWER: Start with a clear, concise sentence answering the user's core question.",
-            "2. PROPERTY CONTEXT (If applicable): Briefly state the property's Zoning District using bullet points.",
-            "3. STRUCTURED RULES: Use bullet points to list specific regulations, dimensions, or allowances. Bold the key terms.",
-            "4. EXPLICIT CITATIONS: You MUST explicitly cite the source of your information using the format `(reference: [Source])` immediately at the end of the sentence or bullet point.",
-            "   - For pre-calculated math and facts, cite: `(reference: Gridics property data)`.",
-            "   - For code rules, cite the exact code section provided by the Knowledge Retriever: `(reference: Sec. 3.7.1 General)`.",
+            "2. PROPERTY CONTEXT: If a property is selected, briefly state its Zoning District using bullet points.",
+            "3. STRUCTURED RULES: Use bullet points to list specific regulations. Bold the key terms.",
+            "4. HYPERLINK CITATIONS: You MUST explicitly cite the source of your information immediately at the end of the sentence or bullet point.",
+            "   - For injected Gridics facts, use plain text: `(reference: Gridics property data)`.",
+            "   - For code rules, the Knowledge Retriever will provide you with a URL. You MUST format this citation as an HTML link that opens in a new tab.",
+            "   - Format exactly like this: `(<a href=\"[URL]\" target=\"_blank\">reference: [Code Section Label]</a>)`.",
             "",
             "Example of a perfect response layout:",
             "Based on the property's size and zoning, you can build a maximum of 25 units.",
@@ -346,6 +383,6 @@ def build_customer_zoning_team() -> Team:
             "",
             "**Density Regulations:**",
             "- **Maximum Units:** The specific parcel allows for a maximum of **25 units** (reference: Gridics property data).",
-            "- **Base Rule:** The general code allows a maximum density of 150 Dwelling Units per acre in the T5 zone (reference: 5.2.3 Building Function & Density)."
-        ],    
+            "- **Base Rule:** The general code allows a maximum density of 150 Dwelling Units per acre in the T5 zone (<a href=\"https://codehub.gridics.com/...\" target=\"_blank\">reference: 5.2.3 Building Function & Density</a>)."
+        ],
     )

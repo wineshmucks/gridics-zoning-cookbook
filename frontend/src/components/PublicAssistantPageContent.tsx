@@ -1,5 +1,6 @@
 import { PublicAssistantExperience } from './PublicAssistantExperience'
 import { getClerkManagementClient } from '../lib/clerk'
+import { getPermissionContext } from '../lib/permissions'
 import {
   buildAssistantDisclaimerScopeKey,
   hasAcceptedAssistantDisclaimer,
@@ -17,6 +18,7 @@ export async function PublicAssistantPageContent() {
   }
 
   const tenant = await getTenantConfig()
+  const permissions = await getPermissionContext(Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY))
   const agentId = DEFAULT_ASSISTANT_TARGET_ID
   const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
   const disclaimerScopeId = tenant?.path_alias || tenant?.clerk_organization_id || tenant?.client_id || orgId
@@ -51,6 +53,7 @@ export async function PublicAssistantPageContent() {
           disclaimerText={tenant?.assistant_disclaimer_text || DEFAULT_ASSISTANT_DISCLAIMER_TEXT}
           disclaimerScopeId={normalizedDisclaimerScopeId || tenant?.city_name || orgId || 'Jurisdiction'}
           initialAccepted={initialAccepted}
+          showProModeToggle={permissions.isSuperAdmin}
         />
       </div>
     </section>

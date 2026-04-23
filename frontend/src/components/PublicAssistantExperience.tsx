@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import { acceptAssistantDisclaimerAction } from '../app/ai-assistant/actions'
 import { buildAssistantDisclaimerScopeKey } from '../lib/assistant-disclaimer'
@@ -20,6 +21,7 @@ type Props = {
   market?: string | null
   clientId: string | null
   agentId?: string
+  showProModeToggle?: boolean
   disclaimerText: string
   disclaimerScopeId: string
   initialAccepted: boolean
@@ -34,6 +36,7 @@ export function PublicAssistantExperience({
   market = null,
   clientId,
   agentId,
+  showProModeToggle = false,
   disclaimerText,
   disclaimerScopeId,
   initialAccepted,
@@ -44,6 +47,11 @@ export function PublicAssistantExperience({
   const [isPending, startTransition] = useTransition()
   const [isAccepted, setIsAccepted] = useState(initialAccepted)
   const [isDismissed, setIsDismissed] = useState(false)
+  const searchParams = useSearchParams()
+  const isProModeForced =
+    searchParams.get('uzone_pro') === '1' ||
+    searchParams.get('assistant_pro') === '1' ||
+    searchParams.get('pro') === '1'
   const scopeKey = useMemo(
     () => buildAssistantDisclaimerScopeKey(disclaimerScopeId),
     [disclaimerScopeId],
@@ -86,6 +94,12 @@ export function PublicAssistantExperience({
 
   return (
     <>
+      {isProModeForced ? (
+        <div className="assistant-pro-mode-banner" role="status" aria-live="polite">
+          <strong>Pro mode enabled</strong>
+          <span> This session is using the pro indicator path.</span>
+        </div>
+      ) : null}
       {!isAccepted && !isDismissed ? (
         <div className="assistant-disclaimer-overlay" onClick={() => setIsDismissed(true)}>
           <section
@@ -137,6 +151,7 @@ export function PublicAssistantExperience({
         showBrandingFooter={false}
         showModelControls={false}
         showToolbar={false}
+        showProModeToggle={showProModeToggle}
       />
     </>
   )

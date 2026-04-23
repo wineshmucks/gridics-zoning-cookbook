@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
@@ -20,6 +21,7 @@ type AgentRunResponse = {
   run_response?: unknown
   data?: unknown
   debug?: unknown
+  metrics?: Record<string, unknown>
   messages?: Array<{
     role?: string
     content?: unknown
@@ -59,9 +61,17 @@ type ChatMessage = {
   runId?: string
   status?: 'streaming' | 'complete' | 'error'
   error?: string | null
+  runMetrics?: AssistantRunMetrics | null
 }
 
 type MessageFeedback = 'up' | 'down'
+
+type AssistantRunMetrics = {
+  durationSeconds: number | null
+  inputTokens: number | null
+  outputTokens: number | null
+  totalTokens: number | null
+}
 
 function CopyIcon() {
   return (
@@ -222,6 +232,17 @@ type AssistantToolbarState = {
   subtitle: string | null
   canCopy: boolean
   canNewChat: boolean
+}
+
+const markdownLinkComponents = {
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="assistant-markdown-link">
+      <span className="assistant-markdown-link-label">{children}</span>
+      <span className="assistant-markdown-link-indicator" aria-hidden="true">
+        ↗
+      </span>
+    </a>
+  ),
 }
 
 function summarizeToolResultForExport(rawResult: unknown): unknown {
@@ -494,6 +515,116 @@ function enrichRunStartedStepWithTrace(steps: StreamStep[], traceDetail: string 
 
 function buildTraceBanner(traceDetail: string | null): string {
   return traceDetail ? `Model trace: ${traceDetail}` : ""
+}
+
+function extractRunMetrics(payload: Record<string, unknown> | null | undefined): AssistantRunMetrics | null {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const metricsSource =
+    payload.metrics && typeof payload.metrics === "object"
+      ? (payload.metrics as Record<string, unknown>)
+      : payload.run_response && typeof payload.run_response === "object"
+        ? ((payload.run_response as Record<string, unknown>).metrics as Record<string, unknown> | undefined)
+        : null
+
+  if (!metricsSource) {
+    return null
+  }
+
+  const durationValue =
+    typeof metricsSource.duration === "number"
+      ? metricsSource.duration
+      : typeof metricsSource.time === "number"
+        ? metricsSource.time
+        : null
+  const durationSeconds =
+    durationValue == null ? null : durationValue > 1000 ? durationValue / 1000 : durationValue
+
+  const inputTokens = typeof metricsSource.input_tokens === "number" ? metricsSource.input_tokens : null
+  const outputTokens = typeof metricsSource.output_tokens === "number" ? metricsSource.output_tokens : null
+  const totalTokens = typeof metricsSource.total_tokens === "number" ? metricsSource.total_tokens : null
+
+  if (
+    durationSeconds == null &&
+    inputTokens == null &&
+    outputTokens == null &&
+    totalTokens == null
+  ) {
+    return null
+  }
+
+  return {
+    durationSeconds,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  }
+}
+
+function extractRawRunMetrics(payload: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const topLevelMetrics = payload.metrics
+  if (topLevelMetrics && typeof topLevelMetrics === "object") {
+    return topLevelMetrics as Record<string, unknown>
+  }
+
+  const runResponse = payload.run_response
+  if (runResponse && typeof runResponse === "object") {
+    const nestedMetrics = (runResponse as Record<string, unknown>).metrics
+    if (nestedMetrics && typeof nestedMetrics === "object") {
+      return nestedMetrics as Record<string, unknown>
+    }
+  }
+
+  return null
+}
+
+function formatRunMetricsSummary(metrics: AssistantRunMetrics | null | undefined): string | null {
+  if (!metrics) {
+    return null
+  }
+
+  const parts: string[] = []
+  if (metrics.durationSeconds != null) {
+    parts.push(`Duration ${metrics.durationSeconds.toFixed(metrics.durationSeconds >= 10 ? 1 : 2)}s`)
+  }
+  if (metrics.inputTokens != null) {
+    parts.push(`Input ${metrics.inputTokens.toLocaleString()} tokens`)
+  }
+  if (metrics.outputTokens != null) {
+    parts.push(`Output ${metrics.outputTokens.toLocaleString()} tokens`)
+  }
+  if (metrics.totalTokens != null) {
+    parts.push(`Total ${metrics.totalTokens.toLocaleString()} tokens`)
+  }
+
+  return parts.length ? parts.join(" • ") : null
+}
+
+function logRunMetrics(
+  metrics: AssistantRunMetrics | null | undefined,
+  rawMetrics: Record<string, unknown> | null | undefined,
+  context: { agentId: string; surface: string; mode: 'standard' | 'pro' },
+) {
+  if (metrics) {
+    console.log('[assistant] run metrics', {
+      agentId: context.agentId,
+      surface: context.surface,
+      mode: context.mode,
+      durationSeconds: metrics.durationSeconds,
+      inputTokens: metrics.inputTokens,
+      outputTokens: metrics.outputTokens,
+      totalTokens: metrics.totalTokens,
+    })
+  }
+  if (rawMetrics) {
+    console.log('[assistant] raw backend metrics', rawMetrics)
+  }
 }
 
 function truncateMiddle(value: string, maxLength: number): string {
@@ -1172,10 +1303,12 @@ function AssistantMessageDetails({
   customerName: string
   onCopyMessage: (content: string) => void
 }) {
+  const metricsSummary = formatRunMetricsSummary(message.runMetrics)
   const hasDetails =
     Boolean(message.content) ||
     Boolean(message.toolCalls?.length) ||
     Boolean(message.steps?.length) ||
+    Boolean(metricsSummary) ||
     Boolean(message.error) ||
     message.status === "complete"
 
@@ -1187,9 +1320,16 @@ function AssistantMessageDetails({
           {message.toolCalls?.length ? `${message.toolCalls.length} tool${message.toolCalls.length === 1 ? "" : "s"}` : null}
           {message.toolCalls?.length && message.steps?.length ? " • " : null}
           {message.steps?.length ? `${message.steps.length} step${message.steps.length === 1 ? "" : "s"}` : null}
+          {((message.toolCalls?.length || message.steps?.length) && metricsSummary) ? " • " : null}
+          {metricsSummary ? metricsSummary : null}
         </span>
       </summary>
       <div className="assistant-message-details-body">
+        {metricsSummary ? (
+          <div className="assistant-run-metrics" aria-label="Assistant run metrics">
+            <span>{metricsSummary}</span>
+          </div>
+        ) : null}
         <div className="assistant-message-tools">
           <div className="assistant-message-tools-primary">
           <button
@@ -1269,6 +1409,7 @@ export function AgentChatPanel({
   market = null,
   clientId,
   defaultModelId = "",
+  showProModeToggle = false,
   surface,
   title,
   description,
@@ -1289,6 +1430,7 @@ export function AgentChatPanel({
   assistantLogoUrl?: string | null
   clientId: string | null
   defaultModelId?: string
+  showProModeToggle?: boolean
   surface: string
   title: string
   description: string
@@ -1310,6 +1452,7 @@ export function AgentChatPanel({
   const [copyMessage, setCopyMessage] = useState<string | null>(null)
   const [messageFeedback, setMessageFeedback] = useState<Record<string, MessageFeedback | undefined>>({})
   const [modelId, setModelId] = useState(defaultModelId)
+  const [assistantMode, setAssistantMode] = useState<'standard' | 'pro'>('standard')
   const [selectedProperty, setSelectedProperty] = useState<SelectedProperty | null>(null)
   const [selectedPropertySummary, setSelectedPropertySummary] = useState<PropertySummary | null>(null)
   const [selectedPropertySummaryLoading, setSelectedPropertySummaryLoading] = useState(false)
@@ -1327,6 +1470,12 @@ export function AgentChatPanel({
   const normalizedDefaultModelId = defaultModelId.trim()
   const isModelOverrideActive =
     Boolean(normalizedModelId) && normalizedModelId !== normalizedDefaultModelId
+  const isProModeActive = assistantMode === 'pro'
+  const isHiddenProModeEnabled =
+    searchParams.get('uzone_pro') === '1' ||
+    searchParams.get('assistant_pro') === '1' ||
+    searchParams.get('pro') === '1'
+  const showProModeControl = showProModeToggle || isHiddenProModeEnabled
   const showPublicAssistantFooter = showBrandingFooter && surface === "public-assistant"
   const currentYear = new Date().getFullYear()
   const isPublicAssistantSurface = surface === "public-assistant"
@@ -1347,6 +1496,19 @@ export function AgentChatPanel({
       return defaultModelId
     })
   }, [defaultModelId])
+
+  useEffect(() => {
+    if (!isHiddenProModeEnabled) {
+      return
+    }
+
+    setAssistantMode('pro')
+    console.log('[assistant] pro mode enabled via query flag', {
+      agentId,
+      customerName,
+      surface,
+    })
+  }, [agentId, customerName, isHiddenProModeEnabled, surface])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -1645,6 +1807,7 @@ export function AgentChatPanel({
       surface,
       client_id: clientId,
       tenant_client_id: clientId,
+      assistant_mode: assistantMode,
       assistant_model_id: modelId.trim() || undefined,
       embed_token: embedSessionToken || undefined,
     }
@@ -1848,6 +2011,13 @@ export function AgentChatPanel({
         let debugDetail: string | null = null
         let finalContent = getAssistantContent(payload as AgentRunResponse)
         let traceDetail = formatAssistantModelTrace(payload)
+        const runMetrics = extractRunMetrics(payload)
+        const rawRunMetrics = extractRawRunMetrics(payload)
+        logRunMetrics(runMetrics, rawRunMetrics, {
+          agentId,
+          surface,
+          mode: assistantMode,
+        })
         if (!finalContent) {
           debugDetail = `RunCompleted payload inspection: ${getAssistantContentDebug(payload as AgentRunResponse)}`
         }
@@ -1897,6 +2067,7 @@ export function AgentChatPanel({
           content: appendReferenceSection(renderedContent || buildEmptyAssistantResponse(debugDetail), toolCalls),
           steps: runSteps,
           toolCalls,
+          runMetrics,
           status: "complete",
         })
         return true
@@ -2017,9 +2188,17 @@ export function AgentChatPanel({
         }
         const content = getAssistantContent(payload || {})
         const debugDetail = content ? null : getAssistantContentDebug(payload || {})
+        const runMetrics = extractRunMetrics(payload || {})
+        const rawRunMetrics = extractRawRunMetrics(payload || {})
+        logRunMetrics(runMetrics, rawRunMetrics, {
+          agentId,
+          surface,
+          mode: assistantMode,
+        })
         handleStreamUpdate({
           content: content || buildEmptyAssistantResponse(debugDetail),
           status: "complete",
+          runMetrics,
           steps: appendDebugStep(
             upsertStep(runSteps, {
               id: "model-request",
@@ -2279,6 +2458,28 @@ export function AgentChatPanel({
               {chatSubtitle ? <div className="assistant-chat-toolbar-subtitle">{chatSubtitle}</div> : null}
             </div>
             <div className="assistant-chat-toolbar-actions">
+              {showProModeControl ? (
+                <span
+                  className={`assistant-pro-mode-pill${isProModeActive ? ' is-active' : ''}`}
+                  aria-live="polite"
+                >
+                  Pro mode {isProModeActive ? 'ON' : 'OFF'}
+                </span>
+              ) : null}
+              {showProModeControl ? (
+                <button
+                  className={`assistant-chat-toolbar-button assistant-chat-toolbar-mode-button${isProModeActive ? ' is-active' : ''}`}
+                  type="button"
+                  aria-pressed={isProModeActive}
+                  aria-label={isProModeActive ? 'Disable pro mode' : 'Enable pro mode'}
+                  title={isProModeActive ? 'Pro mode is on' : 'Pro mode is off'}
+                  onClick={() => setAssistantMode((current) => (current === 'pro' ? 'standard' : 'pro'))}
+                  disabled={isStreaming}
+                >
+                  <span className="assistant-chat-toolbar-mode-label">Pro mode</span>
+                  <span className="assistant-chat-toolbar-mode-state">{isProModeActive ? 'On' : 'Off'}</span>
+                </button>
+              ) : null}
               <span className="assistant-chat-toolbar-stat">
                 {assistantMessageCount} answer{assistantMessageCount === 1 ? '' : 's'}
               </span>
@@ -2378,7 +2579,7 @@ export function AgentChatPanel({
                     {message.role === "user" ? (
                       <div className="assistant-ui-user-content">{message.content}</div>
                     ) : message.content ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownLinkComponents}>
                         {replaceGridicsPropertyReferences(message.content)}
                       </ReactMarkdown>
                     ) : message.status === "streaming" ? (
@@ -2516,6 +2717,20 @@ export function AgentChatPanel({
                     </>
                   )}
                 </div>
+              ) : null}
+              {showProModeControl && !showToolbar ? (
+                <button
+                  className={`assistant-chat-toolbar-button assistant-chat-toolbar-mode-button assistant-chat-footer-pro-toggle${isProModeActive ? ' is-active' : ''}`}
+                  type="button"
+                  aria-pressed={isProModeActive}
+                  aria-label={isProModeActive ? 'Disable pro mode' : 'Enable pro mode'}
+                  title={isProModeActive ? 'Pro mode is on' : 'Pro mode is off'}
+                  onClick={() => setAssistantMode((current) => (current === 'pro' ? 'standard' : 'pro'))}
+                  disabled={isStreaming}
+                >
+                  <span className="assistant-chat-toolbar-mode-label">Pro mode</span>
+                  <span className="assistant-chat-toolbar-mode-state">{isProModeActive ? 'On' : 'Off'}</span>
+                </button>
               ) : null}
               {!embeddedLayout ? (
                 <div className="assistant-ui-composer-meta">

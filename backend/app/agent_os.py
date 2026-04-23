@@ -10,7 +10,6 @@ from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
 
 from app.agents.storage import get_agno_db
-from app.agents.zoning_agent import build_customer_zoning_agent, build_customer_zoning_team
 from app.services.shared.embed_service import decode_embed_session_token, parse_embed_token_from_header
 from app.core.config import settings
 
@@ -24,7 +23,7 @@ CUSTOMER_ZONING_ASSISTANT_ROUTE_IDS = (
     LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID,
 )
 
-CUSTOMER_ZONING_AGENT_ROUTE_PREFIX = "/agents/customer-zoning-team"
+CUSTOMER_ZONING_AGENT_ROUTE_PREFIX = "/agents/customer-zoning-agent"
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +56,18 @@ def _build_agent_os_db():
     return get_agno_db()
 
 
+def _build_customer_zoning_agent():
+    from app.agents.zoning_agent import build_customer_zoning_agent
+
+    return build_customer_zoning_agent()
+
+
 def build_agent_os_app(base_app: FastAPI) -> FastAPI:
     from agno.os import AgentOS
 
     agent_os = AgentOS(
-        agents=[build_customer_zoning_agent()],
-        teams=[build_customer_zoning_team()],
+        agents=[_build_customer_zoning_agent()],
+        teams=[],
         db=_build_agent_os_db(),
         base_app=base_app,
         id="gridics-agent-os",

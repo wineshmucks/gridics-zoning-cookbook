@@ -1,5 +1,5 @@
-export const CUSTOMER_ZONING_ASSISTANT_TARGET_ID = 'customer_zoning_team'
-export const LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = 'customer-zoning-agent'
+export const CUSTOMER_ZONING_ASSISTANT_TARGET_ID = 'customer-zoning-agent'
+export const LEGACY_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = 'customer_zoning_team'
 export const PUBLIC_CUSTOMER_ZONING_ASSISTANT_TARGET_ID = 'customer-zoning-team'
 export const DEFAULT_ASSISTANT_TARGET_ID =
   process.env.NEXT_PUBLIC_ASSISTANT_TARGET_ID?.trim() || CUSTOMER_ZONING_ASSISTANT_TARGET_ID

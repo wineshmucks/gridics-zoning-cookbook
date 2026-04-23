@@ -71,6 +71,7 @@ export default async function SuperAdminCustomerAssistantPage({ params }: PagePr
         customerName={displayName}
         market={market}
         clientId={zoningKnowledgeStatus.client_id}
+        showProModeToggle
         surface="super-admin-customer-assistant"
         title=""
         description=""

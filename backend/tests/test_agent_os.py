@@ -47,6 +47,7 @@ def test_build_agent_os_app_configures_persistent_db(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "agno.os", fake_module)
     monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=["agent-sentinel"]))
     monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+    monkeypatch.setattr(agent_os, "_build_customer_zoning_agent", lambda: "agent-sentinel")
 
     app = agent_os.build_agent_os_app(FastAPI())
 
@@ -54,6 +55,7 @@ def test_build_agent_os_app_configures_persistent_db(monkeypatch) -> None:
     assert app.state.agent_os_kwargs["tracing"] is True
     assert app.state.agent_os_kwargs["auto_provision_dbs"] is True
     assert app.state.agent_os_kwargs["agents"] == ["agent-sentinel"]
+    assert app.state.agent_os_kwargs["teams"] == []
 
 
 def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_registered_agent(monkeypatch) -> None:
@@ -73,6 +75,7 @@ def test_build_agent_os_app_rewrites_customer_zoning_assistant_alias_paths_to_re
     monkeypatch.setitem(sys.modules, "agno.os", types.SimpleNamespace(AgentOS=FakeAgentOS))
     monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=[], ALL_TEAMS=[]))
     monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+    monkeypatch.setattr(agent_os, "_build_customer_zoning_agent", lambda: "agent-sentinel")
 
     app = agent_os.build_agent_os_app(FastAPI())
     client = TestClient(app)
@@ -100,6 +103,7 @@ def test_build_agent_os_app_rewrites_canonical_customer_zoning_team_path_to_regi
     monkeypatch.setitem(sys.modules, "agno.os", types.SimpleNamespace(AgentOS=FakeAgentOS))
     monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=[], ALL_TEAMS=[]))
     monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+    monkeypatch.setattr(agent_os, "_build_customer_zoning_agent", lambda: "agent-sentinel")
 
     app = agent_os.build_agent_os_app(FastAPI())
     client = TestClient(app)
@@ -127,6 +131,7 @@ def test_build_agent_os_app_keeps_legacy_customer_zoning_agent_alias_working(mon
     monkeypatch.setitem(sys.modules, "agno.os", types.SimpleNamespace(AgentOS=FakeAgentOS))
     monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=[], ALL_TEAMS=[]))
     monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+    monkeypatch.setattr(agent_os, "_build_customer_zoning_agent", lambda: "agent-sentinel")
 
     app = agent_os.build_agent_os_app(FastAPI())
     client = TestClient(app)
@@ -154,6 +159,7 @@ def test_build_agent_os_app_preserves_non_agent_routes(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "agno.os", types.SimpleNamespace(AgentOS=FakeAgentOS))
     monkeypatch.setitem(sys.modules, "app.agents.registry", types.SimpleNamespace(ALL_AGENTS=[], ALL_TEAMS=[]))
     monkeypatch.setattr(agent_os, "_build_agent_os_db", lambda: "db-sentinel")
+    monkeypatch.setattr(agent_os, "_build_customer_zoning_agent", lambda: "agent-sentinel")
 
     app = agent_os.build_agent_os_app(FastAPI())
     client = TestClient(app)

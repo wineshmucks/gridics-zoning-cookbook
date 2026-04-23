@@ -437,9 +437,9 @@ def _run_customer_zoning_team_for_assistant_test(
     metadata: dict[str, Any],
     session_id: str | None,
 ) -> Any:
-    from app.agents.zoning_agent import build_customer_zoning_team
+    from app.agents.zoning_agent import build_customer_zoning_agent
 
-    team = build_customer_zoning_team()
+    team = build_customer_zoning_agent()
     run_kwargs: dict[str, Any] = {
         "session_state": session_state,
         "dependencies": dependencies,
